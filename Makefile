@@ -93,7 +93,7 @@ MESHCHECK_SRCS  := tools/meshcheck.c $(PURE_SRCS)
 WORLDCHECK_SRCS := tools/worldcheck.c $(PURE_SRCS)
 
 .PHONY: check
-check: hostpurity lang meshcheck worldcheck
+check: hostpurity lang metadata meshcheck worldcheck
 
 # ---------------------------------------------------------------------
 # The translations. lang/*.txt is the source and main/i18n/strings_gen.*
@@ -301,6 +301,25 @@ install: build mode
 	done; echo "  $(words $(MUSIC)) piece(s) sent"
 	@echo "=== Installation complete ==="
 
+# ---------------------------------------------------------------------
+# metadata.json's asset list. Generated from the same directories the
+# install rules glob, because when it was maintained by hand it drifted
+# to 25 of 54 textures and none of the music -- and only the app
+# repository reads it, so nothing here noticed. Rebuilt whenever an
+# asset is newer than the file; `make metadatacheck` is the CI form,
+# which asks instead of fixing. The rest of metadata.json is hand
+# written and untouched by this.
+# ---------------------------------------------------------------------
+metadata/metadata.json: $(wildcard textures/*.png) $(wildcard assets/music/*.mid) tools/make_metadata.py
+	python3 tools/make_metadata.py
+
+.PHONY: metadata
+metadata: metadata/metadata.json
+
+.PHONY: metadatacheck
+metadatacheck:
+	python3 tools/make_metadata.py --check
+
 # Regenerate the block textures (needs numpy + Pillow). They are committed,
 # so this is only needed when a generator changes or a block is added.
 .PHONY: textures
@@ -356,15 +375,25 @@ mode_debug:
 
 APP_REPO_PATH ?= ../tanmatsu-app-repository/$(APP_SLUG_NAME)
 
+# The app repository is the OTHER way a device gets SynthMiner, and the
+# one nobody here installs from, so it is the one that rots: it used to
+# copy the metadata, the icons and app.so and stop, leaving a download
+# with no textures and no music at all. It now copies everything
+# metadata.json promises, and apprepocheck.py says so file by file.
 .PHONY: apprepo
-apprepo: build
+apprepo: build metadata
 	@echo "=== Updating app repository ==="
-	mkdir -p $(APP_REPO_PATH)
+	mkdir -p $(APP_REPO_PATH)/textures $(APP_REPO_PATH)/music
 	cp metadata/metadata.json $(APP_REPO_PATH)/metadata.json
 	cp metadata/icon16.png $(APP_REPO_PATH)/icon16.png
 	cp metadata/icon32.png $(APP_REPO_PATH)/icon32.png
 	cp metadata/icon64.png $(APP_REPO_PATH)/icon64.png
 	cp $(BUILD)/app.so $(APP_REPO_PATH)/app.so
+	@for t in $(TEXTURES); do cp textures/$$t $(APP_REPO_PATH)/textures/$$t || exit 1; done; \
+	  echo "  $(words $(TEXTURES)) texture(s) copied"
+	@for m in $(MUSIC); do cp assets/music/$$m $(APP_REPO_PATH)/music/$$m || exit 1; done; \
+	  echo "  $(words $(MUSIC)) piece(s) copied"
+	@python3 tools/apprepocheck.py $(APP_REPO_PATH)
 	@echo "=== App repository updated at $(APP_REPO_PATH) ==="
 
 # Preparation

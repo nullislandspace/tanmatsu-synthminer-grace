@@ -2,7 +2,7 @@
   "name": "SynthMiner",
   "description": "Mine, build and survive in a block world",
   "categories": [
-    "demos"
+    "games"
   ],
   "version": "0.1.0",
   "icon": {
@@ -33,6 +33,38 @@
           "target_file": "textures/bedrock.png"
         },
         {
+          "source_file": "textures/bench_top.png",
+          "target_file": "textures/bench_top.png"
+        },
+        {
+          "source_file": "textures/birch_leaves.png",
+          "target_file": "textures/birch_leaves.png"
+        },
+        {
+          "source_file": "textures/birch_leaves_fast.png",
+          "target_file": "textures/birch_leaves_fast.png"
+        },
+        {
+          "source_file": "textures/birch_side.png",
+          "target_file": "textures/birch_side.png"
+        },
+        {
+          "source_file": "textures/birch_top.png",
+          "target_file": "textures/birch_top.png"
+        },
+        {
+          "source_file": "textures/cactus.png",
+          "target_file": "textures/cactus.png"
+        },
+        {
+          "source_file": "textures/chest_side.png",
+          "target_file": "textures/chest_side.png"
+        },
+        {
+          "source_file": "textures/chest_top.png",
+          "target_file": "textures/chest_top.png"
+        },
+        {
           "source_file": "textures/coal_ore.png",
           "target_file": "textures/coal_ore.png"
         },
@@ -53,6 +85,14 @@
           "target_file": "textures/flower_yellow.png"
         },
         {
+          "source_file": "textures/furnace_front.png",
+          "target_file": "textures/furnace_front.png"
+        },
+        {
+          "source_file": "textures/furnace_top.png",
+          "target_file": "textures/furnace_top.png"
+        },
+        {
           "source_file": "textures/glass.png",
           "target_file": "textures/glass.png"
         },
@@ -67,6 +107,58 @@
         {
           "source_file": "textures/gravel.png",
           "target_file": "textures/gravel.png"
+        },
+        {
+          "source_file": "textures/iron_ore.png",
+          "target_file": "textures/iron_ore.png"
+        },
+        {
+          "source_file": "textures/item_axe_iron.png",
+          "target_file": "textures/item_axe_iron.png"
+        },
+        {
+          "source_file": "textures/item_axe_stone.png",
+          "target_file": "textures/item_axe_stone.png"
+        },
+        {
+          "source_file": "textures/item_axe_wood.png",
+          "target_file": "textures/item_axe_wood.png"
+        },
+        {
+          "source_file": "textures/item_coal.png",
+          "target_file": "textures/item_coal.png"
+        },
+        {
+          "source_file": "textures/item_iron_ingot.png",
+          "target_file": "textures/item_iron_ingot.png"
+        },
+        {
+          "source_file": "textures/item_pickaxe_iron.png",
+          "target_file": "textures/item_pickaxe_iron.png"
+        },
+        {
+          "source_file": "textures/item_pickaxe_stone.png",
+          "target_file": "textures/item_pickaxe_stone.png"
+        },
+        {
+          "source_file": "textures/item_pickaxe_wood.png",
+          "target_file": "textures/item_pickaxe_wood.png"
+        },
+        {
+          "source_file": "textures/item_shovel_iron.png",
+          "target_file": "textures/item_shovel_iron.png"
+        },
+        {
+          "source_file": "textures/item_shovel_stone.png",
+          "target_file": "textures/item_shovel_stone.png"
+        },
+        {
+          "source_file": "textures/item_shovel_wood.png",
+          "target_file": "textures/item_shovel_wood.png"
+        },
+        {
+          "source_file": "textures/item_stick.png",
+          "target_file": "textures/item_stick.png"
         },
         {
           "source_file": "textures/leaves.png",
@@ -97,6 +189,10 @@
           "target_file": "textures/sand.png"
         },
         {
+          "source_file": "textures/sandstone.png",
+          "target_file": "textures/sandstone.png"
+        },
+        {
           "source_file": "textures/sign_flob.png",
           "target_file": "textures/sign_flob.png"
         },
@@ -109,8 +205,20 @@
           "target_file": "textures/sign_wolfie.png"
         },
         {
+          "source_file": "textures/snow.png",
+          "target_file": "textures/snow.png"
+        },
+        {
           "source_file": "textures/stone.png",
           "target_file": "textures/stone.png"
+        },
+        {
+          "source_file": "textures/table_side.png",
+          "target_file": "textures/table_side.png"
+        },
+        {
+          "source_file": "textures/table_top.png",
+          "target_file": "textures/table_top.png"
         },
         {
           "source_file": "textures/tall_grass.png",
@@ -125,8 +233,60 @@
           "target_file": "textures/torch_flame.png"
         },
         {
+          "source_file": "textures/trash_side.png",
+          "target_file": "textures/trash_side.png"
+        },
+        {
+          "source_file": "textures/trash_top.png",
+          "target_file": "textures/trash_top.png"
+        },
+        {
           "source_file": "textures/water.png",
           "target_file": "textures/water.png"
+        },
+        {
+          "source_file": "music/bach_sheep_may_safely_graze.mid",
+          "target_file": "music/bach_sheep_may_safely_graze.mid"
+        },
+        {
+          "source_file": "music/chopin_prelude_28_15.mid",
+          "target_file": "music/chopin_prelude_28_15.mid"
+        },
+        {
+          "source_file": "music/chopin_prelude_28_20.mid",
+          "target_file": "music/chopin_prelude_28_20.mid"
+        },
+        {
+          "source_file": "music/debussy_arabesque_1.mid",
+          "target_file": "music/debussy_arabesque_1.mid"
+        },
+        {
+          "source_file": "music/debussy_clair_de_lune.mid",
+          "target_file": "music/debussy_clair_de_lune.mid"
+        },
+        {
+          "source_file": "music/satie_gymnopedie_1.mid",
+          "target_file": "music/satie_gymnopedie_1.mid"
+        },
+        {
+          "source_file": "music/satie_gymnopedie_2.mid",
+          "target_file": "music/satie_gymnopedie_2.mid"
+        },
+        {
+          "source_file": "music/satie_gymnopedie_3.mid",
+          "target_file": "music/satie_gymnopedie_3.mid"
+        },
+        {
+          "source_file": "music/schumann_fremde_laender.mid",
+          "target_file": "music/schumann_fremde_laender.mid"
+        },
+        {
+          "source_file": "music/schumann_glueckes_genug.mid",
+          "target_file": "music/schumann_glueckes_genug.mid"
+        },
+        {
+          "source_file": "music/schumann_traeumerei.mid",
+          "target_file": "music/schumann_traeumerei.mid"
         }
       ]
     }
