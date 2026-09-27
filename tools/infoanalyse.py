@@ -60,7 +60,8 @@ def main():
     print("\n=== average cost of each call (us) ===")
     for k, n in (("ppa", "ppan"), ("enc", "encn"), ("mux", "muxn"), ("aud", "audn"),
                  ("pass", "passn"), ("pcr", "pcrn"), ("atk", "atkn"), ("amx", "amxn"),
-                 ("copy", "costn"), ("cenc", "costn")):
+                 ("copy", "costn"), ("cenc", "costn"),
+                 ("an", "phn"), ("scf", "phn"), ("alloc", "phn"), ("wr", "phn")):
         if have(k + "sum", n):
             c = t[i[n]]
             mx = f"  max {t[i[k+'max']]:8d}" if k + "max" in i else ""
@@ -84,6 +85,10 @@ def main():
             if have("copysum", "costn") and d("costn"):
                 line += (f" | copy {d('copysum')/d('costn')/1000:6.2f} "
                          f"codec {d('cencsum')/d('costn')/1000:7.2f} ms")
+            if have("ansum", "phn") and d("phn"):
+                q = d("phn")
+                line += (f" | filterbank {d('ansum')/q/1000:7.2f}  sb-sweeps "
+                         f"{(d('scfsum')+d('allocsum')+d('wrsum'))/q/1000:7.2f} ms")
             if have("passsum", "passn") and d("passn"):
                 npass = d("passn")
                 p = d("passsum") / npass / 1000.0

@@ -224,6 +224,22 @@ add_compile_definitions(SE_SCENE_TEXTURED_TRI_CAP=4096)
 add_compile_definitions(SE_SCENE_DEPTH16_INTERNAL=1)
 add_compile_definitions(SE_BINDINGS_MAX=24)
 
+# STREAMING AUDIO, OFF BY DEFAULT (claudeplans F-108). pdmp2 is correct and
+# cheap on average, and unusable in practice on this badge: 6.4 ms to encode
+# a 52 ms frame while the game is quiet, 143-168 ms while it is meshing
+# chunks, which takes the picture down with it. The code is all still here
+# and switched off costs nothing -- se_stream_audio_prepare() is never
+# called, so not one of its 38.5 KB is allocated.
+#
+#   idf.py -DSM_STREAM_AUDIO=1 build     (or: make STREAM_AUDIO=1 push)
+#
+# turns it on for a measurement run, which is what the phase timing in
+# pdmp2_profile_get() is for.
+if(NOT DEFINED SM_STREAM_AUDIO)
+  set(SM_STREAM_AUDIO 0)
+endif()
+add_compile_definitions(SM_STREAM_AUDIO=${SM_STREAM_AUDIO})
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/synthengine3D/CMakeLists.txt)
     message(STATUS "SynthEngine3D: building synthengine3D/")
     add_subdirectory(synthengine3D)

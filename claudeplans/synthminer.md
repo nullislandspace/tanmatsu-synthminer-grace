@@ -2604,6 +2604,49 @@ reason Minecraft chose the other rule.
   been of the generator. Fixed by step 41: a persisted world, pre-generated
   once, streamed off the card (`0 missing`, `refused 0`, queue 0-6 of 48, and
   735 ms to load instead of eleven seconds to generate).
+- **F-108** 2026-09-27, from per-phase timing inside the codec, after two
+  wrong answers to the same question: **it is allocate(), sweeping the
+  encoder's own struct in PSRAM.** Streaming audio ships OFF
+  (`SM_STREAM_AUDIO`, CMakeLists.txt).
+
+  The measurement, per pass, healthy against collapsed:
+
+      filterbank   4.84 ms  ->   5.34 ms
+      sb-sweeps    1.28 ms  -> 160.42 ms
+
+  The filterbank is the big arithmetic -- 184320 multiply-accumulates, and
+  the loop whose CODE is fetched from PSRAM like all of app.so. It barely
+  moves. So the 125x is not instruction fetch, which is what I had concluded
+  from "moving the data bought 8%" and was about to have the user reflash
+  graceloader for, committing to an exported ABI, on the strength of an
+  inference. The three timers that refuted it took ten minutes.
+
+  Within the sweeps it is `allocate` (56.3 ms average against `scf` 2.4 and
+  `wr` 0.34), and it does not read the subband array at all: it is a greedy
+  loop that rescans every live subband each iteration, and `aidx`, `live`,
+  `codes`, `ncodes`, `nscf`, `apart` and `power` are all members of
+  `struct pdmp2_enc` -- under 2 KB, swept tens of thousands of times for one
+  frame, allocated with plain PDMP2_MALLOC and therefore in PSRAM. 5.6 KB,
+  the cheapest thing in the encoder to move, and the last one anybody
+  looked at.
+
+  It is now PDMP2_MALLOC_HOT, and **that fix is unmeasured**: with it the
+  codec holds 22.5 KB of internal SRAM and CHUNK LOADING BROKE. That is the
+  second time making audio work cost something that matters more -- F-106
+  was the H.264 encoder, and the reserve added there did not help because
+  the reserve protects a fixed 48 KB without knowing who needs it. Whoever
+  returns to this needs an internal-RAM budget for the whole app first, not
+  another placement change. Mono would halve every phase (all four are
+  per-channel) and not one byte of the footprint, so it is margin, not a
+  fix: half of 125x is 62x.
+
+  `s_flat` went back to PSRAM in the same round, also measured: I had put it
+  in SRAM believing the filterbank read it 36 times over. It does not --
+  encode_frame() converts it to float in one sequential pass and the
+  filterbank reads that -- and the timed copy was 0.10-0.17 ms and never
+  moved under load. Three of my four placement decisions in this
+  investigation were made from reading the code and were wrong; the timers
+  were right the first time.
 - **F-107** 2026-09-27, out of **the user**: *"make install should always
   install everything. You already have a specific makefile target for only
   uploading app.so, right?"* **A cache keyed on the wrong question is worse

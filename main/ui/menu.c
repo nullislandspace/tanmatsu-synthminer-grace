@@ -447,25 +447,43 @@ static void toggle_livestream(void) {
     // What the encoder is asked for. The game's rate varies with what is
     // on screen, so fps_hint is not a promise -- it is what the rate
     // control and the stream clock are scaled against.
-    // AUDIO OFF, AND THE CODE BEHIND IT LEFT ALONE ON PURPOSE (F-108).
-    // pdmp2 is correct -- 2491 well-formed frames on the wire -- and it is
-    // not slow on average. It is slow UNPREDICTABLY: 6.4 ms to encode a
-    // 52 ms frame while the game is quiet, and 143-168 ms while the game is
-    // meshing chunks, which no amount of ring depth survives. Putting the
-    // whole hot working set in internal SRAM moved the quiet case from 7.0
-    // to 6.4 ms and did nothing at all to the bad one, so the data was
-    // never where the time went; app.so itself lives in PSRAM, and the
-    // filterbank's inner loops are fetched from there.
+    // AUDIO OFF BY DEFAULT, AND THE CODE LEFT ALONE ON PURPOSE (F-108).
+    // SM_STREAM_AUDIO is set in CMakeLists.txt; `make STREAM_AUDIO=1 push`
+    // turns it on for a measurement run.
+    //
+    // pdmp2 is correct -- 2491 well-formed frames on the wire, and it beats
+    // ffmpeg's own Layer II encoder on SNR in every configuration -- and it
+    // is not slow on average. It is slow UNPREDICTABLY: 6.4 ms to encode a
+    // 52 ms frame while the game is quiet, 143-168 ms while the game is
+    // meshing chunks. Nothing downstream survives that, and it takes the
+    // picture with it, because one task encodes both.
+    //
+    // Per-phase timing (pdmp2_profile_get) found where, after two wrong
+    // guesses: the filterbank barely moves under load, 4.8 ms to 5.3, while
+    // allocate() goes from 1.3 ms to 160. It is a greedy loop that rescans
+    // every live subband each iteration, and everything it reads lives in
+    // the encoder's struct -- under 2 KB, swept tens of thousands of times
+    // a frame. In PSRAM, a cache eviction turns each of those reads into a
+    // round trip.
+    //
+    // Moving the struct to internal SRAM is the obvious fix and is in
+    // pdmp2.c, UNMEASURED: the 22.5 KB of internal RAM the codec then holds
+    // broke chunk loading, which is the second time audio has been made to
+    // work at the cost of something that matters more (F-106 was the H.264
+    // encoder). Whoever picks this up needs a budget for internal RAM
+    // first, not another placement change. Mono would halve the CPU and not
+    // one byte of the footprint.
     //
     // Costs nothing to carry switched off: se_stream_audio_prepare() is
-    // never called, so pdmp2 is never opened, none of its 38.5 KB is
-    // allocated, neither is the 18 KB ring, the mixer is not held awake,
-    // and the muxer leaves the audio PID out of the tables (se_stream.c).
+    // never called, so pdmp2 is never opened, not one of its buffers or its
+    // struct is allocated, neither is the 18 KB ring, the mixer is not held
+    // awake, and the muxer leaves the audio PID out of the tables.
     //
     // The game's rate varies with what is on screen, so fps_hint is not a
     // promise -- it is what the rate control and the stream clock are
     // scaled against.
-    se_stream_cfg_t const cfg = {.bitrate_kbit = 3000, .gop = 20, .fps_hint = 20, .audio = false};
+    se_stream_cfg_t const cfg = {
+        .bitrate_kbit = 3000, .gop = 20, .fps_hint = 20, .audio = SM_STREAM_AUDIO != 0};
     // The row shows what the stream IS, so a refusal simply leaves the box
     // unticked -- and everything that can fail happens before the link
     // goes up, while there is still a console to say why (se_stream.h).

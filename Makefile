@@ -44,11 +44,17 @@ MAKEFLAGS += --silent
 all: build
 
 .PHONY: build
+# STREAM_AUDIO=1 turns streaming audio on for a measurement run; it is off
+# in every ordinary build (CMakeLists.txt, claudeplans F-108). Passed through
+# cmake, and the cache is re-primed each time so switching it does not
+# silently keep the previous setting.
 build: check
 	@echo "=== Building app.so ==="
 	mkdir -p $(BUILD)
-	cd $(BUILD) && cmake .. && make
+	cd $(BUILD) && cmake -DSM_STREAM_AUDIO=$(if $(STREAM_AUDIO),$(STREAM_AUDIO),0) .. && make
 	$(MAKE) symcheck
+	@if [ -n "$(STREAM_AUDIO)" ] && [ "$(STREAM_AUDIO)" != "0" ]; then \
+	  echo "*** STREAMING AUDIO IS ON in this build (measurement run) ***"; fi
 	@echo "=== Build complete: $(BUILD)/app.so ==="
 
 # Every symbol the app calls must be one graceloader exports, or the app
