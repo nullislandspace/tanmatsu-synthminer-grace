@@ -36,7 +36,7 @@ void voxel_fx_init(void) {
     mesh_init(&s_pop);
     s_pop.name = "fx_pop";
     voxel_build_cube(&s_pop, 0.5f);
-    s_flame = texcache_get("synthminer/torch_flame.png");
+    s_flame = texcache_get("torch_flame.png");
 }
 
 void voxel_fx_shutdown(void) {
