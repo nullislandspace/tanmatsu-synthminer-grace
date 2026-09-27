@@ -241,32 +241,58 @@ badgelink:
 BADGELINK_CONN := $(if $(findstring :,$(BADGELINKPORT)),--tcp $(BADGELINKPORT),--port $(BADGELINKPORT))
 
 .PHONY: install
+# INSTALL PUTS EVERY FILE ON THE DEVICE, EVERY TIME. It used to stamp what
+# this checkout had last sent and skip the rest, which is a cache keyed on
+# the wrong thing: the stamps say what was UPLOADED FROM HERE, not what is
+# on the card. On a badge that had never had synthminer installed it skipped
+# all 65 assets and printed "54 already current" with none of them there --
+# an app with no textures and no music, for a reason nothing on screen can
+# explain. A wrong skip costs an hour of confusion; a redundant upload costs
+# twenty seconds. `make push` is the fast path for iterating on code.
+
+# $(1) = local path, $(2) = remote path
+define UPLOAD
+	@echo "  upload $(1)"
+	@( cd badgelink/tools && ./badgelink.sh $(BADGELINK_CONN) fs upload $(2) ../../$(1) ) || exit 1
+endef
+
+# The fast path: app.so and nothing else. This is what a code change needs,
+# and it is one upload instead of seventy.
+.PHONY: push
+push: build mode
+	@echo "=== Pushing app.so ==="
+	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/app.so ../../$(BUILD)/app.so
+	@echo "=== Pushed (assets untouched -- 'make install' for those) ==="
+
+# Pull the stream's own counters off the SD card. se_stream_stop() writes
+# /sd/defuckinfo.txt -- one line every 250 ms with what the stream task
+# actually did, which is the only way to see inside a run: the console is
+# gone by the time BadgeLink is back, and the badge is on someone else's
+# network. Needs BadgeLink, so the app must have EXITED (stopping the
+# stream is what writes the file).
+.PHONY: pullinfo
+pullinfo: mode
+	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs download /sd/defuckinfo.txt ../../defuckinfo.txt
+	@echo "=== defuckinfo.txt: $$(wc -l < defuckinfo.txt) lines ==="
+
 install: build mode
 	@echo "=== Installing to device ==="
-	@echo "Creating directory $(APP_INSTALL_PATH)..."
 	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs mkdir $(APP_INSTALL_PATH) || true
-	@echo "Uploading metadata.json..."
-	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/metadata.json ../../metadata/metadata.json
-	@echo "Uploading icon16.png..."
-	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/icon16.png ../../metadata/icon16.png
-	@echo "Uploading icon32.png..."
-	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/icon32.png ../../metadata/icon32.png
-	@echo "Uploading icon64.png..."
-	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/icon64.png ../../metadata/icon64.png
-	@echo "Uploading app.so..."
-	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/app.so ../../$(BUILD)/app.so
-	@echo "Uploading $(words $(TEXTURES)) textures..."
+	$(call UPLOAD,metadata/metadata.json,$(APP_INSTALL_PATH)/metadata.json)
+	$(call UPLOAD,metadata/icon16.png,$(APP_INSTALL_PATH)/icon16.png)
+	$(call UPLOAD,metadata/icon32.png,$(APP_INSTALL_PATH)/icon32.png)
+	$(call UPLOAD,metadata/icon64.png,$(APP_INSTALL_PATH)/icon64.png)
+	$(call UPLOAD,$(BUILD)/app.so,$(APP_INSTALL_PATH)/app.so)
+	@echo "Textures: $(words $(TEXTURES))"
 	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs mkdir $(APP_INSTALL_PATH)/textures >/dev/null 2>&1 || true
-	for t in $(TEXTURES); do \
-	  cd badgelink/tools && ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/textures/$$t ../../textures/$$t || exit 1; \
-	  cd ../..; \
-	done
-	@echo "Uploading $(words $(MUSIC)) pieces of music..."
+	@for t in $(TEXTURES); do \
+	  ( cd badgelink/tools && ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/textures/$$t ../../textures/$$t >/dev/null ) || exit 1; \
+	done; echo "  $(words $(TEXTURES)) texture(s) sent"
+	@echo "Music: $(words $(MUSIC))"
 	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs mkdir $(APP_INSTALL_PATH)/music >/dev/null 2>&1 || true
-	for m in $(MUSIC); do \
-	  cd badgelink/tools && ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/music/$$m ../../assets/music/$$m || exit 1; \
-	  cd ../..; \
-	done
+	@for m in $(MUSIC); do \
+	  ( cd badgelink/tools && ./badgelink.sh $(BADGELINK_CONN) fs upload $(APP_INSTALL_PATH)/music/$$m ../../assets/music/$$m >/dev/null ) || exit 1; \
+	done; echo "  $(words $(MUSIC)) piece(s) sent"
 	@echo "=== Installation complete ==="
 
 # Regenerate the block textures (needs numpy + Pillow). They are committed,

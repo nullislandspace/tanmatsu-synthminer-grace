@@ -2604,6 +2604,165 @@ reason Minecraft chose the other rule.
   been of the generator. Fixed by step 41: a persisted world, pre-generated
   once, streamed off the card (`0 missing`, `refused 0`, queue 0-6 of 48, and
   735 ms to load instead of eleven seconds to generate).
+- **F-107** 2026-09-27, out of **the user**: *"make install should always
+  install everything. You already have a specific makefile target for only
+  uploading app.so, right?"* **A cache keyed on the wrong question is worse
+  than no cache.** `make install` stamped what THIS CHECKOUT had last
+  uploaded and skipped anything unchanged since -- but the question that
+  matters is what is ON THE CARD. On a badge that had never had synthminer
+  installed it skipped all 65 assets and printed `54 already current` with
+  zero of them present: a listing showed 1 file in the app directory, 0
+  textures, 0 music. An app with no textures and no music, and nothing on
+  screen able to say why.
+  I had even written the failure mode into the Makefile -- *"the stamps
+  record what THIS CHECKOUT last sent, so they are wrong if the card is
+  swapped or wiped"* -- and shipped it behind a manual `INSTALL_FORCE=1`,
+  which is a footgun with a note taped to it rather than a fix.
+  My first repair was to ask the device with one `fs list` a directory and
+  skip only what was genuinely there. The user stopped it, and was right to:
+  `make push` ALREADY EXISTS for the fast path, so the optimisation had no
+  remaining purpose and was pure risk. Install is now unconditional -- every
+  file, every time, 54 textures and 11 pieces of music, verified on the
+  device afterwards as 5/54/11.
+  The asymmetry is the whole lesson: a redundant upload costs twenty
+  seconds, a wrong skip costs an hour of looking for the bug somewhere else
+  entirely. Optimisations belong on the path that is actually hot, and only
+  when nothing cheaper already covers it.
+- **F-106** 2026-09-26, out of **the user** the moment F-105's fix was
+  installed: *"now i can't even enable livestream in the menu"*. **Internal
+  SRAM is shared with the thing the audio exists to accompany.** F-105 put
+  all 38.5 KB of pdmp2's working set in internal RAM, with a PSRAM fallback
+  so the codec could never fail to open -- and that fallback is exactly what
+  made it dangerous: the codec always succeeded, and
+  `esp_h264_enc_open()`, which wants internal DMA buffers of its own, failed
+  instead. `se_stream_start()` returned ESP_FAIL, and the row is written to
+  leave the box unticked on a refusal, so the symptom was a menu that did
+  nothing. Audio was protected at the price of the picture.
+  Three things, because one of them alone only moves the failure:
+  * **Only the hot buffers go inside.** `PDMP2_MALLOC_HOT` (new in pdmp2)
+    takes win 2.0 KB, mat 8.0 and work 6.5 -- the three the filterbank
+    re-reads 72 times a frame -- and `hist`, `sb` and `pcm`, touched about
+    twice a sample, stay in PSRAM. 16.5 KB instead of 38.5.
+  * **Video allocates first.** Audio prepare moved after
+    `ppa_register_client()` and `esp_h264_enc_open()`. A tight internal heap
+    now costs audio timing, which is a glitch, instead of the whole stream,
+    which is a mystery.
+  * **A reserve, not just a fallback.** `usbnet_start()` comes after the
+    codec and wants internal DMA memory too, so falling back only when the
+    allocation FAILS would have killed the link next -- the same mistake one
+    step down. The hot allocator takes internal memory only while 64 KB
+    would still be left.
+  The lesson is narrower than "internal RAM is scarce": a fallback that
+  cannot fail hides the shortage and pushes the failure onto whichever
+  component asks next, so it lands somewhere with no obvious connection to
+  the change. The reserve puts the failure back where it belongs.
+- **F-105** 2026-09-26, from the residual the F-103 instrumentation added,
+  on a run that stalled the same way: **the stream task was never starved.
+  It was in the MP2 encoder, and the encoder was slow because its tables
+  were in PSRAM.** STARVED went to **0%** in the collapse -- the task held
+  the CPU for the whole 1079 ms pass -- and the time was all in one call:
+  `se_stream_audio_take`, 7.1 ms a frame while healthy and **134-142 ms** in
+  the collapse. The same code, on the same 1152 samples, twenty times
+  slower, while the hardware H.264 encode beside it never moved off 8 ms.
+
+  Identical work at twenty times the cost is memory, and the filterbank is
+  the reason: 36 slots x 2 channels, each reading all 512 floats of `win`
+  and all 2048 of `mat`, so the 8 KB matrix is re-read **72 times a frame**
+  -- 576 KB of reads out of an 8 KB table, 184320 MACs. That is a
+  cache-resident working set. 7 ms is 38 ns an access, 140 ms is 760 ns,
+  which is a PSRAM miss. The game's chunk meshing evicts 10 KB of audio
+  tables and every MAC becomes a round trip.
+
+  At 140 ms per 52 ms frame the task cannot keep up by arithmetic, and
+  everything else observed is downstream of it: passes fall to 0.8/s, the
+  ring laps, `auddrop` reaches 28.9 s, video collapses to 0.7 fps because
+  the same task encodes it, and none of it shows in an average because the
+  encoder is fine whenever the cache happens to hold it.
+
+  Fixed by allocating the encoder's 38.5 KB in **internal SRAM**
+  (`pdmp2_port.h`), internal-first with PSRAM still there as a fallback so a
+  badge short of internal RAM gets slow sound rather than none. `s_flat`
+  moved with it, because the filterbank reads it 36 times over; the ring
+  stays in PSRAM, where a streamed buffer belongs.
+
+  THE HEADER SAID THE OPPOSITE, IN MY OWN WORDS: *"The encoder touches these
+  buffers once per audio frame (52 ms), so PSRAM's latency is irrelevant to
+  it."* Once per frame was off by a factor of 184320, and it was written
+  confidently enough that nothing went back to check it for four rounds of
+  debugging. Three separate theories -- chunk-worker priority inversion, a
+  full job queue, a saturated core 1 -- were argued against measurements
+  that had already ruled them out, while the one number that mattered had
+  never been taken: `aud_us` times the MIXER's push, so the MP2 encode had
+  never once been measured on hardware. The "24-71 us a frame" figure
+  carried through this whole investigation was of something else.
+- **F-102** 2026-09-26, from the first full packet capture of a stalling
+  stream (`tools/streamcap.py`, 186 s, 11659 datagrams) cross-checked against
+  the badge's own counters (`/sd/defuckinfo.txt`, `make pullinfo`): **the
+  stream task is starved, not slow, and not blocked on the network.** The
+  three readings agree on the same run -- 11688 datagrams against 11659
+  captured, 2498 audio frames against 2491, 1199 video frames against 1191 --
+  so the two files describe one event and can be read together.
+
+  What is NOT wrong, each with the number that rules it out:
+  * **The network.** Continuity counters clean on all five PIDs, zero bad
+    sync bytes, `dgfail 33` of 11688. Arrival-minus-PTS skew is constant to
+    30 ms across 148 s (25757 -> 25455), so nothing buffered and nothing
+    drifted anywhere between the encoder and the disk.
+  * **The link's capacity.** In the worst windows the MEDIAN gap between
+    datagrams is 0.0 ms -- full 1316 B datagrams back to back -- then 300 ms
+    of silence. It carries 0.83 Mbit/s when asked and 0.16 during the
+    collapse. Bandwidth is not the constraint.
+  * **Every per-frame cost.** PPA 14.5 ms, H.264 8.0 ms, mux 2 ms, in the
+    collapse and out of it, unchanged. Nothing got slower.
+  * **The game.** `pub` holds at 9-10 offers/s straight through, while
+    `drop` rises to 9/s: the game keeps offering and the stream keeps
+    refusing because the previous frame is still sitting in the slot.
+  * **The mixer.** `audn` is 86.1 pushes/s at a constant 24 us for the whole
+    run, collapse included -- and the mixer is the HIGHEST priority task on
+    core 1. So core 1 is not saturated and the audio producer is healthy.
+  * **pdmp2.** 2491 frames, every one well-formed MPEG-2 LSF Layer II,
+    22050 Hz, 128 kbit/s, 836 B, 1152 samples. The codec has never been the
+    problem and this is the third measurement saying so.
+
+  What IS wrong: `pcronly`, which counts passes round the stream loop, falls
+  from 21/s to **0.8/s** while the work in a pass stays at about 10 ms. The
+  task does 10 ms of work and is scheduled less than once a second.
+
+  The audio holes are a consequence, and the arithmetic closes exactly:
+  0.8 passes/s * `AUDIO_BURST_MAX` 8 = 6.4 frames/s delivered against 19.1
+  produced = 12.7 lost/s; measured `auddrop` 12.8/s, and 553 frames = 28.9 s
+  total, which is the same 28.9 s of holes the capture found on the wire.
+  `RING_FRAMES 4` and the burst bound are not the disease -- every hole is
+  2 to 4 frames, never more, because the ring is exactly that deep.
+
+  Two of my own theories died here, and both were things I should have read
+  before theorising: `main/world/chunk_worker.c` contains **no mutex or
+  semaphore at all**, so the priority-inversion story was baseless, and it
+  submits with a **zero** timeout, so the game can never block on a full
+  queue.
+- **F-103** 2026-09-26, trying to find what starves it and failing on my own
+  instrumentation: **a measurement that does not close cannot choose between
+  two opposite fixes.** The counters showed 10 ms of work in a 1250 ms pass
+  and therefore proved only that the missing 1240 ms was somewhere they did
+  not look. Three calls in the loop were untimed -- `tsmux_pcr_if_due`,
+  `se_stream_audio_take` and `tsmux_write_audio` -- and ALL THREE SEND, so
+  "blocked in the link" and "never scheduled" were indistinguishable, which
+  is the whole question. `aud_us` was no help either: it times the mixer's
+  push in `se_stream_tap`, not anything in the stream task.
+  Fixed by timing all three and adding `pass`, top-of-loop to top-of-loop,
+  so `pass - (pcr + atk + amx + enc + mux)` is time off the CPU by
+  subtraction rather than by argument. `tools/infoanalyse.py` prints it as
+  the STARVED column.
+- **F-104** 2026-09-26, reading the priority ladder after the counters said
+  starvation: **core 1 carries six tasks and the stream is fifth of six.**
+  `audio_mixer` 23, PPA pump 22, `se_mp3` 21, `usbnet` 10, `se_stream` 5,
+  `cmworker` 4, with the render loop alone on core 0. Lowering `WORKER_PRIO`
+  to 4 (F-101's fix) moved the worker below the stream and did not help,
+  which in hindsight it could not: the worker was never the only thing above
+  it. Nothing above priority 5 has been ruled out by measurement yet, and
+  the loader does not export `uxTaskGetSystemState`, so the app cannot
+  enumerate tasks -- which is why the residual above had to be built by
+  hand.
 - **F-99** 2026-09-26, with the stream reaching OBS and OBS showing nothing:
   **the H.264 parameter sets were sent too rarely to join.** The encoder
   puts SPS and PPS in front of every keyframe, so about once a second at

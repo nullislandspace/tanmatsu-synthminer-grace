@@ -12,3 +12,6 @@ esp-idf-tools
 esp-idf
 results/
 __pycache__/
+
+# Pulled off the badge by `make pullinfo`; overwritten every run.
+defuckinfo.txt

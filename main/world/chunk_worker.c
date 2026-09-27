@@ -23,7 +23,34 @@ static char const TAG[] = "cmworker";
 // configMAX_PRIORITIES-2, the PPA pump at -3, the MP3 decoder at -4.
 // -6 leaves -5 free for a second worker later without re-tuning
 // anything. Chunks are never more urgent than sound.
-#define WORKER_PRIO  (configMAX_PRIORITIES - 6)
+// PRIORITY BY DEADLINE, AND CHUNK LOADING HAS THE LOOSEST ONE ON THIS CORE.
+//
+// This was configMAX_PRIORITIES - 6, about 19, which put it ABOVE both the
+// engine's A/V stream task (5) and its USB network task (10) on the same
+// core. That is the wrong order, and it was measured: while the player
+// moved and this task had work, it preempted the stream task completely --
+// encoded frames fell from 22 a second to 0.7 while each encode still took
+// only 8.8 ms, and 42% of the audio never got encoded at all. The stream
+// did not slow down, it stopped getting the CPU.
+//
+// Chunk work is the one job here that can be late without anything
+// noticing. There are always chunks loaded around the player, so a second
+// or two of lag shows up as terrain appearing a little further out rather
+// than as a gap in the sound or a frozen picture. Audio cannot be late at
+// all, and video frames carry timestamps a receiver schedules against.
+//
+// Safe because NOTHING WAITS ON THIS TASK: chunk_worker_collect() polls its
+// queue with a zero timeout, so the render loop takes whatever is ready and
+// never blocks, and synchronous mode does the work inline on the caller's
+// thread rather than through this task. So there is no priority inversion
+// to create by lowering it.
+//
+// Core 1's ladder, tightest deadline first:
+//   audio_mixer  ~23  must feed the I2S DMA or the speaker glitches
+//   usbnet        10  moves bytes for the link
+//   se_stream      5  A/V encode and mux
+//   cmworker       4  <- here: has slack, degrades invisibly
+#define WORKER_PRIO  4
 #define WORKER_CORE  1
 #define WORKER_STACK 6144
 #define QUEUE_DEPTH  48
