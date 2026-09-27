@@ -307,6 +307,12 @@ install: build mode
 textures:
 	python3 tools/make_textures.py
 
+# The launcher's icons, likewise committed. They are drawn from the game's
+# own pickaxe and stone, so this reads make_textures.py.
+.PHONY: icons
+icons:
+	python3 tools/make_icons.py
+
 GRACELOADER_SLUG ?= at.cavac.graceloader
 
 .PHONY: run
