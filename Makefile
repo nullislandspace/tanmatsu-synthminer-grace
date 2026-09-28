@@ -286,6 +286,15 @@ push: build mode
 pulltrace: mode
 	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs download /sd/synthminer/trace.txt ../../trace.txt
 	@echo "=== trace.txt: $$(wc -l < trace.txt) lines ==="
+	@# And the run before it. Leaving a world and opening another starts
+	@# a new file, so one sitting is often two of them -- and the half
+	@# that matters can easily be the earlier one.
+	@cd badgelink/tools && ./badgelink.sh $(BADGELINK_CONN) fs download /sd/synthminer/trace.prev.txt \
+	  ../../trace.prev.txt >/dev/null 2>&1 && echo "=== trace.prev.txt: $$(wc -l < ../../trace.prev.txt) lines ===" \
+	  || echo "=== no previous run on the card ==="
+	@if [ -f trace.prev.txt ]; then echo; echo "########## the run before ##########"; \
+	  python3 tools/traceanalyse.py trace.prev.txt; fi
+	@echo; echo "########## the last run ##########"
 	python3 tools/traceanalyse.py
 
 .PHONY: pullinfo
