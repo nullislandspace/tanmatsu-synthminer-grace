@@ -1434,6 +1434,9 @@ reason Minecraft chose the other rule.
 | 52 | **The main menu takes fifteen seconds** | **done** (F-117) | 2026-09-28, the user's observation, answered but not fixed: the title runs on a scratch world, so its 81 chunks are generated every time, at 186 ms each (F-115). Loading them off the card instead is 2.4-3.0 ms a chunk. The bench world of step 41 is the pattern and the title is a better fit for it -- fixed seed, fixed camera, nothing a player can change. |
 | 53 | **The SD card's write timeouts were ESP-Hosted** | done | 2026-09-28, out of the user's question *"does the filesystem handle this correctly, or do we silently corrupt the FAT file system?"* -- which turned out to be the right question asked of the wrong layer, twice over. fsck.fat said no corruption but **45 leaked clusters in six chains**, exactly the FatFs behaviour: a cluster allocated by create_chain() before a failed write stays marked in use while the directory entry that would reference it is never written, and sync_window() discards the second FAT copy's write result entirely. The cause was neither the card nor the filesystem: the ESP32-P4 has one SDMMC controller and it was shared with the WiFi co-processor (F-116). WiFi is gone from graceloader, the errors with it, and 42 KiB of internal heap came back. What remains in the tree for the next time: a retrying disk layer in graceloader (ESP-IDF's does not retry at all), region_recover_tmp() for a compaction interrupted between the remove and the rename, cache_drop() on every region failure path -- **one read error used to poison a cached FILE\* and stall the world for ever** -- and `cardfail=` in the flight recorder. |
 | 54 | **The C6 radio is powered down at startup** | done | 2026-09-28, the user, once WiFi had left graceloader: *"can we also tell the coprocessor during graceloader startup to power down the C6 radio processor completely?"* It can, but not from the loader (D-97): `bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_OFF)` needs a coprocessor handle, and `bsp_tanmatsu_coprocessor_get_handle()` answers ESP_FAIL rather than initialising on demand -- while graceloader's first comment says it links every component and initialises none, because the app decides. So it sits in `on_init`, where the engine has already brought the BSP up, in **synthminer and synthracer** both. Failure is logged and ignored: a badge whose coprocessor will not answer has a worse problem than an idle radio. **It persists past the app** -- the coprocessor holds the state -- so a launcher that wants WiFi has to ask for it back. |
+| 55 | **Water that flows, and the scheduler under it** | done | 2026-09-28, the user: *"Let's implement water/fluid physics"*, with the design given in the same message -- know which blocks are actually doing something so the rest cost nothing, save the state, and use the same machine later for falling sand and for crops. Built as TWO TIERS (D-98): `world/blockupdate.h` is a wheel of 64 tick-buckets over an explicit set of woken cells, with **one bit per cell in a fourth chunk plane** saying whether it is in the queue -- both the duplicate filter and the literal answer to the user's *"know if a block even has active physics going on"*; `world/fluid.h` is Minecraft's rule on top of it (levels 0-7 in the state byte, a falling bit, down-first, two sources make a third, and a cut-off flow that dries up). **Settled water is not in the queue at all**, and a full sea chunk arriving wakes exactly 0 of its 11520 cells -- both pinned by host checks. The **bucket** is three iron ingots, fills only from a source and casts its own `RAY_FLUID` ray because the crosshair looks through water on purpose; it has a drawn icon and, after the user found it being held as a coloured cube, a model of its own beside the pick and the axe (`FRED_HOLD_BUCKET`, a tapered pail with a wire handle, its contents coloured from the block table so lava and milk will need no code). **The user's verdict on the model: "a bit strange, not really like a bucket. But i guess it's good enough for now"** -- so it is a placeholder that works, not a finished thing. Costs 512 KiB of PSRAM for the active plane. **The seam is the hard part and it is the user's own catch** (D-99): a missing chunk reads as BLK_BARRIER, so a flow stops at the edge of the loaded world -- and `blockupdate_chunk_join()`, called from the same place in `apply()` as `light_chunk_join()`, wakes both the arriving chunk's unsettled fluid and the facing border of the chunks already there. Not yet: Minecraft's flow-toward-a-hole preference, lava, and falling sand -- which is one `dispatch()` line away. |
+| 56 | **Water you can read: partial heights and a visible waterfall** | done | 2026-09-28, the user, on being told partial heights needed a different mesher: *"What's the problem with partial water heights? That seems to be integral as feedback to the player."* They were right and the claim was wrong (D-101). A flow is emitted per cell beside the plants and the torches, where this file has always put the blocks that are not boxes -- surface part-way up the cell, **corners averaged from the neighbouring cells so the sheet tilts the way it is running**, and the tilt is the flow arrow without anything working out a direction. Sources stay in the greedy pass, so every ocean is byte-identical and D-86 stands where it was made. **It also fixed a bug nobody had seen yet**: under D-86's "a liquid draws no sides" a falling column emits *nothing at all* -- no top (the cell above is water), no bottom, no sides -- so a waterfall was invisible between the spring and the splash (D-102). Held to **12 triangles for the worst-case cell** by naming a direction on every face and emitting one winding a wall, against 20 for the double-sided version; meshcheck pins the number, the slope, the surface height and the fact that a source pool is untouched. |
+| 57 | **Played, and the numbers say it is free** | done | 2026-09-28, the user's first test game: *"Water works surprisingly well."* The flight recorder agrees and says why. The physics queue peaked at **201 cells, dropped 0, carried 0, and returned to 0 every time** -- settled water really does cost nothing, which is the claim the whole design rests on. Mesh lag stayed at a **median of 89 ms** with every real case between 78 and 163 ms, so the remesh churn I had predicted from water edits marking sections urgent did not happen. 114 chunks saved at a mean of 16.8 ms, no compaction, no card refusals. **The one alarming number in the report was mine** (F-118): a 31281 ms mesh lag that turned out to be the recorder matching a mesh against an unrelated edit. Also visible for the first time: `pace_after_write`, the cargo left from the refuted erase-cycle theory, **waited 173 ms across four pauses, worst 68 ms** -- it is not inert, and now has a measured cost rather than a suspicion. |
 
 ---
 
@@ -2681,6 +2684,44 @@ reason Minecraft chose the other rule.
   before any of this happened: *"add a sort of version file ... That way
   we can decide later on if we want to recreate it for a future
   update."*
+- **F-118** 2026-09-28, reading the first play session's trace: **the
+  recorder was inventing mesh lags of half a minute.** The report said
+  *"worst 31281 ms"* on one chunk, with 18422 ms and 2887 ms beside it,
+  against a median of 89 ms. None of it was real, and the temptation to
+  go looking for a stall in the game is exactly the trap F-111 was.
+
+  Two faults in `trace_mesh`, and they compounded:
+
+  * **IT TIMED THE FAR LEVELS OF DETAIL.** LOD_FAST and COARSE are
+    rebuilt whenever the streamer has spare capacity, and the player is
+    by definition too far off to be looking at them -- timing one
+    against an edit measures the queue's idle time, not anybody's wait.
+    Worse, it reported them and then did not clear the entry, so the
+    same edit stayed live to be reported again.
+  * **IT CLEARED ONE PENDING EDIT PER MESH, AND EDITS COALESCE.**
+    `lod_stale` is a bitmask on purpose (chunk.h): three quick breaks in
+    one section are one rebuild, not three. The leftover entries stayed
+    live and were matched, half a minute later, against a mesh answering
+    something else entirely. **The number printed was the gap between
+    two unrelated events.**
+
+  Now only the detailed mesh is timed, it reports against the OLDEST
+  edit it answers, and it clears every one of them -- with `n=` saying
+  how many it coalesced, so a rebuild that answered four edits says so
+  instead of looking like three that were never drawn.
+
+  A second false alarm went with it: refusals and pauses share a trace
+  line, and `traceanalyse` counted the LINES, so a session with no card
+  trouble at all announced **"THE CARD REFUSED 0 CHUNK WRITE(S)"**. That
+  is the sort of banner people learn to skip past, which is the worst
+  thing an instrument can become. Pacing is now reported separately,
+  which is how the 173 ms above became visible.
+
+  The lesson is F-111's, again and unlearnt: **a number from my own tool
+  is not evidence until the tool has been checked.** Both times the tool
+  was measuring something adjacent to the question and reporting it as
+  the answer.
+
 - **F-115** 2026-09-28, out of **the user**: *"Loading the main menu takes
   a long time (both from game start and also when quitting a world back to
   the main menu)."* **The title runs on a scratch world, so its 81 chunks
@@ -3879,6 +3920,11 @@ reason Minecraft chose the other rule.
   "no sides and bottom" as an optimisation -- as the definition of what a
   liquid IS in a renderer with no blending.
 
+  (Amended by **D-102**, 2026-09-28: a flow or a fall draws its sides,
+  because a falling column that draws only its surface draws nothing at
+  all. A SOURCE is exactly as described here, so lakes and oceans are
+  unchanged.)
+
   The problem was stated plainly: water is an opaque cube, "that's sort of
   fine for now. But if we enter a place where the water covers our 'eyes',
   the rendering breaks down." And the fix, equally plainly: "don't render
@@ -4224,6 +4270,167 @@ reason Minecraft chose the other rule.
   the right side to err on: an app that forgets wastes some battery, and
   a loader that initialises hardware behind an app's back is a class of
   bug nobody would find quickly.
+
+- **D-98** 2026-09-28, **the user**: **physics has two tiers, split by how
+  fast the thing is.**
+
+  Their brief set the requirement -- *"by making the physics a bit smarter,
+  we could probably reduce the amount of physics calculation. Once water
+  blocks reach a steady state, we can basically stop physics calculations
+  for them, until something around them changes"* -- and then, in the same
+  paragraph, drew the line that matters:
+
+  > We don't have to do that for fluids, but doing it for plants, animal
+  > growth and machines take time to work would make it feel much more
+  > natural. Like, the player can go exploring elsewhere and the plants at
+  > home keep on growing, the ore keeps on smelting.
+
+  So:
+
+  * **TIER 1, `world/blockupdate.h`** -- ticking, sub-second, walked.
+    Fluids now, falling sand next. A wheel of 64 buckets and an explicit
+    set of woken cells; a tick costs the number of cells actually due and
+    nothing else. Nothing is ever scanned.
+  * **TIER 2, the lazy clock** -- minutes and hours, extrapolated. The
+    furnace and the trashcan already run on it (`game/furnace.h`,
+    `blockent_t.stamp`), worked out from `now - stamp` when somebody
+    looks. A crop belongs here when it arrives, and so does animal growth.
+
+  **Tier 2 is the better one wherever it fits**, and it is better than
+  Minecraft: a furnace in a chunk nobody has visited costs nothing at all
+  and is still right after a week. Water cannot use it, because where
+  water GOES depends on the shape of the world at every step -- it has to
+  be walked rather than extrapolated. That is the whole of the split.
+
+  **The active bit** is what makes tier 1 honest. One bit per cell in a
+  fourth chunk plane, set while the cell is in the queue: the duplicate
+  filter, the debug answer to "is this block doing anything", and the
+  reason a cell with four neighbours changing is scheduled once. 512 KiB
+  of PSRAM across the ring, and `chunk_claim()` wipes it with the others.
+
+- **D-99** 2026-09-28, **the user**, one line into the work: **"fluid
+  physics can cross chunk and region boundaries."**
+
+  It was the right thing to say and it decided the design. Two halves,
+  and only one of them is obvious.
+
+  **REGIONS DO NOT MATTER.** A region is how chunks are grouped into files
+  (`world/region.h`) and nothing more. Two chunks either side of a region
+  boundary are neighbours like any others, and nothing in the fluid path
+  knows regions exist.
+
+  **CHUNKS MATTER TWICE.** Flowing OUT needs no code: a cell in a chunk
+  that is not resident reads as `BLK_BARRIER` (D-14), which is not
+  replaceable, so water stops at the edge of the loaded world by way of a
+  wall that was already there. But that is an INTERRUPTED flow, not a
+  finished one. So ARRIVING is where the work is:
+  `blockupdate_chunk_join()` wakes the new chunk's own unsettled fluid AND
+  the facing border columns of the four chunks already resident -- which
+  may have been standing against that wall for minutes. Without the second
+  half, water poured near a chunk edge stops in a straight line for ever.
+
+  It is called from the same line of `apply()` as `light_chunk_join()`,
+  because it is the same problem: light had it first and solved it the
+  same way.
+
+  One consequence worth writing down: a missing neighbour is an UNKNOWN,
+  not a "nothing is feeding me". A flow whose source has been streamed out
+  is allowed to thin but never to dry up, or the edge of every pond would
+  quietly delete itself whenever its other half left the ring.
+
+- **D-100** 2026-09-28: **a filled bucket is its own item id, not a stack
+  with metadata on it.**
+
+  The user asked for the other thing -- *"The bucket needs to have metadata
+  attached to it, to say if it is empty or holds some kinds of liquid"* --
+  and the requirement is exactly right: a bucket has to know what it is
+  carrying and show it. This is a disagreement about where that fact is
+  written down, not about whether it exists.
+
+  A data field on `inv_slot_t` would be a second kind of identity that
+  one item in the game has, and every place that asks what a stack IS
+  would have to learn about it: the icon, the label, the recipe match,
+  `inv_count`, `inv_take`, the save file. A row per content costs two
+  lines and all of those keep working untouched. `item_bucket_contents()`
+  and `item_bucket_filled_with()` are what make the four a family, so lava
+  and milk are a row each and no logic anywhere.
+
+  It is reversible, and the user's call if they want the other shape.
+
+  **Buckets do not stack, empty or full**, which is a real divergence from
+  Minecraft (16 empty, 1 full) and is there to kill a bug rather than to
+  model anything. Filling one out of a stack of sixteen has to find a
+  second slot for the full one, and there may not be one -- so a bucket
+  dipped with a full inventory either vanishes or has to put the water
+  back. At one apiece the stack is swapped in place and the failure does
+  not exist.
+
+- **D-101** 2026-09-28, **the user**, correcting me: **partial water
+  heights are not a mesher rewrite, and they are not optional.**
+
+  I had written them off in one line -- the mesher is greedy over
+  integer slices, a partial height is a top face that is not on a slice
+  boundary, so it is "not a tweak to it, it is a different mesher" --
+  and the answer was *"What's the problem with partial water heights?
+  That seems to be integral as feedback to the player."*
+
+  Both halves of that are right. Reading the file instead of
+  remembering it turned up two things I had not looked for:
+
+  * `vox_grid_t` **already carries the per-cell data field**. It was
+    added so a torch could know which wall is holding it up, and it is
+    filled for both fine levels of detail. The water level was already
+    in the mesher's hands.
+  * plants, torches and signs **already bypass the greedy pass** and
+    emit arbitrary geometry a cell at a time, through `mesh_vert` and
+    `mesh_quad`, which take any vertices at all.
+
+  So the work was a function in the place the file already keeps
+  not-a-box blocks, and the greedy pass losing one case. What makes it
+  cheap is that only FLOWS leave the greedy pass: a source is a full
+  cube and merges as it always did, which is where all the water in a
+  world actually is. An ocean costs exactly what it cost yesterday.
+
+  And the feedback argument is the substantive one. Level, depth and
+  direction are the whole of what a fluid simulation has to say to the
+  player, and at a uniform full height it says none of it -- a film one
+  texel deep and a full block draw identically, so there is no way to
+  see which way it is running or where the spring is. Simulating a
+  number nobody can see is not a feature.
+
+  **The slope falls out of the averaging.** Each corner is the mean of
+  the liquid cells meeting at it, so along 1.000, 0.875, 0.750 the
+  surface tilts downhill on its own. Nothing computes a flow vector.
+
+  One thing I got wrong on the way and the host check caught: counting
+  a DRY neighbour as a height of zero. It reads as reasonable -- the
+  water ends there, so the surface should fall towards it -- and it
+  fails on the simplest case. A lone puddle has three dry cells at
+  every corner, so half a block of water would have drawn as a film an
+  eighth deep. Dry cells are skipped, not counted, and a lone cell then
+  reads as exactly as deep as it is.
+
+- **D-102** 2026-09-28, out of D-101: **flows and falls draw their
+  sides. Sources still do not.**
+
+  An amendment to D-86, which said a liquid is only ever its surface --
+  no sides, no bottom. That rule was decided when water was lakes, and
+  for a lake it is right: the only place a side could show is the rim,
+  and giving it up bought a surface you can see the bed through.
+
+  A FALLING COLUMN IS NOTHING BUT SIDES. Apply the rule to one and it
+  emits no geometry whatsoever: no top, because the cell above it is
+  water; no bottom; no sides. **A waterfall was invisible from the
+  spring to the splash**, and this was shipped and not noticed, because
+  every water test in the tree was a pool -- the case where the rule is
+  correct. `meshcheck` now builds a column and counts the triangles
+  between its ends.
+
+  The line is drawn at the source: a flow or a fall draws sides, a
+  source does not. So every lake and ocean in every existing world
+  meshes to the same triangles it did before, and the change is
+  confined to water that is moving -- which is water that was put there
+  by a player, since generated water is all springs.
 
 - **D-96** 2026-09-26, out of the user's question and then their
   instruction: **the audio codec is ours, and it is public domain.**
