@@ -84,6 +84,22 @@ typedef enum {
 // because logs are the only thing that is both.
 #define BF2_TRUNK      (1u << 3)
 
+// THE BLOCK STANDS ON THE ONE BELOW IT, and a stack of them falls as a
+// unit: take one out and everything of the same kind directly above
+// comes down with it. Cactus, and sugar cane when it arrives.
+//
+// This is SUPPORT, not the felling rule, and the difference matters in
+// two places. It does not care who put the block there -- physics has
+// no opinion about ST_PLACED -- and it goes straight up one column
+// rather than flooding through a shape.
+//
+// It is also a stand-in. Properly this is a block update: remove a
+// block, tell the neighbours, let each decide whether it can still
+// stand. Water, falling sand and the torch that step 29 left hanging in
+// mid-air all want the same machinery, and when it exists this flag
+// becomes one of its rules instead of a special case in interact.c.
+#define BF2_STACKED    (1u << 4)
+
 // Tool classes. `tool_level` is 0 hand, 1 wood, 2 stone, 3 iron.
 typedef enum {
     TOOL_NONE = 0,
@@ -223,6 +239,10 @@ static inline bool block_fellable(uint8_t id) {
 // leaf -- is an ordinary single break.
 static inline bool block_trunk(uint8_t id) {
     return (block_def(id)->flags2 & BF2_TRUNK) != 0;
+}
+// Needs the block below it; a stack comes down together (BF2_STACKED).
+static inline bool block_stacked(uint8_t id) {
+    return (block_def(id)->flags2 & BF2_STACKED) != 0;
 }
 static inline bool block_usable(uint8_t id) {
     return (block_def(id)->flags2 & BF2_USABLE) != 0;

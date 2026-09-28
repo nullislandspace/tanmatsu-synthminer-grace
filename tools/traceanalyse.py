@@ -43,7 +43,7 @@ def main():
     if not path.exists():
         sys.exit(f"{path}: not there. `make pulltrace` fetches it off the card.")
 
-    header, ticks, edits, meshes, drops, io = [], [], [], [], [], []
+    header, ticks, edits, meshes, drops, io, compacts = [], [], [], [], [], [], []
     for raw in path.read_text(errors="replace").splitlines():
         line = raw.strip()
         if not line:
@@ -59,6 +59,10 @@ def main():
             edits.append(f)
         elif kind == "M":
             meshes.append(f)
+        elif line.startswith("compact "):
+            if ticks:
+                f.setdefault("t", ticks[-1].get("t", "?"))
+            compacts.append(f)
         elif line.startswith("io "):
             if ticks:
                 f.setdefault("t", ticks[-1].get("t", "?"))
@@ -160,13 +164,28 @@ def main():
                     pass
             return best
 
+        if compacts:
+            n = sum(int(r.get("n", 0)) for r in compacts)
+            mx = max(int(r.get("max", "0us").rstrip("us")) for r in compacts)
+            print(f"  region compaction: {n} whole-file rewrite(s), worst {mx/1000:.0f} ms")
+        else:
+            print("  region compaction: none happened")
+
         lm, sm = peak_max("load"), peak_max("save")
         if lm or sm:
             print(f"  worst SINGLE chunk since boot: load {lm/1000:.1f} ms, save {sm/1000:.1f} ms")
-            if max(lm, sm) > 30000:
-                print("    (over 30 ms: that is a visible stall on a 10 fps frame)")
+            # NOT a frame stall: loads and saves run on the chunk worker,
+            # pinned to core 1, while the renderer has core 0 to itself.
+            # What a slow save holds up is the STREAMER -- chunks
+            # arriving behind the player -- which shows as `miss` in the
+            # T lines rather than as a dropped frame.
+            if max(lm, sm) > 100000:
+                print("    (the worker is on core 1, so this delays chunk streaming,")
+                print("     not the frame rate -- watch `miss` in the seconds around it)")
 
-    lags = sorted((int(m["lag"].rstrip("ms")), m) for m in meshes if "lag" in m)
+    # key= on the number alone: two meshes with the same lag would
+    # otherwise be compared as dicts, which raises.
+    lags = sorted(((int(m["lag"].rstrip("ms")), m) for m in meshes if "lag" in m), key=lambda p: p[0])
     if lags:
         worst = lags[-1][0]
         med = lags[len(lags) // 2][0]

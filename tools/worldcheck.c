@@ -2784,6 +2784,45 @@ static void check_world_floor(void) {
     printf("  a hole punched in the floor is closed again, state and all\n");
 }
 
+// A stack of cactus comes down with the block it stood on (BF2_STACKED),
+// which is support rather than the felling rule -- so it ignores
+// ST_PLACED, and it goes straight up one column.
+static void check_stacked(void) {
+    printf("stacked blocks\n");
+    CHECK(block_stacked(BLK_CACTUS), "cactus is not a stacked block");
+    CHECK(!block_stacked(BLK_LOG), "a log is stacked, which would make trees collapse");
+    CHECK(flat_world(8) != NULL, "the test world would not become resident");
+    item_entity_reset();
+
+    int32_t const x = 6, z = 6, base = 8;
+    for (int i = 0; i < 4; i++) set_block(x, base + i, z, BLK_CACTUS, 0);
+    // One a PLAYER planted, on top: support does not care who put it
+    // there, so it must come down too.
+    set_block(x, base + 4, z, BLK_CACTUS, ST_PLACED);
+    // A neighbouring cactus, touching: a separate plant, untouched.
+    for (int i = 0; i < 3; i++) set_block(x + 1, base + i, z, BLK_CACTUS, 0);
+
+    break_result_t r = interact_break(x, base + 1, z, ITEM_NONE);
+    printf("  breaking the second of five took %d block(s)\n", r.felled);
+    CHECK(r.ok, "breaking a cactus failed");
+    CHECK(!r.was_tree, "a cactus reported itself as a tree");
+    CHECK(r.felled == 4, "breaking the second of five took %d, expected 4", r.felled);
+    CHECK(world_block(x, base, z) == BLK_CACTUS, "the cactus below the break came down too");
+    for (int i = 1; i < 5; i++) {
+        CHECK(world_block(x, base + i, z) == BLK_AIR, "cactus left standing at +%d", i);
+    }
+    int neighbour = 0;
+    for (int i = 0; i < 3; i++) neighbour += world_block(x + 1, base + i, z) == BLK_CACTUS;
+    CHECK(neighbour == 3, "the cactus next door lost %d block(s)", 3 - neighbour);
+
+    // Something resting ON a cactus is not part of the stack.
+    set_block(x + 1, base + 3, z, BLK_PLANKS, ST_PLACED);
+    r = interact_break(x + 1, base, z, ITEM_NONE);
+    CHECK(r.felled == 3, "breaking the bottom took %d, expected the 3 cactus", r.felled);
+    CHECK(world_block(x + 1, base + 3, z) == BLK_PLANKS, "the planks on top came down with the cactus");
+    printf("  a block resting on top is left where it was\n");
+}
+
 static void check_felling(void) {
     printf("the logging rule\n");
     CHECK(flat_world(8) != NULL, "the test world would not become resident");
@@ -4892,6 +4931,7 @@ int main(void) {
     }
     check_physics();
     check_raycast();
+    check_stacked();
     check_felling();
     check_items();
     check_inv_cursor();

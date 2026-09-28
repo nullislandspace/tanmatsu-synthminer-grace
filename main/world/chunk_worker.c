@@ -98,6 +98,8 @@ static int32_t  s_gen_n[2];
 static int64_t  s_load_us, s_save_us;
 static int64_t  s_load_max, s_save_max;
 static int32_t  s_load_n, s_save_n;
+static int64_t  s_compact_us, s_compact_max;
+static int32_t  s_compact_n;
 
 void chunk_worker_io_stats(chunk_worker_io_t* out) {
     if (out == NULL) return;
@@ -107,6 +109,9 @@ void chunk_worker_io_stats(chunk_worker_io_t* out) {
     out->save_n   = s_save_n;
     out->save_us  = s_save_us;
     out->save_max = s_save_max;
+    out->compact_n   = s_compact_n;
+    out->compact_us  = s_compact_us;
+    out->compact_max = s_compact_max;
 }
 
 void chunk_worker_gen_stats(int* n_ord, int64_t* us_ord, int* n_far, int64_t* us_far) {
@@ -220,7 +225,27 @@ static bool do_save(int32_t cx, int32_t cz) {
     // Rewrites leave dead bytes behind. Tidying them up is a whole-file
     // rewrite, so it happens here on core 1 and only when the waste has
     // actually built up -- never on the frame path.
+    //
+    // TIMED SEPARATELY, and it was not timed at all until the first
+    // real trace showed a 236 ms save and left no way to tell whether
+    // this was in it. It is not: the window above closes before this
+    // runs, so a compaction was invisible. A whole-region rewrite is
+    // 40-230 KiB, so it is the one thing here that could plausibly
+    // cost a quarter of a second.
+#ifndef SM_HOST
+    int64_t const tc0 = esp_timer_get_time();
+#endif
     world_region_maintain(cx, cz);
+#ifndef SM_HOST
+    {
+        int64_t const dt = esp_timer_get_time() - tc0;
+        if (dt > 1000) {  // a no-op check is microseconds; only real work counts
+            s_compact_us += dt;
+            if (dt > s_compact_max) s_compact_max = dt;
+            s_compact_n++;
+        }
+    }
+#endif
     return true;
 }
 

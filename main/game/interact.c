@@ -146,7 +146,26 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
 
     world_set(x, y, z, BLK_AIR, 0);
     drop_for(b, x, y, z, tool_item);
-    r.felled  = 1;
+    r.felled = 1;
+
+    // A STACK COMES DOWN WITH THE BLOCK IT STOOD ON (BF2_STACKED). The
+    // user, 2026-09-28: "When mining a cactus block, the cactus blocks
+    // above should also drop, like we are cutting down the cactus at
+    // this level."
+    //
+    // Straight up, and only the same block: two cacti growing side by
+    // side are two plants, and a cactus with something resting on top
+    // does not bring that down. Nothing about ST_PLACED here -- a
+    // cactus a player planted is held up by the same nothing as one
+    // that grew.
+    if (block_stacked(b)) {
+        for (int32_t up = y + 1; up < CH_H && world_block(x, up, z) == b; up++) {
+            world_set(x, up, z, BLK_AIR, 0);
+            drop_for(b, x, up, z, tool_item);
+            r.felled++;
+        }
+    }
+
     r.ok      = true;
     r.dropped = item_entity_live() - before;
     return r;

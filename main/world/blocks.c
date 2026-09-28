@@ -221,7 +221,7 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                     .kind     = K_CUBE,
                     .mat      = M1(VM_CACTUS),
                     .hardness = 12,
-                    .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_SOFT},
+                    .flags    = BF_SOLID | BF_OPAQUE, .flags2 = BF2_STACKED, .sound = SND_SOFT},
 
     [BLK_SNOW] = {.name     = "snow", .drop_item = BLK_SNOW, .drop_min = 1, .drop_max = 1,
                   .kind     = K_CUBE,

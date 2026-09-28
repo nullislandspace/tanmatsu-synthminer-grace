@@ -65,6 +65,10 @@ typedef struct {
     int64_t load_us, load_max;
     int32_t save_n;
     int64_t save_us, save_max;
+    // Whole-region rewrites (region.h). Counted only when one actually
+    // happened: the check itself is microseconds.
+    int32_t compact_n;
+    int64_t compact_us, compact_max;
 } chunk_worker_io_t;
 
 void chunk_worker_io_stats(chunk_worker_io_t* out);

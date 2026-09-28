@@ -71,6 +71,7 @@ typedef struct {
     int      load_n, save_n;
     int      load_avg_us, save_avg_us;
     int      load_max_us, save_max_us;
+    int      compact_n, compact_avg_us, compact_max_us;
 } trace_tick_t;
 
 // Start a file for a world. `dir` is where it lives (SM_DATA_DIR on the

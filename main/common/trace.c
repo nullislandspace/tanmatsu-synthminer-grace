@@ -139,6 +139,9 @@ void trace_tick(trace_tick_t const* s) {
         say("  io load=%d@%dus,max%dus save=%d@%dus,max%dus", s->load_n, s->load_avg_us, s->load_max_us,
             s->save_n, s->save_avg_us, s->save_max_us);
     }
+    if (s->compact_n > 0) {
+        say("  compact n=%d avg=%dus max=%dus", s->compact_n, s->compact_avg_us, s->compact_max_us);
+    }
 
     // Once a second is also the flush point: a crash then costs at most
     // the second it happened in, which is the second worth having.
