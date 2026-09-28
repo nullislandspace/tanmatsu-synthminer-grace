@@ -348,6 +348,38 @@ static void take_section(uint8_t id, uint8_t const* data, size_t len, void* user
     if (id == SECTION_BLOCK_ENTITIES) blockent_decode_section(data, len);
 }
 
+// A region that was being compacted when something went wrong.
+//
+// THE WINDOW. Compaction writes a temp file, removes the original, and
+// renames the temp over it -- in that order, because f_rename will not
+// replace an existing file. Between the remove and the rename the
+// region DOES NOT EXIST, and if the rename fails there (a card that is
+// timing out will do that) or the app dies, the only copy is a .tmp
+// nothing ever opens. region_read_chunk would then report "no region",
+// every one of its 64 chunks would be generated fresh, and a player's
+// edits would be gone without a word.
+//
+// So before concluding a region is absent, look for its temp. This runs
+// only when the file is missing, which outside this window it never is.
+static void region_recover_tmp(char const* path) {
+    char tmp[200];
+    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) return;
+    FILE* t = fopen(tmp, "rb");
+    if (t == NULL) return;
+    // Only if it is big enough to hold a header and both directories;
+    // a half-written temp is worse than none.
+    fseek(t, 0, SEEK_END);
+    long const sz = ftell(t);
+    fclose(t);
+    if (sz < (long)DATA_OFF) {
+        sm_remove(tmp);
+        return;
+    }
+    cache_drop(path);
+    cache_drop(tmp);
+    sm_rename(tmp, path);
+}
+
 int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
     if (c == NULL) return -1;
     char path[192];
@@ -355,6 +387,12 @@ int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
     if (!region_path(path, sizeof(path), dir, rx, rz)) return -1;
 
     FILE* f = cache_open(path, false);
+    if (f == NULL) {
+        // Before believing it: a compaction may have been interrupted
+        // with the whole region sitting in a .tmp.
+        region_recover_tmp(path);
+        f = cache_open(path, false);
+    }
     if (f == NULL) return 0;  // no region: not an error, just no chunk
 
     uint32_t waste = 0;
@@ -432,11 +470,19 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
             existing = ftell(f);
         }
     } else {
-        // Nothing there at all: the first region anyone has written in
-        // this 2048 x 2048 square, so its bucket may not exist either.
-        if (!region_bucket_dir(dir, rx, rz)) return false;
-        f = cache_open(path, true);
-        if (f == NULL) return false;
+        // Nothing there -- or an interrupted compaction left it all in
+        // a .tmp. Ask before creating an empty one over the top.
+        region_recover_tmp(path);
+        f = cache_open(path, false);
+        if (f != NULL) {
+            if (fseek(f, 0, SEEK_END) == 0) existing = ftell(f);
+        } else {
+            // Genuinely the first region in this 2048 x 2048 square, so
+            // its bucket may not exist either.
+            if (!region_bucket_dir(dir, rx, rz)) return false;
+            f = cache_open(path, true);
+            if (f == NULL) return false;
+        }
     }
     region_t r;
     uint32_t waste = 0;
@@ -569,8 +615,19 @@ bool region_compact(char const* dir, int32_t rx, int32_t rz) {
     fclose(in);
     fclose(out);
     // Not remove()/rename(): graceloader exports neither (F-06).
+    //
+    // The order is forced: f_rename will not replace a file that
+    // exists, so the original has to go first -- and from here until
+    // the rename lands, the temp is the only copy of 64 chunks. A
+    // failure here is recovered by region_recover_tmp() on the next
+    // open rather than being left to chance; retry first, because a
+    // card that is merely busy will usually take it a moment later.
+    cache_drop(path);
     if (!sm_remove(path)) return false;
-    return sm_rename(tmp, path);
+    for (int try = 0; try < 3; try++) {
+        if (sm_rename(tmp, path)) return true;
+    }
+    return false;
 
 fail:
     fclose(in);
