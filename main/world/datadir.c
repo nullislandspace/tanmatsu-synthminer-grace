@@ -53,7 +53,7 @@ static char const* const INSTALL_ENTRIES[] = {"worlds", "settings.txt", "setting
 // test kit's shots, the player's own music and their own translations.
 static char const* const DATA_ENTRIES[] = {"worlds",      "bench", "settings.txt", "settings.tmp", "replays",
                                            "screenshots", "test",  "music",        "lang",
-                                           "trace.txt",   "trace.prev.txt"};
+                                           "trace.txt",   "trace.prev.txt", "title"};
 
 static char const* const* entries_of(datadir_set_t set, size_t* n) {
     if (set == DD_DATA) {

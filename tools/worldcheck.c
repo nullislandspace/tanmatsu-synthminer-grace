@@ -1636,6 +1636,60 @@ static bool dd_exists(char const* path) {
     return stat(path, &st) == 0;
 }
 
+// The title's world is kept on the card and rebuilt only when this
+// build would make a different one (worldstore.h). Three things must
+// hold: it is invisible to the world list, a matching seed and version
+// reopens it, and either one differing throws it away.
+static void check_title_world(void) {
+    printf("the title's world\n");
+    // This check runs before check_worldstore, which is where the store
+    // is normally opened; open it here so the order of the checks is
+    // not load-bearing.
+    CHECK(worldstore_init(STORE_BASE), "worldstore_init failed");
+    world_meta_t   m;
+    player_state_t pl;
+    bool           fresh = false;
+
+    CHECK(worldstore_open_title(0xB05u, 1u, &m, &pl, &fresh), "the title world would not open");
+    CHECK(fresh, "a title world that was never made did not report itself fresh");
+    // Not marked yet: an interrupted first boot must be generated again
+    // rather than come back with half a word in it.
+    world_meta_t m2;
+    CHECK(worldstore_open_title(0xB05u, 1u, &m2, &pl, &fresh), "reopen failed");
+    CHECK(fresh, "an UNMARKED title world was reused");
+    CHECK(worldstore_title_mark(1u), "could not mark the title world");
+
+    CHECK(worldstore_open_title(0xB05u, 1u, &m2, &pl, &fresh), "reopen after marking failed");
+    CHECK(!fresh, "a marked title world of the same seed and version was regenerated");
+    CHECK(m2.seed == 0xB05u, "the reopened title world has seed %u", (unsigned)m2.seed);
+    printf("  a marked world of the same seed and version is reused\n");
+
+    // A NEW SM_TITLE_GEN means this build wants a different picture.
+    CHECK(worldstore_open_title(0xB05u, 2u, &m2, &pl, &fresh), "open at a new version failed");
+    CHECK(fresh, "a title world built to version 1 was reused at version 2");
+    CHECK(worldstore_title_mark(2u), "could not mark at the new version");
+    CHECK(worldstore_open_title(0xB05u, 2u, &m2, &pl, &fresh), "reopen at the new version failed");
+    CHECK(!fresh, "the world marked at version 2 was not reused");
+    // ... and so does a new seed.
+    CHECK(worldstore_open_title(0xB06u, 2u, &m2, &pl, &fresh), "open at a new seed failed");
+    CHECK(fresh, "a title world of another seed was reused");
+    printf("  a new version or a new seed throws it away\n");
+
+    // INVISIBLE TO THE PLAY MENU. It lives beside bench, outside
+    // worlds/, and worldstore_list() enumerates worlds/ only.
+    CHECK(worldstore_title_mark(2u), "could not mark before listing");
+    worldstore_close();
+    world_meta_t list[16];
+    int const    n = worldstore_list(list, 16);
+    int          seen = 0;
+    for (int i = 0; i < n; i++) {
+        if (strcmp(list[i].slug, SM_TITLE_SLUG) == 0) seen++;
+    }
+    CHECK(seen == 0, "the title world is listed in the world-select screen");
+    printf("  %d world(s) listed, and the title is not one of them\n", n);
+    worldstore_delete(SM_TITLE_SLUG);
+}
+
 static void check_datadir(void) {
     printf("the data directory\n");
     char const* const OLD = "build/host/ddtest/apps/at.cavac.synthminer";
@@ -4938,6 +4992,7 @@ int main(void) {
     check_compaction();
     check_sections();
     check_worldstore();
+    check_title_world();
     check_palette();
     check_slots();
     check_datadir();

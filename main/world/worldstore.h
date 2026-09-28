@@ -229,6 +229,44 @@ bool worldstore_open_scratch(uint32_t seed, world_meta_t* meta, player_state_t* 
 
 bool worldstore_open_bench(uint32_t seed, world_meta_t* meta, player_state_t* player, bool* fresh);
 
+// --- The title's world ------------------------------------------------
+//
+// The scenery behind the menu, kept on the card like the bench world
+// and for the same reason: it is the SAME picture every time, and
+// generating it again cost fifteen seconds of staring at "Loading" on
+// every boot and on every quit back to the menu (F-115). 81 chunks at
+// 186 ms each, against 2.4-3.0 ms to read one off the card.
+//
+// It lives beside `bench`, OUTSIDE `worlds/`, which is the whole of how
+// it stays private: worldstore_list() enumerates `worlds/`, so the
+// world-select screen cannot show it, open it or delete it.
+#define SM_TITLE_SLUG "title"
+
+// A BUILD'S IDEA OF WHAT THE TITLE SHOULD LOOK LIKE. Bumped whenever
+// the letters move, the seed changes, or worldgen would put different
+// terrain there -- anything that means the copy on the card is no
+// longer what this build would make.
+//
+// The user asked for it in as many words: "add a sort of version file,
+// to that title world. That way we can decide later on if we want to
+// recreate it for a future update." It is a file rather than a field in
+// level.smw because it answers a different question: level.smw says
+// what the world IS, this says which build's intentions it was built
+// to, and a mismatch means throw it away rather than try to read it.
+#define SM_TITLE_GEN 1
+
+// Open the title's world, generating a fresh one if what is on the card
+// was made for another seed or another SM_TITLE_GEN. `fresh` says which
+// happened -- true means the caller still has to build the letters into
+// it and save it.
+bool worldstore_open_title(uint32_t seed, uint32_t gen, world_meta_t* meta, player_state_t* player, bool* fresh);
+
+// Record that the title world on the card is complete and built to
+// `gen`. Called after the letters are in and the chunks are written;
+// until it is, the world reads as stale and is generated again, so an
+// interrupted first boot cannot leave a half-built title behind.
+bool worldstore_title_mark(uint32_t gen);
+
 // Write level.smw for the open world. Chunks are saved separately, as
 // they are evicted (see world_chunk_save). `items` may be NULL: none.
 bool worldstore_save(world_meta_t const* meta, player_state_t const* player, world_items_t const* items);

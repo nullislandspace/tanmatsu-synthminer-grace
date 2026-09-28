@@ -68,7 +68,11 @@ static void worlds_dir(char* out, size_t cap) {
 // scans `worlds/`, so a world that is not in there cannot be shown,
 // opened or deleted from the world-select screen (worldstore.h).
 static char const* group_of(char const* slug) {
-    return strcmp(slug, SM_BENCH_SLUG) == 0 ? "" : "worlds/";
+    // The bench and the title both sit at the top level, NOT under
+    // worlds/ -- which is the whole of how they stay out of the
+    // world-select screen, because worldstore_list() enumerates
+    // worlds/ and nothing else.
+    return (strcmp(slug, SM_BENCH_SLUG) == 0 || strcmp(slug, SM_TITLE_SLUG) == 0) ? "" : "worlds/";
 }
 
 // The slug is spoken for, whether or not anything is there yet.
@@ -962,6 +966,71 @@ bool worldstore_delete(char const* slug) {
 }
 
 // --- The benchmark world (worldstore.h) -------------------------------
+
+// --- The title's world (worldstore.h) ---------------------------------
+
+static void title_gen_path(char* out, size_t cap) {
+    char dir[192];
+    world_dir(dir, sizeof(dir), SM_TITLE_SLUG);
+    snprintf(out, cap, "%.170s/titlegen.txt", dir);
+}
+
+// What SM_TITLE_GEN the world on the card was built to, or 0 for "no
+// mark" -- which is also what an interrupted first boot leaves, and is
+// why the mark is written LAST.
+static uint32_t title_gen_read(void) {
+    char path[224];
+    title_gen_path(path, sizeof(path));
+    FILE* f = fopen(path, "rb");
+    if (f == NULL) return 0;
+    char buf[32] = {0};
+    size_t const n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    if (n == 0) return 0;
+    unsigned long const v = strtoul(buf, NULL, 10);
+    return (uint32_t)v;
+}
+
+bool worldstore_title_mark(uint32_t gen) {
+    char path[224];
+    title_gen_path(path, sizeof(path));
+    FILE* f = fopen(path, "wb");
+    if (f == NULL) return false;
+    int const n = fprintf(f, "%u\n", (unsigned)gen);
+    fclose(f);
+    return n > 0;
+}
+
+bool worldstore_open_title(uint32_t seed, uint32_t gen, world_meta_t* meta, player_state_t* player, bool* fresh) {
+    if (meta == NULL) return false;
+    worldstore_close();
+    if (fresh != NULL) *fresh = true;
+
+    if (slug_exists(SM_TITLE_SLUG)) {
+        world_meta_t   m;
+        player_state_t p;
+        // Three things have to agree, and the third is the point of the
+        // version file: readable, the same seed, and built to the same
+        // idea of what the title looks like. A mark of 0 means the last
+        // attempt never finished, so there is a world on the card with
+        // no letters in it -- exactly the case a seed check misses.
+        if (read_level(SM_TITLE_SLUG, &m, &p, true, NULL) && m.seed == seed && title_gen_read() == gen) {
+            *meta = m;
+            if (player != NULL) *player = p;
+            open_paths(SM_TITLE_SLUG);
+            if (fresh != NULL) *fresh = false;
+            return true;
+        }
+        worldstore_delete(SM_TITLE_SLUG);
+    }
+
+    if (!create_at(SM_TITLE_SLUG, "(title)", seed, meta, player)) return false;
+    // A fixed clock, so the menu is not sometimes at midnight: the
+    // picture has to be the same every boot for the same reason the
+    // seed is fixed.
+    meta->time_of_day = 1000;
+    return true;
+}
 
 bool worldstore_open_bench(uint32_t seed, world_meta_t* meta, player_state_t* player, bool* fresh) {
     if (meta == NULL) return false;

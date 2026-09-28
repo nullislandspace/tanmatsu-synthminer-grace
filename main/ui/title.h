@@ -39,9 +39,21 @@ uint32_t title_seed(void);
 bool title_begin(void);
 void title_end(void);
 
-// Place whatever letters are due by `t` seconds. Call once a frame
-// before streaming, so the chunks the letters live in are resident.
+// Nothing, now that the letters are part of the world. Kept so the
+// caller does not have to know that, and so a title that wants
+// something animated again has somewhere to put it.
 void title_update(double t);
+
+// Did title_begin() have to generate the world? Then the letters are
+// not in it yet and it is not on the card: the caller must wait for the
+// chunks, call title_write_letters(), save, and mark it
+// (worldstore_title_mark).
+bool title_is_fresh(void);
+
+// Write the letters into the resident world. Returns how many landed --
+// fewer than asked for means a chunk was not resident, which is a bug
+// in the caller's ordering rather than something to retry.
+int title_write_letters(void);
 
 // The camera for `t` seconds in.
 title_view_t title_camera(double t);

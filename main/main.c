@@ -1459,6 +1459,27 @@ static void loading_step(void) {
                    : " (INCOMPLETE)");
     s_app = s_load.next;
     if (s_app == APP_TITLE) {
+        // THE FIRST TIME EVER, or after SM_TITLE_GEN moves: the world
+        // exists but has no word in it. Write the letters now that the
+        // chunks are all resident, put the lot on the card, and only
+        // THEN mark it -- so an interrupted first boot leaves an
+        // unmarked world that is generated again rather than a title
+        // with half a word in it (worldstore.h).
+        if (title_is_fresh()) {
+            int const     n  = title_write_letters();
+            int64_t const t0 = esp_timer_get_time();
+            int           chunks = 0;
+            for (int i = 0; i < CH_SLOT_COUNT; i++) {
+                chunk_t const* c = chunk_slot_at(i);
+                if (c->cstate != CS_READY || (c->flags & CF_EDITED) == 0) continue;
+                if (chunk_worker_request_save(c->cx, c->cz)) chunks++;
+            }
+            while (!chunk_worker_idle()) chunk_worker_collect(64);
+            bool const lvl = worldstore_save(&s_meta, &s_saved, NULL);
+            bool const mrk = lvl && worldstore_title_mark(SM_TITLE_GEN);
+            ESP_LOGI(TAG, "title world built: %d letter block(s), %d chunk(s) written in %.1f s, %s", n, chunks,
+                     (double)(esp_timer_get_time() - t0) / 1000000.0, mrk ? "marked" : "NOT MARKED");
+        }
         // A test that picked a moment of the title keeps its own clock.
         if (!devtest_running()) s_title_t0 = showtime_now();
         if (!menu_active()) menu_open_title();

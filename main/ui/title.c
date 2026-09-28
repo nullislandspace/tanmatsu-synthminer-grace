@@ -28,13 +28,24 @@
 // tallest ground: terrain reaches y41 and a tree on it another six, so
 // anything below y47 gets a canopy in front of it. The first version
 // sat at 44 and the first word spent the whole title behind an oak.
-#define TITLE_Y    56
+// LOWERED from 56 on 2026-09-28, the user: the word was nicely centred
+// but "you can only see the tops of a few blocks at the very bottom of
+// the screen". Letters high up mean a camera that looks steeply up, and
+// looking up puts the ground behind you. 50 is still clear of the
+// tallest tree -- terrain reaches y41 and an oak on it another six --
+// which is the constraint that set 56 in the first place.
+#define TITLE_Y    50
 #define TITLE_Z    24   // the plane they stand in
 #define TITLE_DEEP 2    // blocks thick, so they read as solid from an angle
 
-#define BUILD_T0 0.5f    // the first block appears ...
-#define BUILD_DT 0.013f  // ... and each next one this much later
-#define LOOP_SECS 16.0f  // the whole drift, then it starts again
+// The camera's height, which used to be TITLE_Y - 8 and so moved with
+// the letters. It does not want to: it wants to be a few blocks above
+// the GROUND, close enough that the meadow recedes to a horizon instead
+// of dropping away under the lens. Terrain here tops out around y38 and
+// a tree on it reaches 44, so 46 clears both with a little room.
+#define TITLE_CAM_Y 46.0f
+
+#define LOOP_SECS 24.0f  // one pass of the drift, there and back
 
 typedef struct {
     char        c;
@@ -67,18 +78,19 @@ static glyph_t const FONT[] = {
 static char const TEXT[] = "SynthMiner";
 #define SPLIT 5  // "Synth" in grass | "Miner" in cobblestone
 
-// One block of the title and when it appears.
+// One block of the title. It used to carry when it appears and whether
+// it had; both went when the word became part of the world rather than
+// an animation (title_update).
 typedef struct {
     int32_t x, y, z;
     uint8_t block;
-    float   at;
-    bool    placed;
 } place_t;
 
 #define MAX_BLOCKS 560
 static place_t s_place[MAX_BLOCKS];
 static int     s_n;
 static float   s_mid_x, s_x0, s_x1;
+static bool    s_fresh;   // the world had to be generated; the letters are not in it yet
 static bool    s_active;
 
 uint32_t title_seed(void) {
@@ -117,7 +129,6 @@ static void build_title(void) {
                         .y     = TITLE_Y + (GLYPH_H - 1 - row),
                         .z     = TITLE_Z + dz,
                         .block = b,
-                        .at    = BUILD_T0 + BUILD_DT * (float)s_n,
                     };
                     s_n++;
                 }
@@ -140,30 +151,62 @@ static void build_title(void) {
     s_mid_x = 0.5f * (s_x0 + s_x1);
 }
 
-// The camera's path, 0..1 through the loop: a slow drift left to right
-// and upwards, south of the letters and below them, so it looks up.
+// The camera's path, `s` running 0..1 and BACK again.
+//
+// NO JUMP AT THE SEAM. The drift used to run 0..1 and restart, so every
+// sixteen seconds the camera teleported from one end of its travel to
+// the other. The user asked for "a sinusiod motion or something like
+// that (no position jumps)", and a cosine gives more than continuity:
+// its derivative is zero at both ends, so the camera eases to a stop
+// and turns round rather than reversing at full speed.
 //
 // FAR ENOUGH BACK TO FIT THE WORD. The letters are 48 blocks across and
 // the projection sees 400/450 of the distance to either side, so at 34
-// blocks it could show 60 -- until the drift moves the camera 10 off
-// centre and needs 68. 52 blocks back fits it with room, and the extra
-// distance is also what puts the ground in frame: the horizon sits at
-// row 256 of 480, so looking up at something means looking past
-// everything below it unless it is a long way off.
+// blocks it could show 60 -- until the drift moves the camera off
+// centre and needs 68. 44 blocks back plus the sway fits it with room.
 static void path(float s, double* x, float* y, double* z) {
-    *x = (double)s_mid_x - 5.0 + 10.0 * (double)s;
-    *y = (float)TITLE_Y - 8.0f + 3.0f * s;
-    *z = (double)TITLE_Z - 44.0 + 5.0 * (double)s;
+    *x = (double)s_mid_x - 6.0 + 12.0 * (double)s;
+    // A gentle rise and fall, a quarter cycle out of step with the
+    // sideways sway, so the motion reads as drifting rather than as a
+    // track.
+    *y = TITLE_CAM_Y + 1.5f * sinf(3.14159265f * s);
+    *z = (double)TITLE_Z - 46.0 + 4.0 * (double)s;
+}
+
+// The loop's position, 0..1..0, smooth at both ends.
+static float loop_s(double t) {
+    float const ft = (float)fmod(t, (double)LOOP_SECS);
+    return 0.5f - 0.5f * cosf(2.0f * 3.14159265f * ft / LOOP_SECS);
 }
 
 bool title_begin(void) {
     static world_meta_t   meta;
     static player_state_t player;
-    if (!worldstore_open_scratch(TITLE_SEED, &meta, &player)) return false;
+    // THE WORLD IS KEPT, not generated every time (worldstore.h,
+    // F-115). `fresh` means there was nothing usable on the card, so
+    // the caller has to build the letters in and save it.
+    bool made = true;
+    if (!worldstore_open_title(TITLE_SEED, SM_TITLE_GEN, &meta, &player, &made)) return false;
     build_title();
-    for (int i = 0; i < s_n; i++) s_place[i].placed = false;
+    s_fresh  = made;
     s_active = true;
     return true;
+}
+
+bool title_is_fresh(void) {
+    return s_fresh;
+}
+
+int title_write_letters(void) {
+    int written = 0;
+    for (int i = 0; i < s_n; i++) {
+        place_t const* p = &s_place[i];
+        // No-ops on a chunk that is not resident, which is why this is
+        // called after the loading gate rather than during it.
+        world_set(p->x, p->y, p->z, p->block, ST_PLACED);
+        if (world_block(p->x, p->y, p->z) == p->block) written++;
+    }
+    return written;
 }
 
 void title_end(void) {
@@ -171,33 +214,24 @@ void title_end(void) {
     worldstore_close();
 }
 
+// NOTHING TO DO EVERY FRAME ANY MORE. The letters used to be written
+// and taken away again on a timer, one block every 13 ms, so the word
+// built itself each time the loop came round. The user, 2026-09-28:
+// "we don't really need to generate and remove the SynthMiner logo
+// every few seconds. Due to the renderer, it stutters when showing up
+// (not a smooth animation)."
+//
+// And it could not have been smooth: every block written marks its
+// chunk section stale, so the word was asking for a remesh several
+// times a second -- 81 chunks' worth of streaming plus a rebuild per
+// letter. They are part of the world now, written once when it is
+// generated and saved with it.
 void title_update(double t) {
-    if (!s_active) return;
-    float const ft = (float)fmod(t, (double)LOOP_SECS);
-
-    for (int i = 0; i < s_n; i++) {
-        place_t* p = &s_place[i];
-        bool const due = ft >= p->at;
-        if (due == p->placed) continue;
-
-        // The loop restarting takes them all away again, which is what
-        // makes the second pass look like the first.
-        if (!due) {
-            if (world_block(p->x, p->y, p->z) == p->block) world_set(p->x, p->y, p->z, BLK_AIR, 0);
-            p->placed = false;
-            continue;
-        }
-        // world_set no-ops on a chunk that is not resident yet, so this
-        // is retried every frame until the streamer has caught up --
-        // which is why `placed` is only set once it took.
-        world_set(p->x, p->y, p->z, p->block, ST_PLACED);
-        p->placed = world_block(p->x, p->y, p->z) == p->block;
-    }
+    (void)t;
 }
 
 title_view_t title_camera(double t) {
-    float const ft = (float)fmod(t, (double)LOOP_SECS);
-    float const s  = ft / LOOP_SECS;
+    float const s = loop_s(t);
 
     title_view_t v;
     path(s, &v.wx, &v.wy, &v.wz);
@@ -205,9 +239,12 @@ title_view_t title_camera(double t) {
     // Look at the middle of the letters, drifting along them so the eye
     // is led across the word rather than staring at its centre.
     double const tx = (double)s_mid_x + 4.0 * (double)s;
-    // Aimed a little BELOW the middle of the letters, so the meadow
-    // under them is in frame rather than just past the bottom edge.
-    double const ty = (double)TITLE_Y + 0.5;
+    // AIMED AT THE MIDDLE OF THE WORD, which with the camera now near
+    // the ground means looking very slightly UP -- a couple of degrees
+    // rather than the eleven it used to be. That is what puts the
+    // meadow in the lower half of the frame instead of past the bottom
+    // edge of it.
+    double const ty = (double)TITLE_Y + 0.5 * (double)GLYPH_H;
     double const tz = (double)TITLE_Z;
 
     double const dx = tx - v.wx, dy = ty - (double)v.wy, dz = tz - v.wz;
