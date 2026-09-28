@@ -2156,25 +2156,45 @@ static void check_trace(void) {
     CHECK(strstr(body, "tex=412/4096") != NULL, "the trace did not record how full the lists got");
     printf("  %d lines, %ld bytes, and the mesh lag came out at 310 ms\n", trace_lines(), file_size(cur));
 
-    // ROTATION. A file past the cap becomes trace.prev.txt and the new
-    // session starts clean -- two files on the card, never more.
-    f = fopen(cur, "ab");
-    CHECK(f != NULL, "could not reopen the trace to pad it");
-    if (f == NULL) return;
-    char pad[1024];
-    memset(pad, 'x', sizeof pad);
-    for (unsigned i = 0; i <= TRACE_MAX_BYTES / sizeof pad; i++) fwrite(pad, 1, sizeof pad, f);
-    fclose(f);
-    long const big = file_size(cur);
-    CHECK(big > (long)TRACE_MAX_BYTES, "the padding did not take the trace past the cap");
-
-    CHECK(trace_open(STORE_BASE, "deadbee", "2.4", 1u, "again"), "trace_open failed after the cap");
+    // ONE PLAYTHROUGH PER FILE. Opening again rotates unconditionally:
+    // the run just finished becomes trace.prev.txt and the new one
+    // starts empty. Two files on the card, never more, and a file that
+    // holds exactly one run cannot be misread as two.
+    long const first = file_size(cur);
+    CHECK(first > 0, "the first session wrote nothing");
+    CHECK(trace_open(STORE_BASE, "deadbee", "2.4", 1u, "again"), "trace_open failed on the second run");
+    trace_set_time(1.0);
+    trace_edit('B', 1, 1, 1, "stone", 1);
     trace_close();
-    CHECK(file_size(prev) == big, "the full trace did not become trace.prev.txt (%ld vs %ld)",
-          file_size(prev), big);
-    CHECK(file_size(cur) > 0 && file_size(cur) < 1024, "the new trace did not start clean (%ld bytes)",
-          file_size(cur));
-    printf("  rotated at %ld bytes; the new file starts at %ld\n", big, file_size(cur));
+    CHECK(file_size(prev) == first, "the previous run did not become trace.prev.txt (%ld vs %ld)",
+          file_size(prev), first);
+    CHECK(file_size(cur) < first, "the new run did not start empty (%ld bytes, previous was %ld)",
+          file_size(cur), first);
+
+    // And the new file must hold ONLY the new run.
+    f = fopen(cur, "rb");
+    CHECK(f != NULL, "the second run wrote no file");
+    if (f != NULL) {
+        char again[2048] = {0};
+        (void)!fread(again, 1, sizeof again - 1, f);
+        fclose(f);
+        CHECK(strstr(again, "world=\"again\"") != NULL, "the new run is not in the new file");
+        CHECK(strstr(again, "Testworld") == NULL, "the previous run is still in the new file");
+        CHECK(strstr(again, "blk=torch") == NULL, "an edit from the previous run survived into the new file");
+    }
+    printf("  a second run starts empty; the first is kept as trace.prev.txt\n");
+
+    // THE CAP IS A CEILING, not a rotation: a single run long enough to
+    // fill it stops recording rather than throwing away its own start.
+    CHECK(trace_open(STORE_BASE, "deadbee", "2.4", 2u, "long"), "trace_open failed for the cap check");
+    for (unsigned i = 0; i < TRACE_MAX_BYTES / 64 + 64; i++) {
+        trace_tick(&(trace_tick_t){.t = (double)i, .fps = 10.0f, .flat_cap = 6144, .tex_cap = 4096});
+    }
+    long const capped = file_size(cur);
+    trace_close();
+    CHECK(capped <= (long)TRACE_MAX_BYTES + 4096, "a long run grew to %ld, past the cap", capped);
+    CHECK(file_size(prev) < first + 4096, "the cap check rotated instead of stopping");
+    printf("  a run that fills the file stops at %ld bytes instead of rotating\n", capped);
     sm_remove(cur);
     sm_remove(prev);
 }

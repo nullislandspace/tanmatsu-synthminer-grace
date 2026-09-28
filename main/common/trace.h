@@ -43,10 +43,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Rotate once the file passes this. Two of them is the ceiling on the
-// card, and at roughly 200 bytes a second 256 KiB is about 20 minutes
-// of play -- long enough that a bug noticed "a little while ago" is
-// still in it.
+// Stop recording once a session's file reaches this. NOT a rotation
+// trigger: one playthrough gets one file (trace_open), so the only way
+// to reach the cap is a single run long enough to fill it, and rotating
+// then would throw away the beginning of the very run being recorded.
+// At roughly 200 bytes a second, 256 KiB is about 20 minutes of play.
+// Two files is the ceiling on the card: this one and the last.
 #define TRACE_MAX_BYTES (256u * 1024u)
 
 // The once-a-second snapshot. One struct rather than sixteen arguments

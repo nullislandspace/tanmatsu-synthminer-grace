@@ -321,7 +321,20 @@ static void apply(result_t* r) {
 
     if (r->kind == JOB_SAVE) {
         if (r->ok) s_saved_total++;
-        if (mine && r->ok) c->flags &= (uint8_t)~CF_EDITED;
+        // ONLY IF NOTHING CHANGED WHILE IT WAS BEING WRITTEN. The mesh
+        // path above has always checked edit_seq; this one did not, and
+        // cleared CF_EDITED on any successful save. A write that raced
+        // an edit would then be the last word: the chunk is not dirty
+        // any more, so it is never written again, and the edit is gone.
+        //
+        // Not reachable by a PLAYER -- a save is triggered by drifting
+        // past the evict radius, 80 blocks and up, and reach is 4.5.
+        // But the writers that are coming do not have hands: flowing
+        // water, growing crops and animals walking all change chunks
+        // nobody is standing in, which is exactly where this fires.
+        // Leaving the bit set costs one more save; clearing it wrongly
+        // costs the edit.
+        if (mine && r->ok && c->edit_seq == r->seq) c->flags &= (uint8_t)~CF_EDITED;
         if (mine && c->cstate == CS_SAVING) c->cstate = CS_READY;
     }
 }

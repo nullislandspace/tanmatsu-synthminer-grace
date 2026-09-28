@@ -19,6 +19,7 @@ static char  s_buf[BUF_BYTES];
 static int   s_n;          // bytes held in s_buf
 static long  s_written;    // bytes sent to the file, for the rotation cap
 static int   s_lines;
+static bool  s_full;      // the size cap was reached; stop rather than rotate
 static double s_now;      // set once a frame; see trace_set_time
 
 // The last few edits, so an arriving mesh can say how long its section
@@ -42,7 +43,20 @@ static void flush(void) {
 }
 
 static void emit(char const* fmt, va_list ap) {
-    if (s_f == NULL) return;
+    if (s_f == NULL || s_full) return;
+    // THE CAP IS NOW A CEILING, not a rotation trigger: one playthrough
+    // gets one file, so a session that never ends is the only way this
+    // can grow. Stop rather than rotate mid-session -- rotating would
+    // throw away the beginning of the very run being recorded, and the
+    // beginning is usually where a bug started.
+    if (s_written >= (long)TRACE_MAX_BYTES) {
+        s_full = true;
+        s_n    = 0;
+        char const* const note = "H full: stopped recording at the size cap\n";
+        fwrite(note, 1, strlen(note), s_f);
+        fflush(s_f);
+        return;
+    }
     char line[256];
     int const n = vsnprintf(line, sizeof line, fmt, ap);
     if (n <= 0) return;
@@ -80,29 +94,38 @@ bool trace_open(char const* dir, char const* build, char const* engine, uint32_t
     path_of(cur, sizeof cur, dir, "trace.txt");
     path_of(prev, sizeof prev, dir, "trace.prev.txt");
 
-    // Rotate BEFORE opening, on the size the last session left behind.
-    // One previous file is kept: enough to survive "I closed the game
-    // and only then realised what I had seen".
-    FILE* old = fopen(cur, "rb");
-    if (old != NULL) {
-        fseek(old, 0, SEEK_END);
-        long const sz = ftell(old);
-        fclose(old);
-        if (sz > (long)TRACE_MAX_BYTES) {
-            // Through vfs_compat, not stdio: graceloader exports neither
-            // `remove` nor `rename`, and an app that calls them links
-            // and then fails to LOAD (vfs_compat.h, F-06). symcheck
-            // catches it, which is how this was found.
-            sm_remove(prev);
-            sm_rename(cur, prev);
-        }
-    }
+    // ONE PLAYTHROUGH PER FILE. The last one becomes trace.prev.txt and
+    // this one starts empty -- the user's call, 2026-09-28: "the trace
+    // file should probably be reset to empty whenever we start a
+    // playthrough."
+    //
+    // It is also the right shape for reading. Appending meant one file
+    // held several sessions, and traceanalyse merged them silently
+    // until it was taught to split: a "worst since boot" from an hour
+    // ago was reported as this session's, which is how a number nobody
+    // could explain gets into a conversation. A file that holds exactly
+    // one run cannot do that.
+    //
+    // Two files is still the ceiling on the card, and the previous run
+    // survives, which is what "I closed the game and only THEN realised
+    // what I saw" needs.
+    //
+    // Through vfs_compat, not stdio: graceloader exports neither
+    // `remove` nor `rename`, and an app that calls them links and then
+    // fails to LOAD (vfs_compat.h, F-06). symcheck catches it, which is
+    // how that was found.
+    sm_remove(prev);
+    sm_rename(cur, prev);
 
-    s_f = fopen(cur, "ab");
+    // "wb", not "ab": if the rename could not happen -- no space, a
+    // card that refuses -- the file still starts empty rather than
+    // quietly growing for ever.
+    s_f = fopen(cur, "wb");
     if (s_f == NULL) return false;
     s_n = 0;
     s_written = 0;
     s_lines = 0;
+    s_full  = false;
     s_now = 0.0;
     memset(s_pending, 0, sizeof s_pending);
     s_pend_next = 0;
