@@ -1056,33 +1056,40 @@ TORCH_FRAMES = 4
 
 
 def sm_torch_frame(frame):
-    """The torch's stick: dark wood, with a burning tip that pulses.
+    """The torch's stick: dark wood, with a burning tip that flickers.
 
-    The STICK is identical in every frame -- only the fire changes, or
-    the torch would appear to wobble in its own cell. What varies is how
-    far down the flame reaches and how bright it is, which is what a
-    flame does and what reads at sixteen texels. A first attempt varied
-    a stripe pattern instead and the four frames came out
-    indistinguishable.
+    THE FIRE DOES NOT MOVE. The stick is identical in every frame and so
+    is the extent of the flame -- the same four rows burn in all of
+    them, and only their COLOUR changes, cycling yellow -> orange ->
+    orange-red and back.
+
+    Both of those are corrections. Varying a stripe pattern gave four
+    pictures the eye could not separate. Varying the flame's height then
+    gave it movement, but the wrong movement: "the animation looks like
+    the fire is moving up and down the stick" (the user, 2026-09-28).
+    Fire on a torch stays where it is; what changes is its colour. And
+    the frames stay within a narrow band of brightness, because the same
+    round dimmed to near-embers and "it dims too much".
     """
     gen = sm_gen(18)                      # the same wood every frame
     lum = gen.integers(-10, 11, (B, B)).astype(float)
     img = sm_rgb(lum, (110, 80, 44)).astype(int)
 
-    # A LADDER OF FIRE COLOURS, and each frame starts further down it.
-    # Dimming by multiplying every channel was the first attempt and
-    # came out GREY: a flame that is going out turns orange and then
-    # red, it does not desaturate. Stepping down the ladder keeps the
-    # hue right because the ladder already has the right hues in it.
-    ladder = [(255, 252, 226), (255, 248, 206), (255, 200, 72), (226, 120, 32), (168, 72, 20), (120, 44, 12)]
-    # per frame: how many rows burn, and how far down the ladder to start
-    tall, step = ((4, 1), (5, 0), (4, 2), (3, 3))[frame % 4]
-    for row in range(tall):
-        img[row, :] = ladder[min(step + row, len(ladder) - 1)]
-    # The char line under the fire, so the wood does not meet the flame
-    # with a hard edge.
-    if tall < B:
-        img[tall, :] = (200, 110, 40)
+    # Four rows of fire, hottest at the top, and one palette per frame.
+    # Read down a column for a single frame's flame; read across for
+    # what one row does over the cycle -- which is the flicker, and it
+    # never leaves yellow-orange-red.
+    FIRE = (
+        ((255, 246, 184), (255, 210, 92), (250, 162, 52), (232, 122, 38)),
+        ((255, 238, 156), (255, 192, 74), (244, 144, 44), (226, 110, 32)),
+        ((255, 226, 126), (252, 174, 60), (238, 128, 38), (220, 98, 28)),
+        ((255, 240, 164), (255, 200, 82), (246, 152, 48), (228, 116, 34)),
+    )[frame % 4]
+    for row in range(4):
+        img[row, :] = FIRE[row]
+    # The char line under the fire, so wood does not meet flame with a
+    # hard edge. Fixed, like everything else about the geometry here.
+    img[4, :] = (200, 110, 40)
     return np.clip(img, 0, 255).astype(np.uint8)
 
 
