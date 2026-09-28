@@ -18,7 +18,7 @@
 #include "world/chunk_render.h"
 
 static bool       s_ready;
-static mesh_t     s_head, s_body, s_arm, s_fp_arm, s_leg, s_pick, s_axe, s_shovel, s_cube, s_sprite, s_torch;
+static mesh_t     s_head, s_body, s_arm, s_fp_arm, s_leg, s_pick, s_axe, s_shovel, s_bucket, s_cube, s_sprite, s_torch;
 static mesh_mat_t s_mats[FM_COUNT];
 
 // The head of a tool, by level.
@@ -36,6 +36,8 @@ void fred_init(void) {
     s_mats[FM_FACE]     = (mesh_mat_t){texcache_get("miner_face.png"), 0xFFDEAA80u, 0};
     s_mats[FM_WOOD]     = (mesh_mat_t){NULL, 0xFF7A5230u, 0};
     s_mats[FM_IRON]     = (mesh_mat_t){NULL, 0xFF9AA0A8u, 0};
+    // Overwritten per draw with whatever is being carried.
+    s_mats[FM_FLUID]    = (mesh_mat_t){NULL, 0xFF3A3E46u, 0};
     fred_build_head(&s_head);
     fred_build_body(&s_body);
     fred_build_arm(&s_arm);
@@ -44,6 +46,7 @@ void fred_init(void) {
     fred_build_pick(&s_pick);
     fred_build_axe(&s_axe);
     fred_build_shovel(&s_shovel);
+    fred_build_bucket(&s_bucket);
     // A block in the hand: a small one, in the block's textures.
     mesh_init(&s_cube);
     s_cube.name = "fred_block";
@@ -117,6 +120,18 @@ fred_hold_t fred_hold_for(uint16_t item) {
         h.level = d.tool_level;
         return h;
     }
+    // A BUCKET IS A SHAPE, not a lump, so it gets a model rather than a
+    // cube in its colour. What is in it is just a colour on one quad,
+    // which is what keeps lava and milk from needing anything here:
+    // item_bucket_contents() names the block and the block table
+    // already knows what colour it is.
+    if (item_is_bucket(item)) {
+        uint8_t const fl = item_bucket_contents(item);
+        h.kind           = FRED_HOLD_BUCKET;
+        h.argb           = fl == BLK_AIR ? 0xFF3A3E46u : item_def(fl).argb;
+        return h;
+    }
+
     h.kind = FRED_HOLD_ITEM;
     h.argb = d.argb;
     return h;
@@ -166,6 +181,15 @@ static void submit_held(xform_t const* arm, fred_hold_t const* hold, mesh_mat_t 
         chunk_render_block_mats(hold->block, m);
         for (int i = 0; i < 3; i++) m[i].flags |= f;
         mesh_submit(hold->kind == FRED_HOLD_TORCH ? &s_torch : &s_sprite, &at, m, 3);
+    } else if (hold->kind == FRED_HOLD_BUCKET) {
+        // Carried at the fist, upright and hanging slightly forward --
+        // not thrust out along +z the way a tool's handle is, because a
+        // bucket is held, not swung.
+        xform_t const at = joint(arm, v3(0.0f, FRED_FIST_Y, 0.14f), ident());
+        mesh_mat_t    m[FM_COUNT];
+        for (int i = 0; i < FM_COUNT; i++) m[i] = mats[i];
+        m[FM_FLUID].argb = hold->argb;
+        mesh_submit(&s_bucket, &at, m, FM_COUNT);
     } else if (hold->kind == FRED_HOLD_BLOCK || hold->kind == FRED_HOLD_ITEM) {
         xform_t const at = joint(arm, v3(0.0f, FRED_FIST_Y, 0.16f), mat3_rot_y(0.5f));
         mesh_mat_t    m[3];

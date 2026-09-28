@@ -28,6 +28,7 @@ typedef enum {
     FRED_HOLD_SPRITE, // a flower, tall grass: crossed flat quads, as the world draws them
     FRED_HOLD_TORCH,  // a torch: the thin stick the world draws
     FRED_HOLD_ITEM,   // a small cube in the item's colour: coal, a stick
+    FRED_HOLD_BUCKET, // a pail, with `argb` for whatever is in it
 } fred_hold_kind_t;
 
 typedef struct {
@@ -35,7 +36,7 @@ typedef struct {
     uint8_t          tool;   // TOOL_PICK / TOOL_AXE / TOOL_SHOVEL (world/blocks.h)
     uint8_t          level;  // 1 wood, 2 stone, 3 iron: the head's colour
     uint8_t          block;
-    uint32_t         argb;   // FRED_HOLD_ITEM
+    uint32_t         argb;   // FRED_HOLD_ITEM, and the contents of a FRED_HOLD_BUCKET
 } fred_hold_t;
 
 typedef struct {

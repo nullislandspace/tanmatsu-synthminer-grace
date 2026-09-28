@@ -165,6 +165,28 @@ typedef struct {
     uint8_t const* data;
 } vox_grid_t;
 
+// A LIQUID's ST_DATA: how full the cell is. Same arrangement as the
+// torch below and for the same reason -- the block registry says what a
+// block IS, this file says what its data field does to its SHAPE, and
+// world/fluid.h uses these two names rather than declaring its own, so
+// the simulation and the mesher cannot drift apart on the bit layout.
+//
+// Level 0 is FULL (a source, or a cell with a fall passing through it)
+// and is the only one the greedy pass handles; 1..7 count DOWN in
+// fullness and get a surface of their own, per cell, with its corners
+// averaged from the neighbours so the sheet slopes the way it is
+// running.
+#define VOX_FLUID_LEVEL_MASK 0x07u
+#define VOX_FLUID_FALLING    0x08u
+
+// How high the fluid stands in a cell holding `data`, 0..1. Level 0 is
+// a whole cell; the rest step down by an eighth, so level 7 is a film
+// you can see the ground through and level 1 is nearly full.
+static inline float voxel_fluid_height(uint8_t data) {
+    unsigned const lvl = data & VOX_FLUID_LEVEL_MASK;
+    return lvl == 0u ? 1.0f : (float)(8u - lvl) / 8.0f;
+}
+
 // A torch's ST_DATA: where it is, which is to say which wall is holding
 // it up. blocks.h keeps the block, this keeps its shape.
 #define TORCH_FLOOR    0

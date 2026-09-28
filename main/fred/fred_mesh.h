@@ -35,6 +35,10 @@ typedef enum {
     FM_FACE,
     FM_WOOD,
     FM_IRON,
+    // What is IN something the miner is carrying -- the water in a
+    // bucket. Its colour is set per draw from the item, so lava and
+    // milk need nothing here (fred.c, FRED_HOLD_BUCKET).
+    FM_FLUID,
     FM_COUNT
 } fred_mat_t;
 
@@ -61,6 +65,7 @@ void fred_build_arm(mesh_t* m);
 void fred_build_fp_arm(mesh_t* m);
 void fred_build_leg(mesh_t* m);
 void fred_build_pick(mesh_t* m);
+void fred_build_bucket(mesh_t* m);
 // SynthMiner has three tools; the showreel's miner only needed the
 // pickaxe. The same handle, a different head.
 void fred_build_axe(mesh_t* m);

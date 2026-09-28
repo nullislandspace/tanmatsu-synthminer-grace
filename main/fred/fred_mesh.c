@@ -76,6 +76,57 @@ void fred_build_pick(mesh_t* m) {
     mesh_box(m, v3(-0.03f, -0.34f, 0.50f), v3(0.03f, -0.24f, 0.58f), FM_IRON, 1.0f);
 }
 
+// A PAIL: four trapezium sides, a bottom, what is in it, and a wire
+// handle over the top.
+//
+// The taper is the whole silhouette and it is why this is not a
+// mesh_box. A straight-sided box of this size in the hand reads as a
+// crate or a lunch tin; narrowing the bottom by a third is what makes
+// it a bucket at a glance, which is the entire job of a held model.
+//
+// It is also why the bucket could not just be FRED_HOLD_ITEM like coal
+// or a stick: those are lumps and a small coloured cube is a fair
+// picture of a lump. A bucket is a shape, and the user's original brief
+// asked for the model as well as the icon -- "the associated icons and
+// render models (when held in hand)".
+void fred_build_bucket(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_bucket";
+    float const rt = 0.15f, rb = 0.10f, h = 0.26f;  // top, bottom, height
+    float const uv[4][2] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+
+    // Four bottom corners then four top ones, anticlockwise from -x-z.
+    int b[4], t[4];
+    float const bx[4] = {-rb, rb, rb, -rb}, bz[4] = {-rb, -rb, rb, rb};
+    float const tx[4] = {-rt, rt, rt, -rt}, tz[4] = {-rt, -rt, rt, rt};
+    for (int i = 0; i < 4; i++) {
+        b[i] = mesh_vert(m, v3(bx[i], 0.0f, bz[i]));
+        t[i] = mesh_vert(m, v3(tx[i], h, tz[i]));
+    }
+    // The sides, wound outward: top-left, top-right, bottom-right,
+    // bottom-left seen from outside.
+    for (int i = 0; i < 4; i++) {
+        int const j = (i + 1) & 3;
+        mesh_quad(m, t[j], t[i], b[i], b[j], FM_IRON, uv);
+    }
+    mesh_quad(m, b[0], b[1], b[2], b[3], FM_IRON, uv);  // the bottom, seen from below
+
+    // WHAT IS IN IT, a disc just under the rim. An empty bucket draws
+    // this too, in a dark grey: the inside of a pail is not a hole, and
+    // without it you can see through the mouth and out of the bottom.
+    float const ri = rt - 0.012f, hi = h - 0.025f;
+    int const   f0 = mesh_vert(m, v3(-ri, hi, -ri)), f1 = mesh_vert(m, v3(ri, hi, -ri));
+    int const   f2 = mesh_vert(m, v3(ri, hi, ri)), f3 = mesh_vert(m, v3(-ri, hi, ri));
+    mesh_quad(m, f3, f2, f1, f0, FM_FLUID, uv);
+
+    // The handle: two short uprights and a bar across, at the sides the
+    // thumb is not.
+    float const w = 0.014f, hh = h + 0.12f;
+    mesh_box(m, v3(-rt, h - 0.03f, -w), v3(-rt + 2.0f * w, hh, w), FM_IRON, 1.0f);
+    mesh_box(m, v3(rt - 2.0f * w, h - 0.03f, -w), v3(rt, hh, w), FM_IRON, 1.0f);
+    mesh_box(m, v3(-rt, hh - 2.0f * w, -w), v3(rt, hh, w), FM_IRON, 1.0f);
+}
+
 void fred_build_axe(mesh_t* m) {
     mesh_init(m);
     m->name = "fred_axe";

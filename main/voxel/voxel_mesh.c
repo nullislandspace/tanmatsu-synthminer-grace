@@ -150,6 +150,185 @@ static void emit_sign(mesh_t* m, int X, int Y, int Z) {
 
 // A plant: two vertical quads along the cell's diagonals, each twice
 // (one per side), the texture upright and unmirrored from both.
+// --- Fluid surfaces ---------------------------------------------------
+//
+// A FLOWING cell is not a cube and cannot go through the greedy pass:
+// its top face is part-way up the cell and its four corners are at
+// different heights, so it merges with nothing. It is emitted one cell
+// at a time, beside the plants and the torches, which is where this
+// file has always put the blocks that are not boxes.
+//
+// This is WHY the levels are worth simulating. Until the surface
+// actually drops, a film one texel deep and a full block of water draw
+// identically and the player has no way to read depth, direction or
+// where the spring is -- which was the user's objection, and it was
+// right.
+//
+// Three things get drawn and the last one is not optional:
+//
+//   THE TOP, as a quad whose four corners are averaged from the cells
+//   meeting at each corner. That average is the whole effect: the sheet
+//   tilts down the way it is running, so the slope IS the flow arrow.
+//
+//   THE UNDERSIDE, a second copy wound the other way, because an
+//   axis-aligned face is visible only from the side its normal points
+//   at -- the same reason D-86 needed one for the flat surface, and the
+//   same symptom if it is missing (the water vanishes as the eye goes
+//   under).
+//
+//   THE SIDES, against air. D-86 said a liquid draws no sides, and for
+//   a lake that is right: its rim is the only place a side could show
+//   and the rule bought a surface you can see through. A FALLING COLUMN
+//   IS NOTHING BUT SIDES. With the rule applied to it a waterfall emits
+//   no geometry whatsoever -- no top (the cell above is water), no
+//   bottom, no sides -- and is invisible from the source to the splash.
+//   So flows and falls draw their sides and SOURCES STILL DO NOT, which
+//   leaves every lake and ocean exactly as D-86 left them.
+
+static size_t grid_idx(vox_grid_t const* g, int x, int y, int z) {
+    return ((size_t)(z + 1) * (size_t)(g->w + 2) + (size_t)(x + 1)) * (size_t)(g->h + 2) + (size_t)(y + 1);
+}
+
+static uint8_t grid_cell(vox_grid_t const* g, int x, int y, int z) {
+    return g->cells[grid_idx(g, x, y, z)];
+}
+
+static uint8_t grid_data(vox_grid_t const* g, int x, int y, int z) {
+    return g->data != NULL ? g->data[grid_idx(g, x, y, z)] : (uint8_t)0;
+}
+
+// Is this cell a liquid the greedy pass has given up on -- a flow or a
+// fall, as opposed to a source or a still block of ocean?
+static bool fluid_is_shaped(vox_grid_t const* g, int x, int y, int z) {
+    if (block_kind(grid_cell(g, x, y, z)) != K_LIQUID) return false;
+    uint8_t const dat = grid_data(g, x, y, z);
+    return (dat & VOX_FLUID_LEVEL_MASK) != 0u || (dat & VOX_FLUID_FALLING) != 0u;
+}
+
+// How high the liquid stands in a cell, in block units, 0 for a cell
+// holding none.
+static float fluid_surface(vox_grid_t const* g, int x, int y, int z) {
+    if (block_kind(grid_cell(g, x, y, z)) != K_LIQUID) return 0.0f;
+    return voxel_fluid_height(grid_data(g, x, y, z));
+}
+
+// The height at one corner of a cell's surface: the average over the
+// LIQUID cells among the four that meet there, and only those.
+//
+// The slope comes out of the averaging itself. Along a sheet running
+// 1.000, 0.875, 0.750 the corners land halfway between each pair, so
+// every cell's surface tilts the way the water is thinning -- and the
+// tilt IS the flow arrow. Nothing has to work out a direction.
+//
+// DRY CELLS ARE SKIPPED, NOT COUNTED AS ZERO, and that is the whole of
+// the rule. The first draft counted air as a height of nothing, on the
+// reasoning that the water ends there and ought to slope down into it.
+// It does not survive the simplest case: a single puddle with air on
+// all sides has three dry cells at every corner, so a level-4 cell --
+// half a block of water -- would have drawn as a film an eighth deep.
+// A lone cell should read as exactly as deep as it is, and with dry
+// cells skipped it does: it is the only liquid at each of its corners,
+// so all four come out at its own height and the surface is flat.
+static float fluid_corner(vox_grid_t const* g, int x, int y, int z, int cx, int cz) {
+    float sum = 0.0f;
+    int   n   = 0;
+    for (int dz = -1; dz <= 0; dz++) {
+        for (int dx = -1; dx <= 0; dx++) {
+            int const px = x + cx + dx, pz = z + cz + dz;
+            // Liquid directly above: the column carries on up through
+            // this corner, so there is no dip in it at all.
+            if (block_kind(grid_cell(g, px, y + 1, pz)) == K_LIQUID) return 1.0f;
+            if (block_kind(grid_cell(g, px, y, pz)) != K_LIQUID) continue;
+            sum += voxel_fluid_height(grid_data(g, px, y, pz));
+            n++;
+        }
+    }
+    // The cell itself is always one of the four, so n is never 0.
+    return n > 0 ? sum / (float)n : voxel_fluid_height(grid_data(g, x, y, z));
+}
+
+static void emit_fluid(mesh_t* m, vox_grid_t const* g, int x, int y, int z, uint8_t mat) {
+    float const X = (float)(x + g->x0), Y = (float)(y + g->y0), Z = (float)(z + g->z0);
+    float const uv[4][2] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+
+    // The four corners, (x, z) then (x+1, z) then (x+1, z+1) then
+    // (x, z+1) -- anticlockwise seen from above.
+    float const h00 = fluid_corner(g, x, y, z, 0, 0);
+    float const h10 = fluid_corner(g, x, y, z, 1, 0);
+    float const h11 = fluid_corner(g, x, y, z, 1, 1);
+    float const h01 = fluid_corner(g, x, y, z, 0, 1);
+
+    // THE SURFACE, both ways round. Only where there is air over it --
+    // the same condition the greedy pass uses for a full cell, so a
+    // flow running under an overhang has no top face either.
+    //
+    // EACH COPY IS A DIRECTIONAL FACE, one winding, exactly as the
+    // greedy pass emits the flat version. The plants next door do the
+    // opposite -- both windings at MESH_DIR_NONE, let the general cull
+    // sort it out -- and that is right for a quad standing on its edge,
+    // which has no direction to name. A water surface has one, it is
+    // within a few degrees of straight up however the corners tilt, and
+    // naming it lets the renderer drop the wrong copy on a compare
+    // instead of on a cross product. Over a pool that is the difference
+    // between 12 triangles a cell and 20, and the triangle budget is
+    // the thing this renderer runs out of first (F-63).
+    if (block_kind(grid_cell(g, x, y + 1, z)) == K_AIR) {
+        int const a = mesh_vert(m, v3(X, Y + h00, Z)), b = mesh_vert(m, v3(X + 1.0f, Y + h10, Z));
+        int const c = mesh_vert(m, v3(X + 1.0f, Y + h11, Z + 1.0f)), d = mesh_vert(m, v3(X, Y + h01, Z + 1.0f));
+        if (a < 0 || b < 0 || c < 0 || d < 0) return;
+        mesh_set_dir(m, MESH_DIR_PY);
+        mesh_quad(m, d, c, b, a, mat, uv);  // seen from above
+        mesh_set_dir(m, MESH_DIR_NY);
+        mesh_quad(m, a, b, c, d, mat, uv);  // ... and from under it
+    }
+
+    // THE SIDES, against air and against shallower water. Each one runs
+    // from whatever the neighbour's surface is up to this cell's two
+    // corners on that edge, so the step between two levels is closed
+    // rather than left as a tear you can see the riverbed through.
+    static int const SX[4]  = {1, -1, 0, 0};
+    static int const SZ[4]  = {0, 0, 1, -1};
+    static uint8_t const SD[4] = {MESH_DIR_PX, MESH_DIR_NX, MESH_DIR_PZ, MESH_DIR_NZ};
+    for (int i = 0; i < 4; i++) {
+        int const          nx = x + SX[i], nz = z + SZ[i];
+        block_kind_t const nk = block_kind(grid_cell(g, nx, y, nz));
+        if (nk != K_AIR && nk != K_LIQUID && nk != K_PLANT) continue;  // a cube hides it
+        float const base = fluid_surface(g, nx, y, nz);
+
+        // The two corners of this cell along that edge.
+        float t0, t1;
+        vec3_t p0, p1;
+        if (SX[i] == 1) {
+            t0 = h10, t1 = h11;
+            p0 = v3(X + 1.0f, 0.0f, Z), p1 = v3(X + 1.0f, 0.0f, Z + 1.0f);
+        } else if (SX[i] == -1) {
+            t0 = h01, t1 = h00;
+            p0 = v3(X, 0.0f, Z + 1.0f), p1 = v3(X, 0.0f, Z);
+        } else if (SZ[i] == 1) {
+            t0 = h11, t1 = h01;
+            p0 = v3(X + 1.0f, 0.0f, Z + 1.0f), p1 = v3(X, 0.0f, Z + 1.0f);
+        } else {
+            t0 = h00, t1 = h10;
+            p0 = v3(X, 0.0f, Z), p1 = v3(X + 1.0f, 0.0f, Z);
+        }
+        if (t0 <= base && t1 <= base) continue;  // the neighbour is as full: no step
+        float const b0 = t0 < base ? t0 : base, b1 = t1 < base ? t1 : base;
+
+        // Outward only. The inward copy would be the wall of the step
+        // seen from INSIDE the water, which is an eighth of a block of
+        // sliver in a view that is already tinted and murky -- not
+        // worth doubling the cost of every flowing cell for. The
+        // SURFACE keeps its second copy, which is the one D-86 was
+        // actually about.
+        mesh_set_dir(m, SD[i]);
+        int const a = mesh_vert(m, v3(p0.x, Y + t0, p0.z)), b = mesh_vert(m, v3(p1.x, Y + t1, p1.z));
+        int const c = mesh_vert(m, v3(p1.x, Y + b1, p1.z)), d = mesh_vert(m, v3(p0.x, Y + b0, p0.z));
+        if (a < 0 || b < 0 || c < 0 || d < 0) return;
+        mesh_quad(m, a, b, c, d, mat, uv);
+    }
+    mesh_set_dir(m, MESH_DIR_NONE);
+}
+
 static void emit_plant(mesh_t* m, int x, int y, int z, uint8_t mat) {
     // Both windings of each quad are emitted, so a plant is visible from
     // either side. That is the opposite of a directional face: leave it
@@ -220,6 +399,16 @@ void voxel_mesh_build(mesh_t* m, vox_grid_t const* g, vox_mesh_mode_t mode) {
         return;
     }
     float const step = (float)g->step;
+    // WHICH LIQUIDS THE GREEDY PASS STILL OWNS. A source or a still
+    // block of ocean is a full cube and merges with its neighbours like
+    // anything else -- which matters, because that is where all the
+    // water in a world actually is. Only the flows and the falls are
+    // taken out and shaped one at a time, and only on the near meshes:
+    // a film half a block deep is not something anybody can see at the
+    // far level of detail, so it keeps the cheap full-height surface
+    // there, exactly as the plants do.
+    bool const shaped_fluids = mode == VOX_MESH_FANCY && g->step == 1 && g->data != NULL;
+#define SHAPED(x, y, z) (shaped_fluids && fluid_is_shaped(g, (x), (y), (z)))
     for (int k = 0; k < 6; k++) {
         dir_t const dir = DIRS[k];
         // The slices along the face's axis, and each slice's (p, q) plane.
@@ -279,14 +468,14 @@ void voxel_mesh_build(mesh_t* m, vox_grid_t const* g, vox_mesh_mode_t mode) {
                         // closes a seam, so it should match the ground.
                         v = (uint16_t)(((unsigned)LIGHT(x + nx, y + ny, z + nz) << 8) |
                                        (unsigned)(mode_mat(b, edge ? VF_TOP : face, mode) + 1));
-                    } else if (kb == K_LIQUID && ny > 0 && block_kind(nb) == K_AIR) {
+                    } else if (kb == K_LIQUID && ny > 0 && block_kind(nb) == K_AIR && !SHAPED(x, y, z)) {
                         // THE SURFACE, and the only face a liquid has: no
                         // sides, no bottom, and a top only where there is
                         // air above it. Lit by that air, so it reads as
                         // sky on water rather than as the gloom below.
                         v = (uint16_t)(((unsigned)LIGHT(x + nx, y + ny, z + nz) << 8) |
                                        (unsigned)(voxel_face_mat(b, VF_TOP) + 1));
-                    } else if (kb == K_AIR && ny < 0 && block_kind(nb) == K_LIQUID) {
+                    } else if (kb == K_AIR && ny < 0 && block_kind(nb) == K_LIQUID && !SHAPED(x, y - 1, z)) {
                         // THE UNDERSIDE of that same surface, emitted by
                         // the air cell above it so that it lands on the
                         // same plane (emit() puts a +y face at y+1 and a
@@ -345,6 +534,14 @@ void voxel_mesh_build(mesh_t* m, vox_grid_t const* g, vox_mesh_mode_t mode) {
                 uint8_t const      b = CELL(x, y, z);
                 block_kind_t const k = block_kind(b);
                 int const          X = x + g->x0, Y = y + g->y0, Z = z + g->z0;
+                // A FLOW OR A FALL, shaped by hand. Lit by the air over
+                // it, like the flat surface the greedy pass emits, so
+                // the top of a stream reads as sky on water rather than
+                // as the gloom of whatever it is running through.
+                if (k == K_LIQUID && SHAPED(x, y, z)) {
+                    mesh_set_light(m, LIGHT(x, y + 1, z));
+                    emit_fluid(m, g, x, y, z, (uint8_t)voxel_face_mat(b, VF_TOP));
+                }
                 if (k == K_PLANT || k == K_TORCH || k == K_SIGN) mesh_set_light(m, LIGHT(x, y, z));  // lit by its own cell
                 if (k == K_SIGN) emit_sign(m, X, Y, Z);
                 if (k == K_PLANT && mode == VOX_MESH_FANCY) emit_plant(m, X, Y, Z, (uint8_t)voxel_face_mat(b, VF_SIDE));
@@ -374,6 +571,7 @@ void voxel_mesh_build(mesh_t* m, vox_grid_t const* g, vox_mesh_mode_t mode) {
         }
     }
     mesh_set_light(m, MESH_LIGHT_FULL);
+#undef SHAPED
 #undef LIGHT
 #undef CELL
 #undef CIDX

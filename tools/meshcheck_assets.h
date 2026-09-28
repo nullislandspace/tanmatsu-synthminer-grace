@@ -214,6 +214,154 @@ static void check_voxel_mesher(void) {
         CHECK(water_faces == 0, "voxel: a roofed pool still drew %d water tris", water_faces);
         mesh_free(&m);
     }
+    // FLOWING WATER, which is the half of D-86 that a lake never
+    // exercised. A source is a full cube and still goes through the
+    // greedy pass untouched -- checked below, because leaving every
+    // ocean alone is the point. A FLOW is not a cube at all: its
+    // surface stands part-way up the cell, its corners are averaged
+    // from its neighbours so the sheet tilts the way it is running, and
+    // it draws sides.
+    //
+    // The sides are the part with a bug behind them. D-86's rule --
+    // a liquid draws no sides -- is right for a lake, where the only
+    // place a side could show is the rim. Applied to a falling column
+    // in mid-air it emits NOTHING: no top, because the cell above is
+    // water; no bottom; no sides. The waterfall is invisible between
+    // the spring and the splash, and no host check would have said so,
+    // because every water test until now was a pool.
+    vg_clear();
+    vg_fill(1, 1, 1, 4, 1, 4, BLK_STONE);
+    {
+        static uint8_t data[sizeof(s_vg)];
+        mesh_t         m;
+        vox_grid_t const g = {.cells = s_vg, .w = VG, .h = VG, .d = VG, .step = 1, .data = data};
+
+        // (a) A LONE PUDDLE half a block deep draws its surface at half
+        //     a block, and flat -- it is the only water at each of its
+        //     corners, so there is nothing to tilt towards.
+        memset(data, 0, sizeof(data));
+        *vg_cell(2, 2, 2)        = BLK_WATER;
+        data[vg_index(2, 2, 2)]  = 4;  // level 4 of 7
+        mesh_init(&m);
+        voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+        float wlo = 1e9f, whi = -1e9f;
+        int   wet = 0;
+        for (int i = 0; i < m.tn; i++) {
+            if (m.t[i].mat != VM_WATER) continue;
+            wet++;
+            uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
+            for (int k = 0; k < 3; k++) {
+                float const yy = m.v[vi[k]].y;
+                if (yy < wlo) wlo = yy;
+                if (yy > whi) whi = yy;
+            }
+        }
+        printf("voxel: a level-4 puddle: %d water tris, y %.3f..%.3f\n", wet, (double)wlo, (double)whi);
+        CHECK(wet > 0, "voxel: a shallow puddle drew nothing at all");
+        CHECK(fabsf(whi - 2.5f) < 1e-4f, "voxel: a level-4 puddle's surface is at y %.3f, expected 2.500",
+              (double)whi);
+        CHECK(fabsf(wlo - 2.0f) < 1e-4f, "voxel: a puddle's sides start at y %.3f, expected 2.000", (double)wlo);
+        // AND WHAT IT COSTS, pinned. A cell with water on no side is
+        // the worst case -- surface both ways plus four walls -- and a
+        // pool of a hundred of them has to stay affordable against a
+        // 4096-triangle budget that has overflowed before (F-63). One
+        // winding a wall and a named direction on every face is what
+        // holds this at 12; going back to both windings makes it 20.
+        CHECK(wet <= 12, "voxel: a lone flowing cell costs %d triangles, budgeted 12", wet);
+        mesh_free(&m);
+
+        // (b) A FALLING COLUMN is visible all the way down. The
+        //     regression that started this: before flows were shaped,
+        //     the three cells between the spring and the floor emitted
+        //     nothing whatsoever.
+        memset(data, 0, sizeof(data));
+        vg_clear();
+        vg_fill(1, 1, 1, 4, 1, 4, BLK_STONE);
+        *vg_cell(2, 5, 2) = BLK_WATER;  // the spring
+        for (int y = 2; y <= 4; y++) {
+            *vg_cell(2, y, 2)       = BLK_WATER;
+            data[vg_index(2, y, 2)] = VOX_FLUID_FALLING;
+        }
+        mesh_init(&m);
+        voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+        int mid = 0;  // water triangles strictly between the floor and the spring
+        for (int i = 0; i < m.tn; i++) {
+            if (m.t[i].mat != VM_WATER) continue;
+            uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
+            for (int k = 0; k < 3; k++) {
+                if (m.v[vi[k]].y > 2.01f && m.v[vi[k]].y < 4.99f) {
+                    mid++;
+                    break;
+                }
+            }
+        }
+        printf("voxel: a falling column: %d water tris, %d of them below the spring\n", m.tn, mid);
+        CHECK(mid > 0, "voxel: a waterfall is invisible between its spring and the floor");
+        mesh_free(&m);
+
+        // (c) A SHEET THINNING OUT slopes. Levels 1..4 running east:
+        //     each cell's surface has to be lower than the one before
+        //     it, or there is no way to see which way the water is
+        //     going -- which was the whole objection to leaving every
+        //     level at full height.
+        memset(data, 0, sizeof(data));
+        vg_clear();
+        vg_fill(1, 1, 1, 5, 1, 5, BLK_STONE);
+        for (int i = 0; i < 4; i++) {
+            *vg_cell(1 + i, 2, 2)       = BLK_WATER;
+            data[vg_index(1 + i, 2, 2)] = (uint8_t)(i + 1);
+        }
+        mesh_init(&m);
+        voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+        // The highest water vertex at each x-plane of the sheet.
+        float top[6];
+        for (int i = 0; i < 6; i++) top[i] = -1e9f;
+        for (int i = 0; i < m.tn; i++) {
+            if (m.t[i].mat != VM_WATER) continue;
+            uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
+            for (int k = 0; k < 3; k++) {
+                int const xi = (int)(m.v[vi[k]].x + 0.01f);
+                if (xi >= 0 && xi < 6 && m.v[vi[k]].y > top[xi]) top[xi] = m.v[vi[k]].y;
+            }
+        }
+        printf("voxel: a sheet thinning east: surface %.3f %.3f %.3f %.3f %.3f\n", (double)top[1],
+               (double)top[2], (double)top[3], (double)top[4], (double)top[5]);
+        for (int i = 1; i <= 4; i++) {
+            CHECK(top[i] > top[i + 1] + 1e-4f,
+                  "voxel: the sheet does not slope: surface at x=%d is %.3f, at x=%d %.3f", i, (double)top[i],
+                  i + 1, (double)top[i + 1]);
+        }
+        mesh_free(&m);
+
+        // (d) AND A SOURCE POOL IS UNTOUCHED. The same 2x2 lake as
+        //     above, but now WITH a data plane -- which is what the
+        //     game always passes for a near mesh, so if shaping had
+        //     leaked into full cells this is where it would show. Two
+        //     merged quads, no sides: D-86, unchanged.
+        memset(data, 0, sizeof(data));
+        vg_clear();
+        vg_fill(2, 1, 2, 3, 1, 3, BLK_STONE);
+        vg_fill(2, 2, 2, 3, 2, 3, BLK_WATER);
+        mesh_init(&m);
+        voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+        int up = 0, down = 0, side = 0, free_ = 0;
+        for (int i = 0; i < m.tn; i++) {
+            if (m.t[i].mat != VM_WATER) continue;
+            switch (m.t[i].dir) {
+                case MESH_DIR_NONE: free_++; break;
+                case MESH_DIR_PY: up++; break;
+                case MESH_DIR_NY: down++; break;
+                default: side++; break;
+            }
+        }
+        printf("voxel: a source pool with a data plane: up %d, down %d, side %d, shaped %d\n", up, down, side,
+               free_);
+        CHECK(up == 2 && down == 2 && side == 0 && free_ == 0,
+              "voxel: shaping leaked into a source pool (up %d down %d side %d shaped %d)", up, down, side,
+              free_);
+        mesh_free(&m);
+    }
+
     // A TORCH, on the floor and on a wall. The shape follows the
     // block's data field, which is the first thing in this game whose
     // geometry depends on how it was placed -- so the check is where
