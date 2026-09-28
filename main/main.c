@@ -20,6 +20,7 @@
 #include <string.h>
 #include <time.h>
 #include "audio/audio.h"
+#include "bsp/power.h"
 #include "audio/music.h"
 #include "common/trace.h"
 
@@ -791,6 +792,24 @@ static void on_init(void* user) {
     (void)user;
     ESP_LOGI(TAG, "SynthMiner on SynthEngine3D %s", se_version_string());
     devtest_start(&TEST);
+
+    // THE RADIO OFF. The ESP32-C6 beside the P4 is the WiFi and
+    // Bluetooth co-processor, and this game uses neither -- nor does
+    // graceloader any more, which stopped linking ESP-Hosted on
+    // 2026-09-28 (F-116). Left enabled it is a second chip drawing
+    // current for nothing, on a handheld running off a battery.
+    //
+    // HERE RATHER THAN IN THE LOADER because the loader deliberately
+    // initialises nothing -- "The app decides what to initialize"
+    // (graceloader main.c) -- and bsp_power_set_radio_state() needs a
+    // coprocessor handle that only bsp_device_initialize() creates. By
+    // the time on_init runs, the engine has done that.
+    //
+    // Not fatal if it fails: a badge whose coprocessor will not answer
+    // has a bigger problem than the radio, and it is not this game's to
+    // report.
+    esp_err_t const radio = bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_OFF);
+    ESP_LOGI(TAG, "radio (ESP32-C6): %s", radio == ESP_OK ? "powered down" : esp_err_to_name(radio));
 
     // THE ENGINE'S OWN SPLASH, with its version -- the first thing the
     // program shows. `se_splash()` rather than `se_splash_ex()`,
