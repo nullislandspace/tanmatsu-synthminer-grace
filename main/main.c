@@ -195,6 +195,7 @@ static double      s_title_t0;
 static bool enter_title(void);
 static bool enter_world(int slot, bool create, char const* name, uint32_t seed);
 static void save_world(char const* why);
+static void save_world_ex(char const* why, bool wait);
 // How much of the world has to be there before play starts (D-26).
 typedef enum {
     LOAD_GATE_ALL = 0,  // everything in the view distance
@@ -1298,7 +1299,62 @@ static bool enter_replay(void) {
 // Write everything the open world owns: the player, and every resident
 // chunk that has been edited. NEVER on a tick (Part N) -- only here, on
 // an explicit save, on leaving, and on eviction.
+// Ask for the dirty chunks and DO NOT WAIT. For pausing, where the
+// world stays resident and nothing is at risk: whatever the queue
+// refuses is still CF_EDITED and will be written on eviction or at the
+// next save that does wait.
+//
+// Because the waiting kind blocks the RENDER TASK. The badge, 2026-09-28:
+// one frame with `rest 1797.77` -- 1.8 seconds of nothing -- when Esc
+// was pressed, which is 47 saves at 16 ms plus two region compactions
+// at 325 and 449 ms, all drained on the task that draws. The user saw
+// it as "the menu took a while to pop up".
+static int request_dirty_chunks(void) {
+    int asked = 0;
+    for (int i = 0; i < CH_SLOT_COUNT; i++) {
+        chunk_t const* c = chunk_slot_at(i);
+        if (c->cstate != CS_READY || (c->flags & CF_EDITED) == 0) continue;
+        if (chunk_worker_request_save(c->cx, c->cz)) asked++;
+    }
+    return asked;
+}
+
+// Write every resident chunk that differs from the card, and do not
+// stop until there are none left. Returns how many were written.
+//
+// IN PASSES, because the worker's queue is 48 deep and a full view is
+// 81 chunks: one sweep asking for all of them has 33 REFUSED, and a
+// refusal is silent. The badge reported it twice on 2026-09-28 -- the
+// title world went to the card with 49 of its 81 chunks, and a pause
+// menu said "saved: 48 chunk(s)", which is the queue's size wearing a
+// number's clothes. Whatever is refused stays CF_EDITED, so the next
+// pass picks it up; the loop ends when a sweep asks for nothing.
+//
+// The bound is a safety net, not a plan: with 256 slots and a queue of
+// 48, six passes clear any possible backlog.
+static int save_dirty_chunks(void) {
+    int written = 0;
+    for (int pass = 0; pass < 8; pass++) {
+        int asked = 0;
+        for (int i = 0; i < CH_SLOT_COUNT; i++) {
+            chunk_t const* c = chunk_slot_at(i);
+            if (c->cstate != CS_READY || (c->flags & CF_EDITED) == 0) continue;
+            if (chunk_worker_request_save(c->cx, c->cz)) asked++;
+        }
+        // Take delivery before asking again: the queue has to drain for
+        // the next sweep to get anywhere.
+        while (!chunk_worker_idle()) chunk_worker_collect(64);
+        if (asked == 0) break;
+        written += asked;
+    }
+    return written;
+}
+
 static void save_world(char const* why) {
+    save_world_ex(why, true);
+}
+
+static void save_world_ex(char const* why, bool wait) {
     if (s_app != APP_PLAY) return;
 
     if (s_player_ready) {
@@ -1320,19 +1376,12 @@ static void save_world(char const* why) {
     int64_t const now    = (int64_t)time(NULL);
     if (now > 0) s_meta.last_played = now;
 
-    int chunks = 0;
-    for (int i = 0; i < CH_SLOT_COUNT; i++) {
-        chunk_t const* c = chunk_slot_at(i);
-        if (c->cstate != CS_READY || (c->flags & CF_EDITED) == 0) continue;
-        if (chunk_worker_request_save(c->cx, c->cz)) chunks++;
-    }
-    // The saves were queued; take delivery of them all before claiming
-    // the world is on the card.
-    while (!chunk_worker_idle()) chunk_worker_collect(64);
+    int const chunks = wait ? save_dirty_chunks() : request_dirty_chunks();
 
     s_items.n     = item_entity_copy(s_items.e, ITEM_ENTITY_MAX);
     bool const ok = worldstore_save(&s_meta, &s_saved, &s_items);
-    ESP_LOGI(TAG, "saved (%s): %d chunk(s), level.smw %s", why, chunks, ok ? "written" : "FAILED");
+    ESP_LOGI(TAG, "saved (%s): %d chunk(s)%s, level.smw %s", why, chunks, wait ? "" : " queued",
+             ok ? "written" : "FAILED");
     menu_status(ok ? "Saved" : "SAVING FAILED");
 }
 
@@ -1471,13 +1520,7 @@ static void loading_step(void) {
         if (title_is_fresh()) {
             int const     n  = title_write_letters();
             int64_t const t0 = esp_timer_get_time();
-            int           chunks = 0;
-            for (int i = 0; i < CH_SLOT_COUNT; i++) {
-                chunk_t const* c = chunk_slot_at(i);
-                if (c->cstate != CS_READY || (c->flags & CF_EDITED) == 0) continue;
-                if (chunk_worker_request_save(c->cx, c->cz)) chunks++;
-            }
-            while (!chunk_worker_idle()) chunk_worker_collect(64);
+            int const     chunks = save_dirty_chunks();
             bool const lvl = worldstore_save(&s_meta, &s_saved, NULL);
             bool const mrk = lvl && worldstore_title_mark(SM_TITLE_GEN);
             ESP_LOGI(TAG, "title world built: %d letter block(s), %d chunk(s) written in %.1f s, %s", n, chunks,
@@ -1873,7 +1916,8 @@ static void on_input(bsp_input_event_t const* ev, void* user) {
             s_cam_mode = CAM_PLAYER;
             tick_reset(&s_tick, showtime_now());
         }
-        save_world("pausing");
+        // Queued, not waited for: see request_dirty_chunks().
+        save_world_ex("pausing", false);
         menu_open_pause();
         return;
     }
