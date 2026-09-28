@@ -69,6 +69,16 @@ typedef struct {
     // happened: the check itself is microseconds.
     int32_t compact_n;
     int64_t compact_us, compact_max;
+    // Chunk writes the CARD refused. Nothing is lost when this moves --
+    // the chunk stays dirty and is retried, and the streamer will not
+    // evict a chunk it could not write -- but a world that is not
+    // reaching the card is worth saying out loud, and until 2026-09-28
+    // nothing did.
+    //
+    // It is also the thing to watch if streaming ever stalls: chunks
+    // that cannot be written pin their slots, so a card failing for
+    // long enough fills the ring and the world stops arriving.
+    int32_t save_failed;
 } chunk_worker_io_t;
 
 void chunk_worker_io_stats(chunk_worker_io_t* out);

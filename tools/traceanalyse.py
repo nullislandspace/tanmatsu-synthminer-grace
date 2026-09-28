@@ -68,7 +68,7 @@ def main():
 
 
 def report(raw_lines):
-    header, ticks, edits, meshes, drops, io, compacts = [], [], [], [], [], [], []
+    header, ticks, edits, meshes, drops, io, compacts, cardfails = [], [], [], [], [], [], [], []
     for raw in raw_lines:
         line = raw.strip()
         if not line:
@@ -84,6 +84,10 @@ def report(raw_lines):
             edits.append(f)
         elif kind == "M":
             meshes.append(f)
+        elif line.startswith("cardfail="):
+            if ticks:
+                f.setdefault("t", ticks[-1].get("t", "?"))
+            cardfails.append(f)
         elif line.startswith("compact "):
             if ticks:
                 f.setdefault("t", ticks[-1].get("t", "?"))
@@ -188,6 +192,11 @@ def report(raw_lines):
                     pass
             return best
 
+        if cardfails:
+            n = sum(int(r.get("cardfail", 0)) for r in cardfails)
+            print(f"  *** THE CARD REFUSED {n} CHUNK WRITE(S) in {len(cardfails)} second(s) ***")
+            print("      nothing is lost -- those chunks stay dirty and are retried -- but a")
+            print("      card that keeps refusing pins slots and the world stops streaming")
         if compacts:
             n = sum(int(r.get("n", 0)) for r in compacts)
             mx = max(int(r.get("max", "0us").rstrip("us")) for r in compacts)

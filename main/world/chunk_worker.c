@@ -107,6 +107,7 @@ static int64_t  s_load_max, s_save_max;
 static int32_t  s_load_n, s_save_n;
 static int64_t  s_compact_us, s_compact_max;
 static int32_t  s_compact_n;
+static int32_t  s_save_failed;  // writes the card refused; see apply()
 
 void chunk_worker_io_stats(chunk_worker_io_t* out) {
     if (out == NULL) return;
@@ -119,6 +120,7 @@ void chunk_worker_io_stats(chunk_worker_io_t* out) {
     out->compact_n   = s_compact_n;
     out->compact_us  = s_compact_us;
     out->compact_max = s_compact_max;
+    out->save_failed = s_save_failed;
 }
 
 void chunk_worker_gen_stats(int* n_ord, int64_t* us_ord, int* n_far, int64_t* us_far) {
@@ -321,6 +323,17 @@ static void apply(result_t* r) {
 
     if (r->kind == JOB_SAVE) {
         if (r->ok) s_saved_total++;
+        // A WRITE THAT FAILED. The card is what fails here: the badge
+        // reported dozens of `sdmmc_write_blocks failed (0x106)` under
+        // save bursts on 2026-09-28, and nothing in the game noticed --
+        // the driver logged it to a console a player does not have, and
+        // every counter carried on as if the world were being written.
+        //
+        // Nothing is LOST when this happens, and that is by design: the
+        // chunk keeps CF_EDITED below, and the streamer refuses to evict
+        // a chunk it could not write, so the save is retried for as long
+        // as it takes. What was missing was anybody saying so.
+        else s_save_failed++;
         // ONLY IF NOTHING CHANGED WHILE IT WAS BEING WRITTEN. The mesh
         // path above has always checked edit_seq; this one did not, and
         // cleared CF_EDITED on any successful save. A write that raced

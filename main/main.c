@@ -704,6 +704,10 @@ static void frame_stats(void) {
         ESP_LOGI(TAG, "card/s: %d load at %.1f ms (worst %.1f) | %d save at %.1f ms (worst %.1f)", load_n,
                  load_avg / 1000.0, io.load_max / 1000.0, save_n, save_avg / 1000.0, io.save_max / 1000.0);
     }
+    int const failed = io.save_failed - prev_io.save_failed;
+    if (failed > 0) {
+        ESP_LOGE(TAG, "card/s: %d chunk write(s) REFUSED BY THE CARD -- kept in memory and retried", failed);
+    }
     if (comp_n > 0) {
         ESP_LOGI(TAG, "card/s: %d region compaction(s) at %.1f ms (worst %.1f)", comp_n, comp_avg / 1000.0,
                  io.compact_max / 1000.0);
@@ -753,6 +757,7 @@ static void frame_stats(void) {
             .compact_n      = comp_n,
             .compact_avg_us = comp_avg,
             .compact_max_us = (int)io.compact_max,
+            .save_failed    = failed,
         });
     }
 
@@ -1333,7 +1338,10 @@ static int request_dirty_chunks(void) {
 // The bound is a safety net, not a plan: with 256 slots and a queue of
 // 48, six passes clear any possible backlog.
 static int save_dirty_chunks(void) {
-    int written = 0;
+    chunk_worker_flow_t before;
+    chunk_worker_flow(&before);
+
+    int left = 0;
     for (int pass = 0; pass < 8; pass++) {
         int asked = 0;
         for (int i = 0; i < CH_SLOT_COUNT; i++) {
@@ -1345,9 +1353,27 @@ static int save_dirty_chunks(void) {
         // the next sweep to get anywhere.
         while (!chunk_worker_idle()) chunk_worker_collect(64);
         if (asked == 0) break;
-        written += asked;
     }
-    return written;
+
+    // Still dirty? Then the CARD refused, not the queue -- a chunk whose
+    // write fails keeps CF_EDITED on purpose, so it is retried rather
+    // than lost, and eight sweeps is long past the point where a queue
+    // that merely overflowed would have caught up.
+    for (int i = 0; i < CH_SLOT_COUNT; i++) {
+        chunk_t const* c = chunk_slot_at(i);
+        if (c->cstate == CS_READY && (c->flags & CF_EDITED) != 0) left++;
+    }
+    if (left > 0) {
+        ESP_LOGE(TAG, "%d chunk(s) COULD NOT BE WRITTEN and are still only in memory -- the card is failing", left);
+    }
+
+    // COUNTED FROM THE WORKER'S OWN TOTAL, not from how many were
+    // queued. The first version of this returned the number it asked
+    // for, so a card that refused every write still reported a tidy
+    // "49 chunk(s)" -- a number that says the opposite of what happened.
+    chunk_worker_flow_t after;
+    chunk_worker_flow(&after);
+    return after.saved - before.saved;
 }
 
 static void save_world(char const* why) {
