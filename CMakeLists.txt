@@ -240,6 +240,24 @@ if(NOT DEFINED SM_STREAM_AUDIO)
 endif()
 add_compile_definitions(SM_STREAM_AUDIO=${SM_STREAM_AUDIO})
 
+# A MEASUREMENT BUILD ONLY. Seconds to sit still at the top of app_main
+# before anything is set up or allocated, so the console can be attached
+# in time to read the lines that only print once -- which memory the
+# engine's lists landed in, what the textures cost, how much internal
+# SRAM is left. Only one USB mode is live at a time, so reaching the
+# console means leaving BadgeLink mode, and by the time that is done an
+# ordinary boot has printed them and gone.
+#
+#   idf.py -DSM_BOOT_DELAY_S=10 build    (or: make BOOT_DELAY=10 install)
+#
+# 0 in every ordinary build, and the build says so out loud when it is
+# not, because a ten-second stare at a blank screen is exactly the kind
+# of thing that ships by accident.
+if(NOT DEFINED SM_BOOT_DELAY_S)
+  set(SM_BOOT_DELAY_S 0)
+endif()
+add_compile_definitions(SM_BOOT_DELAY_S=${SM_BOOT_DELAY_S})
+
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/synthengine3D/CMakeLists.txt)
     message(STATUS "SynthEngine3D: building synthengine3D/")
     add_subdirectory(synthengine3D)

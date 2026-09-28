@@ -51,10 +51,12 @@ all: build
 build: check
 	@echo "=== Building app.so ==="
 	mkdir -p $(BUILD)
-	cd $(BUILD) && cmake -DSM_STREAM_AUDIO=$(if $(STREAM_AUDIO),$(STREAM_AUDIO),0) .. && make
+	cd $(BUILD) && cmake -DSM_STREAM_AUDIO=$(if $(STREAM_AUDIO),$(STREAM_AUDIO),0) -DSM_BOOT_DELAY_S=$(if $(BOOT_DELAY),$(BOOT_DELAY),0) .. && make
 	$(MAKE) symcheck
 	@if [ -n "$(STREAM_AUDIO)" ] && [ "$(STREAM_AUDIO)" != "0" ]; then \
 	  echo "*** STREAMING AUDIO IS ON in this build (measurement run) ***"; fi
+	@if [ -n "$(BOOT_DELAY)" ] && [ "$(BOOT_DELAY)" != "0" ]; then \
+	  echo "*** THIS BUILD WAITS $(BOOT_DELAY)s AT BOOT (measurement run) ***"; fi
 	@echo "=== Build complete: $(BUILD)/app.so ==="
 
 # Every symbol the app calls must be one graceloader exports, or the app

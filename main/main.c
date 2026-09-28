@@ -2167,6 +2167,18 @@ static void on_render(pax_buf_t* fb, void* user) {
 }
 
 void app_main(void) {
+#if SM_BOOT_DELAY_S > 0
+    // Not an ordinary build (CMakeLists.txt, SM_BOOT_DELAY_S). Hold here
+    // so the console can be attached before the lines that print once go
+    // past: the engine says which memory its triangle lists landed in
+    // the first time a texture is loaded, and that answer decides
+    // whether a cap can be raised. Counted down out loud, so attaching
+    // halfway through still shows how much time is left.
+    for (int left = SM_BOOT_DELAY_S; left > 0; left--) {
+        ESP_LOGW(TAG, "boot delay %d s -- measurement build, SM_BOOT_DELAY_S", left);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+#endif
     static se_app_config_t const cfg = {
         // F1-F6 are the hotbar (D-05), so the engine does not get F1.
         // Leaving is Esc, which becomes the pause menu in step 5.3 --

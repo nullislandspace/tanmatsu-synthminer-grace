@@ -1426,7 +1426,7 @@ reason Minecraft chose the other rule.
 | 44 | **Why the livestream stalls, and audio shipped off** | done (video), **audio parked** | 2026-09-27, out of the user's packet capture and then five rounds of instrumentation (F-102..F-108). **Nothing was wrong with the link or the game.** The capture exonerated the network -- clean continuity counters on all five PIDs, 0 bad sync bytes, `dgfail` 33/11688, constant arrival-minus-PTS skew -- and the badge's own counters exonerated everything else: PPA 14.5 ms, H.264 8.0 ms and mux 2 ms constant in and out of collapse, `pub` 9-10 offers/s throughout, `audn` 86.1 pushes/s at 24 us straight through. **STARVED was 0%**, so the task held the CPU and the `WORKER_PRIO` change I had been about to make could never have helped. Three theories died on facts already in hand (F-104: `chunk_worker.c` has no mutex at all; the job queue is `xQueueSend(..., 0)`; core 1 was not saturated). The accounting did not close until three untimed calls were timed (F-103), and `aud_us` turned out to be measuring the mixer's push rather than the encode, so the MP2 cost had never been measured on hardware at all. The answer is F-108: `allocate()` sweeping the encoder's 5.6 KB struct out of PSRAM, 1.3 ms -> 160 ms, a 125x swing. The fix is written and **unmeasured** -- it takes the codec to 22.5 KB of internal SRAM and chunk loading broke -- so the user's call was *"Fuck audio streaming for now."* `SM_STREAM_AUDIO` is 0 in every ordinary build (`make STREAM_AUDIO=1` for a measurement run, which prints a banner), the code all stays, and with it off `se_stream_audio_prepare()` is never called so no buffer, ring or PID exists. **Owed before anyone tries again: an internal-RAM budget for the whole app.** The instruments stay in the tree -- `tools/streamcap.py`, `tools/streamanalyse.py`, `tools/infoanalyse.py`, and `/sd/defuckinfo.txt` written by `se_stream_stop()` -- because the console is what the stream takes away, and every wrong turn in this round was reasoning where a timer would have answered. |
 | 45 | **App icons** | done | 2026-09-28, asked for by the user: the three icons `metadata.json` names were placeholder question marks. They are the game's iron pickaxe on the game's own stone darkened right down, generated like the textures -- `tools/make_icons.py` imports `sm_stone` from `make_textures.py` rather than copying it, so the backdrop cannot drift from the rock the player digs. One drawing on a 16-unit grid multiplied by 1, 2 and 4, so the three sizes stay one picture; `make icons` regenerates them byte-identically. Two shapes earned comments by being wrong first -- a flat bar with two teeth under it reads as a table with a stick leaning on it, and a shaft that passes the head makes the whole icon a figure 7 -- and the dark outline is skipped at 16, where it merges with the background instead of separating from it. |
 | 46 | **The app repository gets the whole game** | done, **publish not committed** | 2026-09-28, the user: *"Verify that metadata.json includes all required files... And make sure that `make apprepo` also copies the files correctly."* Both were broken, and F-109 is why neither could have been noticed here. `metadata.json`'s asset list is now generated from the same directories the install rules glob (`tools/make_metadata.py`, `make metadata`, `make metadatacheck`, and `metadata` is a dependency of `make check`); `apprepo` copies the textures and the music and then `tools/apprepocheck.py` walks what the file promises, reporting anything stale **without deleting it**, because `APP_REPO_PATH` points outside this checkout. The publish was run for real into `../tanmatsu-app-repository/at.cavac.synthminer` -- a first publish, the slug directory had never existed -- and verified four ways: the repository's own schema against all 64 apps (0 failing), 70 promised files present and 0 unexpected, the runtime layout traced from `install_basepath` to `texcache_init`, and all 61 texture names the code can ask for resolved. The comma left the description and the torch flame found its file (F-110). **The directory is untracked in that repository and left for the user**, since committing there is a pull request. |
-| 47 | **Blocks that did not appear, and leaves that felled trees** | done (render cap still open) | 2026-09-28, both out of the user's play session. F-111 and F-112. The render bug was two faults: a dense canopy asks for 8540 textured triangles against a 4096 cap, **and** submission ran in slot order -- a wrapped coordinate hash -- so the overflow landed anywhere, including the chunk underfoot, and moved as the player walked. Now sorted near to far, so a full list loses its far edge into the fog, and the drop counter is on the position overlay instead of only in a console no player has. **The cap is deliberately unchanged** until the badge says whether the list is in internal SRAM or PSRAM. Felling: Part F gave one flag two jobs, so `BF_FELLABLE` now means tree material (what a fell spreads through) and `BF2_TRUNK` what starts one; worldcheck covers both directions. |
+| 47 | **Blocks that did not appear, and leaves that felled trees** | felling **done**; render bug **NOT found** | 2026-09-28, both out of the user's play session. F-111 and F-112. The render bug was two faults: a dense canopy asks for 8540 textured triangles against a 4096 cap, **and** submission ran in slot order -- a wrapped coordinate hash -- so the overflow landed anywhere, including the chunk underfoot, and moved as the player walked. Now sorted near to far, so a full list loses its far edge into the fog, and the drop counter is on the position overlay instead of only in a console no player has. **The badge then refuted the capacity half** (see F-111's correction): the textured list is in PSRAM and peaks at 1340 of 4096 in real play, nothing is dropped, and the host figure was inflated six times over by counting underground sections and the whole 360 degrees. The sort stays as defensive work; **the missing blocks are still unexplained**, and the drop counter on the overlay is now the instrument that will say whether the lists are involved at all. Felling: Part F gave one flag two jobs, so `BF_FELLABLE` now means tree material (what a fell spreads through) and `BF2_TRUNK` what starts one; worldcheck covers both directions. |
 
 ---
 
@@ -2662,9 +2662,41 @@ reason Minecraft chose the other rule.
   had connected the two. And the drop counter has been logged since D-72,
   to a console a player does not have while playing; it is now on the
   position overlay, which is where a number that means "the picture is
-  incomplete" has to be. **The cap itself was NOT raised**: at 68 bytes a
-  triangle 4096 is 272 KB, the engine tries internal SRAM first, and
-  after F-108 that is not a thing to guess at from here.
+  incomplete" has to be.
+
+  **CORRECTION, same day, from the badge: the capacity half of this
+  finding is WRONG, and the host measurement that produced it was
+  inflated about six times over.** The user's `make monitor` capture of
+  real play answers both questions:
+
+      scene: textured list: PSRAM (272KB, 4096 tris)
+      scene: geometry lists: tris=PSRAM (240KB) lines=INTERNAL (7KB)
+      scene: quarter-resolution depth plane: INTERNAL (187KB)
+      ... over two minutes of play, running through the test world:
+      textured peaks at 1340/4096 (33%)
+      flat     peaks at 3147/6144 (51%)
+
+  Nothing was dropped. The lists are in PSRAM, so raising the cap was
+  never the memory question I made it -- and it is not worth raising,
+  because it is a third full.
+
+  Where the 8540 came from: the tool summed EVERY vertical section of
+  every chunk within tex_dist, over the whole 360 degrees. The device
+  does neither. Per-section culling alone accounts for 3546 of the 8540
+  (42%) -- sections at y 0-31 with the eye at y 52, which is F-33's
+  "the underground half is 68% of a chunk's triangles" restated -- and
+  the frustum takes most of what is left. 4994 survive the vertical cut
+  over 360 degrees, and a ~90-degree view of that is about the 1340 the
+  badge actually reports.
+
+  **So the reported bug is still unexplained.** The near-to-far order is
+  right and stays -- it makes an overflow benign if one ever happens --
+  but it is defensive work, not the fix, and it should not have been
+  written up as one. The lesson is the one F-108 already taught and I
+  did not carry over: a host number that has not been reconciled against
+  the device is a hypothesis, and this one was reported as a measurement
+  in a commit message. What made it convincing was that it agreed with
+  what the user already suspected.
 - **F-110** 2026-09-28, found only because the app-repository publish forced
   an audit of every asset path: **`voxel_fx` asked for
   `synthminer/torch_flame.png`, and nothing has ever written a
