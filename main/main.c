@@ -688,6 +688,21 @@ static void frame_stats(void) {
     prev         = f;
     prev_evicted = evicted;
 
+    // What the CARD costs. Generation is already above; this is the
+    // filesystem, which is the half that a region directory full of
+    // files -- or a handle cache earning its keep -- shows up in.
+    static chunk_worker_io_t prev_io;
+    chunk_worker_io_t        io;
+    chunk_worker_io_stats(&io);
+    int const load_n = io.load_n - prev_io.load_n, save_n = io.save_n - prev_io.save_n;
+    int const load_avg = load_n > 0 ? (int)((io.load_us - prev_io.load_us) / load_n) : 0;
+    int const save_avg = save_n > 0 ? (int)((io.save_us - prev_io.save_us) / save_n) : 0;
+    if (load_n > 0 || save_n > 0) {
+        ESP_LOGI(TAG, "card/s: %d load at %.1f ms (worst %.1f) | %d save at %.1f ms (worst %.1f)", load_n,
+                 load_avg / 1000.0, io.load_max / 1000.0, save_n, save_avg / 1000.0, io.save_max / 1000.0);
+    }
+    prev_io = io;
+
     // What the meshes are holding. The 8 MiB chunk slab is fixed at
     // boot; this is the part that grows with the view distance.
     int          mesh_n = 0, chunk_n = 0;
@@ -722,6 +737,12 @@ static void frame_stats(void) {
             .mesh_kib     = (unsigned)(mesh_bytes / 1024),
             .psram_kib    = (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024),
             .internal_kib = (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+            .load_n       = load_n,
+            .save_n       = save_n,
+            .load_avg_us  = load_avg,
+            .save_avg_us  = save_avg,
+            .load_max_us  = (int)io.load_max,
+            .save_max_us  = (int)io.save_max,
         });
     }
 

@@ -90,6 +90,25 @@ static int32_t  s_farlands_x = FARLANDS_X_DEFAULT;
 static int64_t  s_gen_us[2];
 static int32_t  s_gen_n[2];
 
+// And the CARD: how long a chunk takes to come off it and go back on.
+// Generation is arithmetic and scales with the CPU; these two are the
+// filesystem, and they are what a directory full of region files, or a
+// cache that is working, actually shows up in. Worst as well as total,
+// because a mean hides the one that stalled a frame.
+static int64_t  s_load_us, s_save_us;
+static int64_t  s_load_max, s_save_max;
+static int32_t  s_load_n, s_save_n;
+
+void chunk_worker_io_stats(chunk_worker_io_t* out) {
+    if (out == NULL) return;
+    out->load_n   = s_load_n;
+    out->load_us  = s_load_us;
+    out->load_max = s_load_max;
+    out->save_n   = s_save_n;
+    out->save_us  = s_save_us;
+    out->save_max = s_save_max;
+}
+
 void chunk_worker_gen_stats(int* n_ord, int64_t* us_ord, int* n_far, int64_t* us_far) {
     *n_ord  = s_gen_n[0];
     *us_ord = s_gen_us[0];
@@ -126,7 +145,18 @@ static bool do_load(int32_t cx, int32_t cz) {
     chunk_t* c = chunk_slot_claimed(cx, cz);
     if (c == NULL || c->cstate != CS_LOADING) return false;  // main gave up the slot
 
+#ifndef SM_HOST
+    int64_t const tl0 = esp_timer_get_time();
+#endif
     int const r = world_chunk_load(c);
+#ifndef SM_HOST
+    if (r == 1) {
+        int64_t const dt = esp_timer_get_time() - tl0;
+        s_load_us += dt;
+        if (dt > s_load_max) s_load_max = dt;
+        s_load_n++;
+    }
+#endif
     if (r == 1) {
         // Repair the floor of a chunk written before it was forced. Any
         // chunk from the card may predate that rule, and re-forcing one
@@ -175,7 +205,18 @@ static bool do_mesh(int32_t cx, int32_t cz, int lod, int sect, mesh_t* out) {
 static bool do_save(int32_t cx, int32_t cz) {
     chunk_t const* c = chunk_find(cx, cz);
     if (c == NULL) return false;
+#ifndef SM_HOST
+    int64_t const ts0 = esp_timer_get_time();
+#endif
     if (!world_chunk_save(c)) return false;
+#ifndef SM_HOST
+    {
+        int64_t const dt = esp_timer_get_time() - ts0;
+        s_save_us += dt;
+        if (dt > s_save_max) s_save_max = dt;
+        s_save_n++;
+    }
+#endif
     // Rewrites leave dead bytes behind. Tidying them up is a whole-file
     // rewrite, so it happens here on core 1 and only when the waste has
     // actually built up -- never on the frame path.

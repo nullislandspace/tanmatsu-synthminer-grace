@@ -901,6 +901,11 @@ static void check_region(void) {
 
 // Damage a region on purpose and check what survives.
 static void poke(char const* path, long off, int len, uint8_t with) {
+    // region.c keeps region files open (region.h). Going behind its back
+    // with a second handle reads and writes around its buffers, so the
+    // cache has to be dropped first -- which is exactly the rule real
+    // code follows when it deletes a world.
+    region_close_all();
     FILE* f = fopen(path, "r+b");
     if (f == NULL) {
         CHECK(false, "cannot open %s to damage it", path);
@@ -909,6 +914,71 @@ static void poke(char const* path, long off, int len, uint8_t with) {
     fseek(f, off, SEEK_SET);
     for (int i = 0; i < len; i++) fwrite(&with, 1, 1, f);
     fclose(f);
+}
+
+// Region files live in buckets (region.h). A world written flat by an
+// older build must migrate the first time it is opened, and a world
+// that is already bucketed must not be disturbed.
+static void check_region_buckets(void) {
+    printf("region buckets\n");
+    char path[192];
+    region_path(path, sizeof(path), "D", 0, 0);
+    CHECK(strcmp(path, "D/0.0/r.0.0" REGION_EXT) == 0, "region path is %s", path);
+    region_path(path, sizeof(path), "D", -1, -1);
+    CHECK(strcmp(path, "D/-1.-1/r.-1.-1" REGION_EXT) == 0, "region path is %s", path);
+    // 16 regions to a bucket, and negatives must floor rather than
+    // truncate or regions -1 and 0 would share one.
+    region_path(path, sizeof(path), "D", 16, -16);
+    CHECK(strcmp(path, "D/1.-1/r.16.-16" REGION_EXT) == 0, "region path is %s", path);
+    region_path(path, sizeof(path), "D", 15, -17);
+    CHECK(strcmp(path, "D/0.-2/r.15.-17" REGION_EXT) == 0, "region path is %s", path);
+
+    // A world written flat: put three files where the old build left
+    // them and open it the way worldstore does.
+    char const* const FLAT = "build/host/bucketmig";
+    sm_mkdir_p(FLAT);
+    struct {
+        int32_t rx, rz;
+    } const WHERE[] = {{0, 0}, {-1, 3}, {40, -40}};
+    for (size_t i = 0; i < sizeof WHERE / sizeof WHERE[0]; i++) {
+        char flat[192];
+        snprintf(flat, sizeof(flat), "%s/r.%ld.%ld%s", FLAT, (long)WHERE[i].rx, (long)WHERE[i].rz, REGION_EXT);
+        FILE* f = fopen(flat, "wb");
+        CHECK(f != NULL, "could not lay down %s", flat);
+        if (f != NULL) {
+            fputs("not a real region, but a real file", f);
+            fclose(f);
+        }
+    }
+    // Something that is NOT a region file must be left exactly alone.
+    char other[192];
+    snprintf(other, sizeof(other), "%s/notes.txt", FLAT);
+    FILE* o = fopen(other, "wb");
+    if (o != NULL) { fputs("x", o); fclose(o); }
+
+    int const moved = region_migrate(FLAT);
+    printf("  migrated %d flat region file(s)\n", moved);
+    CHECK(moved == 3, "migrated %d region files, expected 3", moved);
+
+    for (size_t i = 0; i < sizeof WHERE / sizeof WHERE[0]; i++) {
+        char to[192], from[192];
+        region_path(to, sizeof(to), FLAT, WHERE[i].rx, WHERE[i].rz);
+        snprintf(from, sizeof(from), "%s/r.%ld.%ld%s", FLAT, (long)WHERE[i].rx, (long)WHERE[i].rz, REGION_EXT);
+        FILE* f = fopen(to, "rb");
+        CHECK(f != NULL, "%s is not in its bucket", to);
+        if (f != NULL) fclose(f);
+        f = fopen(from, "rb");
+        CHECK(f == NULL, "%s is still lying flat", from);
+        if (f != NULL) fclose(f);
+    }
+    FILE* f = fopen(other, "rb");
+    CHECK(f != NULL, "the migration moved a file that was not a region");
+    if (f != NULL) fclose(f);
+
+    // Running it again must move nothing: a bucketed world is left be,
+    // and the bucket DIRECTORIES must not be mistaken for region files.
+    CHECK(region_migrate(FLAT) == 0, "a second migration moved something");
+    printf("  a second open moves nothing\n");
 }
 
 static void check_region_damage(void) {
@@ -945,6 +1015,7 @@ static void check_region_damage(void) {
     // not as broken terrain.
     char path2[192];
     region_path(path2, sizeof(path2), TEST_DIR, -1, -1);
+    region_close_all();
     sm_remove(path2);
     fill_chunk(&a, g_ia, g_sa, -8, -8, GEN_SEED);
     CHECK(region_write_chunk(TEST_DIR, &a), "setup write failed");
@@ -4802,6 +4873,7 @@ int main(void) {
     check_farlands();
     check_codec();
     check_region();
+    check_region_buckets();
     check_region_damage();
     check_torn_write();
     check_compaction();

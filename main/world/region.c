@@ -96,9 +96,141 @@ void region_set_ext(char const* ext) {
     snprintf(s_ext, sizeof(s_ext), "%s", (ext != NULL && *ext != '\0') ? ext : REGION_EXT);
 }
 
+// --- The open-file cache ----------------------------------------------
+//
+// Every read and every write used to fopen() by path and fclose(). On
+// FAT that is a LINEAR SCAN of the directory each time, and the
+// streamer does it several times a second forever -- so a world got
+// slower the more of it had been visited, and never got faster again.
+//
+// The streamer works on a neighbourhood, so a handful of handles covers
+// almost everything: a player walking a straight line touches two or
+// three regions at once, and standing still touches one.
+//
+// Opened "r+b" (created if missing) so one handle serves both
+// directions. The cache MUST be dropped before anything renames or
+// replaces a file underneath it, which is what cache_drop() is for --
+// compaction does exactly that.
+#define REGION_CACHE 4
+
+static struct {
+    char  path[192];
+    FILE* f;
+    unsigned used;          // for the LRU; 0 means the slot is empty
+} s_cache[REGION_CACHE];
+static unsigned s_cache_clock;
+
+static void cache_evict(int i) {
+    if (s_cache[i].f != NULL) {
+        fflush(s_cache[i].f);
+        fclose(s_cache[i].f);
+    }
+    s_cache[i].f    = NULL;
+    s_cache[i].used = 0;
+    s_cache[i].path[0] = '\0';
+}
+
+// A handle for `path`, opened for read AND write. `create` says whether
+// a missing file should be made; NULL if it is missing and must not be.
+static FILE* cache_open(char const* path, bool create) {
+    for (int i = 0; i < REGION_CACHE; i++) {
+        if (s_cache[i].f != NULL && strcmp(s_cache[i].path, path) == 0) {
+            s_cache[i].used = ++s_cache_clock;
+            return s_cache[i].f;
+        }
+    }
+
+    FILE* f = fopen(path, "r+b");
+    bool  fresh = false;
+    if (f == NULL) {
+        if (!create) return NULL;
+        f = fopen(path, "w+b");
+        fresh = true;
+    }
+    if (f == NULL) return NULL;
+
+    int lru = 0;
+    for (int i = 0; i < REGION_CACHE; i++) {
+        if (s_cache[i].f == NULL) { lru = i; break; }
+        if (s_cache[i].used < s_cache[lru].used) lru = i;
+    }
+    cache_evict(lru);
+    snprintf(s_cache[lru].path, sizeof(s_cache[lru].path), "%s", path);
+    s_cache[lru].f    = f;
+    s_cache[lru].used = ++s_cache_clock;
+    (void)fresh;
+    return f;
+}
+
+static void cache_drop(char const* path) {
+    for (int i = 0; i < REGION_CACHE; i++) {
+        if (s_cache[i].f != NULL && strcmp(s_cache[i].path, path) == 0) cache_evict(i);
+    }
+}
+
+void region_close_all(void) {
+    for (int i = 0; i < REGION_CACHE; i++) cache_evict(i);
+}
+
 bool region_path(char* out, size_t cap, char const* dir, int32_t rx, int32_t rz) {
+    int const n = snprintf(out, cap, "%s/%ld.%ld/r.%ld.%ld%s", dir, (long)region_bucket(rx),
+                           (long)region_bucket(rz), (long)rx, (long)rz, s_ext);
+    return n > 0 && (size_t)n < cap;
+}
+
+// Where a region file sat before bucketing. Read by the migration, and
+// by nothing else.
+static bool region_flat_path(char* out, size_t cap, char const* dir, int32_t rx, int32_t rz) {
     int const n = snprintf(out, cap, "%s/r.%ld.%ld%s", dir, (long)rx, (long)rz, s_ext);
     return n > 0 && (size_t)n < cap;
+}
+
+// The bucket directory for a region, made if it is missing.
+static bool region_bucket_dir(char const* dir, int32_t rx, int32_t rz) {
+    char b[192];
+    if (snprintf(b, sizeof(b), "%s/%ld.%ld", dir, (long)region_bucket(rx), (long)region_bucket(rz)) >=
+        (int)sizeof(b)) {
+        return false;
+    }
+    return sm_mkdir_p(b);
+}
+
+int region_migrate(char const* dir) {
+    sm_dir_t* d = sm_dir_open(dir);
+    if (d == NULL) return -1;
+
+    // Collect first, move afterwards: renaming entries while walking the
+    // same directory is not something a FAT enumeration promises to
+    // survive.
+    static struct {
+        int32_t rx, rz;
+    } found[256];
+    int n = 0;
+    for (char const* name = sm_dir_next(d, NULL); name != NULL && n < (int)(sizeof(found) / sizeof(found[0]));
+         name = sm_dir_next(d, NULL)) {
+        long rx = 0, rz = 0;
+        // Only "r.<x>.<z><ext>", and only with the extension this world
+        // is using -- a bucket directory is "<x>.<z>" and must not match.
+        char tail[16] = {0};
+        if (sscanf(name, "r.%ld.%ld%15s", &rx, &rz, tail) != 3) continue;
+        if (strcmp(tail, s_ext) != 0) continue;
+        found[n].rx = (int32_t)rx;
+        found[n].rz = (int32_t)rz;
+        n++;
+    }
+    sm_dir_close(d);
+
+    int moved = 0;
+    for (int i = 0; i < n; i++) {
+        char from[192], to[192];
+        if (!region_flat_path(from, sizeof(from), dir, found[i].rx, found[i].rz)) continue;
+        if (!region_bucket_dir(dir, found[i].rx, found[i].rz)) continue;
+        if (!region_path(to, sizeof(to), dir, found[i].rx, found[i].rz)) continue;
+        cache_drop(from);
+        cache_drop(to);
+        if (sm_rename(from, to)) moved++;
+    }
+    return moved;
 }
 
 static long dir_off(int slot) {
@@ -222,30 +354,22 @@ int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
     int32_t const rx = region_of(c->cx), rz = region_of(c->cz);
     if (!region_path(path, sizeof(path), dir, rx, rz)) return -1;
 
-    FILE* f = fopen(path, "rb");
+    FILE* f = cache_open(path, false);
     if (f == NULL) return 0;  // no region: not an error, just no chunk
 
     uint32_t waste = 0;
     region_t r;
-    if (!header_read(f, &waste) || !region_open_state(f, &r)) {
-        fclose(f);
-        return -1;
-    }
+    if (!header_read(f, &waste) || !region_open_state(f, &r)) return -1;
 
     int const     idx = region_local(c->cz) * REGION_DIM + region_local(c->cx);
     entry_t const e   = r.dir[idx];
-    if (e.offset == 0 || e.length == 0) {
-        fclose(f);
-        return 0;
-    }
+    if (e.offset == 0 || e.length == 0) return 0;
 
     static uint8_t buf[CHUNK_PAYLOAD_MAX];
     if (e.length > sizeof(buf) || fseek(f, (long)e.offset, SEEK_SET) != 0 ||
         fread(buf, 1, e.length, f) != e.length) {
-        fclose(f);
         return -1;
     }
-    fclose(f);
 
     // A payload that will not decode is a lost chunk, not a lost world:
     // report "not there" and let it be generated again.
@@ -270,18 +394,27 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     size_t const   n = chunk_encode(c, sn > 0 ? sections : NULL, sn, buf, sizeof(buf));
     if (n == 0) return false;
 
-    FILE* f = fopen(path, "r+b");
+    // Made if it is not there: this is the only path that creates one.
+    long  existing = -1;
+    FILE* f        = cache_open(path, false);
+    if (f != NULL) {
+        if (fseek(f, 0, SEEK_END) == 0) existing = ftell(f);
+    } else {
+        // The bucket directory may not exist yet: this is the first
+        // region anyone has written in this 2048 x 2048 square.
+        if (!region_bucket_dir(dir, rx, rz)) return false;
+        f = cache_open(path, true);
+        if (f == NULL) return false;
+    }
     region_t r;
     uint32_t waste = 0;
-    if (f == NULL) {
-        f = fopen(path, "w+b");
-        if (f == NULL) return false;
+    if (existing <= 0) {
         if (!region_create(f, rx, rz, &r)) {
-            fclose(f);
+            cache_drop(path);
             return false;
         }
     } else if (!header_read(f, &waste) || !region_open_state(f, &r)) {
-        fclose(f);
+        cache_drop(path);
         return false;
     }
     r.waste = waste;
@@ -319,11 +452,13 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     // 3. The waste counter last: losing it only delays a compaction.
     if (!header_write(f, rx, rz, r.waste)) goto fail;
     if (fflush(f) != 0) goto fail;
-    fclose(f);
+    // The handle STAYS OPEN, in the cache, flushed. That is the whole
+    // point: the next chunk in this region costs no directory lookup.
     return true;
 
 fail:
-    fclose(f);
+    // A handle that has failed mid-write is not one to keep and reuse.
+    cache_drop(path);
     return false;
 }
 
@@ -332,8 +467,11 @@ fail:
 bool region_should_compact(char const* dir, int32_t rx, int32_t rz) {
     char path[192];
     if (!region_path(path, sizeof(path), dir, rx, rz)) return false;
-    FILE* f = fopen(path, "rb");
+    // Through the cache like everything else: a second handle to a file
+    // this module already holds open is a way to read a stale header.
+    FILE* f = cache_open(path, false);
     if (f == NULL) return false;
+    if (fseek(f, 0, SEEK_SET) != 0) return false;
     uint32_t waste = 0;
     bool     yes   = false;
     if (header_read(f, &waste)) {
@@ -342,7 +480,6 @@ bool region_should_compact(char const* dir, int32_t rx, int32_t rz) {
             yes = size > (long)DATA_OFF && waste > (uint32_t)(size / 2);
         }
     }
-    fclose(f);
     return yes;
 }
 
@@ -350,6 +487,12 @@ bool region_compact(char const* dir, int32_t rx, int32_t rz) {
     char path[192], tmp[200];
     if (!region_path(path, sizeof(path), dir, rx, rz)) return false;
     if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) return false;
+
+    // Compaction replaces the file underneath everybody, so the cached
+    // handle has to go BEFORE anything is opened or renamed -- a handle
+    // to a file that has since been removed reads whatever the driver
+    // feels like.
+    cache_drop(path);
 
     FILE* in = fopen(path, "rb");
     if (in == NULL) return false;

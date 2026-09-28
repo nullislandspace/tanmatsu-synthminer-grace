@@ -43,6 +43,7 @@
 
 static char s_base[128];
 static char s_open_slug[SM_WORLD_SLUG_MAX];
+static int  s_migrated;   // region files moved into buckets on the last open
 static char s_region_dir[192];
 static bool s_open;
 // A world with no directory: generated on demand, never written. The
@@ -627,7 +628,16 @@ bool worldstore_init(char const* base) {
     return sm_mkdir_p(dir);
 }
 
+int worldstore_migrated(void) {
+    return s_migrated;
+}
+
 void worldstore_close(void) {
+    // Region files are held open for the life of a world (region.h).
+    // Nothing else knows they are open, so nothing else can close them
+    // -- and a world being deleted or renamed underneath a live handle
+    // leaves an unlinked file whose space is never given back.
+    region_close_all();
     s_open         = false;
     s_scratch      = false;
     s_open_slug[0] = '\0';
@@ -670,6 +680,14 @@ int worldstore_list(world_meta_t* out, int max) {
 static void open_paths(char const* slug) {
     snprintf(s_open_slug, sizeof(s_open_slug), "%s", slug);
     snprintf(s_region_dir, sizeof(s_region_dir), "%s/%s%s/region", s_base, group_of(slug), slug);
+    // Regions written before bucketing existed sit flat in that
+    // directory; move them into their buckets once, here (region.h).
+    // A world played on an older build therefore migrates the first
+    // time it is opened, and one that has never been flat costs a
+    // single directory listing.
+    // (These files are host-pure and do not log; the count is for the
+    // host checks, which do.)
+    s_migrated = region_migrate(s_region_dir);
     s_open          = true;
     s_unknown_cells = 0;
 
@@ -870,25 +888,62 @@ bool worldstore_delete(char const* slug) {
     world_dir(dir, sizeof(dir), slug);
 
     // FAT will not remove a directory that still has files in it, and
-    // there is no recursive delete, so walk it.
-    char      region[192];
+    // there is no recursive delete, so walk it. TWO LEVELS, because
+    // region files live in buckets (region.h): region/<bx>.<bz>/r.*.smr.
+    // One level was enough until 2026-09-28, and a delete that only
+    // walked the top left every bucket behind -- so the rmdir below
+    // failed, the world directory survived, and the slot never came
+    // free. The host checks caught it by running twice.
+    char region[192];
     snprintf(region, sizeof(region), "%.170s/region", dir);
-    sm_dir_t* d = sm_dir_open(region);
+    region_close_all();   // nothing of ours may still hold these open
+
+    // Collect then delete: deleting while iterating a FAT directory is
+    // not something to rely on.
+    static char buckets[64][32];
+    int         nb = 0;
+    sm_dir_t*   d  = sm_dir_open(region);
     if (d != NULL) {
         char const* e;
-        // Collect then delete: deleting while iterating a FAT directory
-        // is not something to rely on.
+        bool        is_dir = false;
         static char names[256][32];
         int         n = 0;
-        while (n < 256 && (e = sm_dir_next(d, NULL)) != NULL) {
-            if (strlen(e) < sizeof(names[0])) snprintf(names[n++], sizeof(names[0]), "%s", e);
+        while ((e = sm_dir_next(d, &is_dir)) != NULL) {
+            if (strlen(e) >= sizeof(names[0])) continue;
+            if (is_dir) {
+                if (nb < 64) snprintf(buckets[nb++], sizeof(buckets[0]), "%s", e);
+            } else if (n < 256) {
+                snprintf(names[n++], sizeof(names[0]), "%s", e);
+            }
         }
         sm_dir_close(d);
+        // Any stragglers still lying flat (a world part-way through the
+        // migration, or one written by an older build).
         for (int i = 0; i < n; i++) {
             char path[256];
             snprintf(path, sizeof(path), "%.190s/%.32s", region, names[i]);
             sm_remove(path);
         }
+    }
+    for (int b = 0; b < nb; b++) {
+        char bdir[256];
+        snprintf(bdir, sizeof(bdir), "%.190s/%.32s", region, buckets[b]);
+        sm_dir_t* bd = sm_dir_open(bdir);
+        if (bd != NULL) {
+            char const* e;
+            static char names[256][32];
+            int         n = 0;
+            while (n < 256 && (e = sm_dir_next(bd, NULL)) != NULL) {
+                if (strlen(e) < sizeof(names[0])) snprintf(names[n++], sizeof(names[0]), "%s", e);
+            }
+            sm_dir_close(bd);
+            for (int i = 0; i < n; i++) {
+                char path[320];
+                snprintf(path, sizeof(path), "%.250s/%.32s", bdir, names[i]);
+                sm_remove(path);
+            }
+        }
+        sm_rmdir(bdir);
     }
 
     char level[192];

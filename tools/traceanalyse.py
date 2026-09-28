@@ -43,7 +43,7 @@ def main():
     if not path.exists():
         sys.exit(f"{path}: not there. `make pulltrace` fetches it off the card.")
 
-    header, ticks, edits, meshes, drops = [], [], [], [], []
+    header, ticks, edits, meshes, drops, io = [], [], [], [], [], []
     for raw in path.read_text(errors="replace").splitlines():
         line = raw.strip()
         if not line:
@@ -59,6 +59,10 @@ def main():
             edits.append(f)
         elif kind == "M":
             meshes.append(f)
+        elif line.startswith("io "):
+            if ticks:
+                f.setdefault("t", ticks[-1].get("t", "?"))
+            io.append(f)
         elif line.startswith("drop="):
             # A continuation of the T above it, so it carries no time of
             # its own; take the one from the second it belongs to.
@@ -123,6 +127,45 @@ def main():
         for e in lonely[:10]:
             print(f"      {e['kind']} t={e.get('t')} {e.get('blk')} at "
                   f"{e.get('x')},{e.get('y')},{e.get('z')} chunk {e.get('ch')} section {e.get('s')}")
+    # --- what the card costs ----------------------------------------
+    if io:
+        def us(rec, key):
+            v = rec.get(key, "")
+            head = v.split(",")[0].split("@")[-1].rstrip("us")
+            try:
+                return int(head)
+            except ValueError:
+                return 0
+
+        loads = [us(r, "load") for r in io if r.get("load")]
+        saves = [us(r, "save") for r in io if r.get("save")]
+        n_load = sum(int(r["load"].split("@")[0]) for r in io if r.get("load"))
+        n_save = sum(int(r["save"].split("@")[0]) for r in io if r.get("save"))
+        print("\n=== what the card costs ===")
+        if loads:
+            print(f"  load: {n_load} chunk(s), mean of the per-second means "
+                  f"{sum(loads)/len(loads)/1000:.1f} ms, worst second {max(loads)/1000:.1f} ms")
+        if saves:
+            print(f"  save: {n_save} chunk(s), mean of the per-second means "
+                  f"{sum(saves)/len(saves)/1000:.1f} ms, worst second {max(saves)/1000:.1f} ms")
+        def peak_max(key):
+            best = 0
+            for r in io:
+                v = r.get(key, "")
+                if "max" not in v:
+                    continue
+                try:
+                    best = max(best, int(v.split("max")[1].rstrip("us")))
+                except ValueError:
+                    pass
+            return best
+
+        lm, sm = peak_max("load"), peak_max("save")
+        if lm or sm:
+            print(f"  worst SINGLE chunk since boot: load {lm/1000:.1f} ms, save {sm/1000:.1f} ms")
+            if max(lm, sm) > 30000:
+                print("    (over 30 ms: that is a visible stall on a 10 fps frame)")
+
     lags = sorted((int(m["lag"].rstrip("ms")), m) for m in meshes if "lag" in m)
     if lags:
         worst = lags[-1][0]

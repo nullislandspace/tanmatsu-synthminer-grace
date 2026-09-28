@@ -65,6 +65,12 @@ typedef struct {
     int      queue, queue_cap;    // the mesh queue
     unsigned mesh_kib;
     unsigned psram_kib, internal_kib;
+    // What the card costs, in microseconds, averaged over this second
+    // and at worst since boot. The filesystem, as opposed to the
+    // arithmetic -- see chunk_worker.h.
+    int      load_n, save_n;
+    int      load_avg_us, save_avg_us;
+    int      load_max_us, save_max_us;
 } trace_tick_t;
 
 // Start a file for a world. `dir` is where it lives (SM_DATA_DIR on the

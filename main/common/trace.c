@@ -135,6 +135,10 @@ void trace_tick(trace_tick_t const* s) {
         s->flat, s->flat_cap, s->tex, s->tex_cap, s->drawn, s->sections, s->resident, s->missing,
         s->queue, s->queue_cap, s->mesh_kib, s->psram_kib, s->internal_kib);
     if (s->drop_flat > 0 || s->drop_tex > 0) say("  drop=%d,%d", s->drop_flat, s->drop_tex);
+    if (s->load_n > 0 || s->save_n > 0) {
+        say("  io load=%d@%dus,max%dus save=%d@%dus,max%dus", s->load_n, s->load_avg_us, s->load_max_us,
+            s->save_n, s->save_avg_us, s->save_max_us);
+    }
 
     // Once a second is also the flush point: a crash then costs at most
     // the second it happened in, which is the second worth having.

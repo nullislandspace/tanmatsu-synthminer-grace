@@ -53,6 +53,39 @@
 #define REGION_MAGIC_WAS "CMR1"
 #define REGION_VERSION 1
 
+// --- Where region files live ------------------------------------------
+//
+// NOT one flat directory. Every chunk the player generates OR merely
+// visits is written back, so the file count tracks explored area: a
+// region is 128 x 128 blocks, so 2 km x 2 km of wandering is about 256
+// files and 10 km x 10 km about 6100. FAT allows 65536 entries in a
+// directory and `r.-127.15.smr` cannot be an 8.3 name, so it costs two
+// or three of them -- but the real cost arrives long before the limit,
+// because a FAT lookup is a LINEAR SCAN and there is one per chunk read
+// and per chunk write.
+//
+// So regions are bucketed: region/<bx>.<bz>/r.<rx>.<rz>.smr, 16 x 16
+// regions to a bucket. That is at most 256 files in a bucket directory
+// and one entry per 2048 x 2048 blocks in the parent.
+//
+// NO THIRD LEVEL, and the arithmetic is why: filling the parent
+// directory would take 20000 buckets, which is 84000 square kilometres
+// of explored ground. At four blocks a second that is not reachable in
+// a human lifetime of walking. Two levels is not a compromise here, it
+// is the end of the problem.
+#define REGION_BUCKET_SHIFT 4
+#define REGION_BUCKET       (1 << REGION_BUCKET_SHIFT)
+
+static inline int32_t region_bucket(int32_t r) {
+    return r >> REGION_BUCKET_SHIFT;  // arithmetic shift: bucket -1 holds region -16..-1
+}
+
+// Move any region file still sitting flat in `dir` into its bucket.
+// Called once when a world is opened; worlds written before bucketing
+// existed migrate the first time they are played. Returns how many were
+// moved, or -1 if the directory could not be read.
+int region_migrate(char const* dir);
+
 // World chunk coordinate -> region coordinate / index within it.
 // Shift and mask, so negatives land correctly (chunk -1 is in region -1
 // at local 7, not in region 0).
@@ -95,4 +128,14 @@ bool region_write_chunk(char const* dir, chunk_t const* c);
 // Rewrite a region without its waste. Called at an explicit save or an
 // unload when region_should_compact() says so -- never during a frame.
 bool region_compact(char const* dir, int32_t rx, int32_t rz);
+// Close every cached region handle, flushing first. Call when a world
+// is closed: the handles are this module's, and nothing else knows they
+// are open.
+//
+// THE CACHE EXISTS because a read or a write used to fopen() by path,
+// and on FAT that is a linear scan of the directory -- several times a
+// second, forever, growing with the number of regions the player has
+// ever visited.
+void region_close_all(void);
+
 bool region_should_compact(char const* dir, int32_t rx, int32_t rz);

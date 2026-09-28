@@ -52,6 +52,23 @@ void chunk_worker_set_world(uint32_t seed, int32_t farlands_x);
 // took, ordinary and Far Lands apart (the badge only; 0 on the host).
 void chunk_worker_gen_stats(int* n_ord, int64_t* us_ord, int* n_far, int64_t* us_far);
 
+// What the CARD costs: the time a chunk takes to come off it and go
+// back on, totalled and worst-case since boot.
+//
+// Separate from generation on purpose. Generation is arithmetic and
+// tracks the CPU; these two are the filesystem, and they are where a
+// directory full of region files -- or a handle cache that is doing its
+// job -- actually shows up. The worst case is kept because a mean hides
+// the one save that stalled a frame.
+typedef struct {
+    int32_t load_n;
+    int64_t load_us, load_max;
+    int32_t save_n;
+    int64_t save_us, save_max;
+} chunk_worker_io_t;
+
+void chunk_worker_io_stats(chunk_worker_io_t* out);
+
 // Run everything inline instead of on the task. Safe to change between
 // frames; a mode change waits for the queue to drain.
 void chunk_worker_set_synchronous(bool on);

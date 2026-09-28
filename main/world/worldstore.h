@@ -233,6 +233,11 @@ bool worldstore_open_bench(uint32_t seed, world_meta_t* meta, player_state_t* pl
 // they are evicted (see world_chunk_save). `items` may be NULL: none.
 bool worldstore_save(world_meta_t const* meta, player_state_t const* player, world_items_t const* items);
 
+// How many region files the last worldstore_open() moved out of the old
+// flat layout into their buckets (region.h). 0 for a world that was
+// already bucketed, which is every world created from now on.
+int worldstore_migrated(void);
+
 void worldstore_close(void);
 bool worldstore_delete(char const* slug);
 
