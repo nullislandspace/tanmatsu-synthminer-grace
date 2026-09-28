@@ -107,6 +107,7 @@ typedef enum {
     SM_STR_INFO_POSITION,               // info.position
     SM_STR_INFO_FACING,                 // info.facing
     SM_STR_INFO_CLOCK,                  // info.clock
+    SM_STR_INFO_DROPPED,                // info.dropped
     SM_STR_INFO_RECORDING,              // info.recording
     SM_STR_INFO_REPLAY,                 // info.replay
     SM_STR_DIR_N,                       // dir.n

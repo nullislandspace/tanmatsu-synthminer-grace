@@ -5,8 +5,15 @@
 //  THE LOGGING RULE (claudeplans/synthminer.md, Part F) lives here, and
 //  it is SynthMiner's one deliberate departure from Minecraft:
 //
-//    break a wood or leaf block the PLAYER placed  -> that block drops
-//    break one the world GREW                      -> the tree falls
+//    break a TRUNK the world GREW                  -> the tree falls
+//    break a trunk the PLAYER placed               -> that block drops
+//    break a LEAF, however it got there            -> that leaf drops
+//
+//  Only a trunk starts a fell. Leaves are tree material -- the fell
+//  SPREADS through them, so a canopy still comes down with its trunk --
+//  but cutting one is an ordinary break. Until 2026-09-28 both tests
+//  were the same flag, so clearing a canopy by hand felled the tree out
+//  from under it (BF2_TRUNK, blocks.h).
 //
 //  Which is which is the ST_PLACED bit, set on everything a player puts
 //  down and never by generation (chunk.h). So a forest can be cleared

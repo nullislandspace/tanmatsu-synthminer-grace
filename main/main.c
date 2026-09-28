@@ -1914,7 +1914,7 @@ static void draw_info(pax_buf_t* fb) {
     int hh = 0, mm = 0;
     daytime_clock(s_meta.time_of_day, &hh, &mm);
 
-    char pos[64], face[48], clock[48], extra[48];
+    char pos[64], face[48], clock[48], extra[48], drops[64];
     i18n_fmt(pos, sizeof(pos), SM_STR_INFO_POSITION, (double)s_player.body.x, (double)s_player.body.y,
              (double)s_player.body.z);
     i18n_fmt(face, sizeof(face), SM_STR_INFO_FACING, T(NAMES[octant]), (int)(deg + 0.5f) % 360);
@@ -1922,9 +1922,19 @@ static void draw_info(pax_buf_t* fb) {
     extra[0] = '\0';
     if (replay_recording()) snprintf(extra, sizeof(extra), "%s", T(SM_STR_INFO_RECORDING));
     if (replay_playing()) i18n_fmt(extra, sizeof(extra), SM_STR_INFO_REPLAY, replay_position(), replay_length());
+    // A full list drops in submission order, so anything here is a hole
+    // in the picture. It is logged too, but the console is exactly what
+    // a player does not have -- and a dense forest overflows the
+    // textured list by more than twice over, which is why this line
+    // exists at all rather than living only in `make monitor`.
+    int dtri = 0, dttri = 0;
+    scene_drop_stats(&dtri, &dttri);
+    drops[0] = '\0';
+    if (dtri > 0 || dttri > 0) i18n_fmt(drops, sizeof(drops), SM_STR_INFO_DROPPED, dtri, dttri);
+
     bool const        msg      = showtime_now() < s_shot_msg_until;
-    char const* const lines[5] = {pos, face, clock, extra, msg ? s_shot_msg : NULL};
-    hud_text_lines(fb, lines, 5);
+    char const* const lines[6] = {pos, face, clock, drops, extra, msg ? s_shot_msg : NULL};
+    hud_text_lines(fb, lines, 6);
 }
 
 // The engine clears the framebuffer to cfg.backdrop_argb every frame

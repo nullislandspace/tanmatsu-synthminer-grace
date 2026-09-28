@@ -126,6 +126,10 @@ static void check_blocks(void) {
     CHECK(block_solid(BLK_BARRIER), "the barrier must be solid (D-14): the player stands on the world's edge");
     CHECK(BLOCKS[BLK_BARRIER].hardness == HARDNESS_UNBREAKABLE, "the barrier must be unbreakable");
     CHECK(block_fellable(BLK_LOG) && block_fellable(BLK_LEAVES), "logs and leaves carry the felling rule (Part F)");
+    // Which of them STARTS a fell is a different question from which the
+    // fell spreads through, and they were one flag until 2026-09-28.
+    CHECK(block_trunk(BLK_LOG) && block_trunk(BLK_BIRCH_LOG), "logs are trunks (Part F)");
+    CHECK(!block_trunk(BLK_LEAVES) && !block_trunk(BLK_BIRCH_LEAVES), "leaves are NOT trunks: cutting one must not fell the tree");
     CHECK((BLOCKS[BLK_LEAVES].flags & BF_SEE_SELF) != 0, "leaves show their faces against other leaves");
     CHECK((BLOCKS[BLK_GLASS].flags & BF_SEE_SELF) == 0, "glass hides glass");
 
@@ -2631,6 +2635,22 @@ static void check_felling(void) {
         }
     }
     CHECK(left == 0, "%d leaves survived the fell", left);
+
+    // A LEAF is an ordinary break, however it got there. The fell still
+    // spreads through leaves -- the canopy went with the trunk above --
+    // but cutting one must not bring a tree down.
+    int32_t const lx = tx + 12, lz = tz;                  // the second tree
+    for (int y = 0; y < 4; y++) set_block(lx, base + y, lz, BLK_LOG, 0);
+    for (int dz = -1; dz <= 1; dz++)
+        for (int dx = -1; dx <= 1; dx++) set_block(lx + dx, base + 4, lz + dz, BLK_LEAVES, 0);
+    r = interact_break(lx - 1, base + 4, lz, ITEM_AXE_STONE);
+    printf("  breaking a grown leaf took %d block(s), tree=%d\n", r.felled, (int)r.was_tree);
+    CHECK(r.ok, "breaking a leaf failed");
+    CHECK(!r.was_tree, "breaking a LEAF felled the tree");
+    CHECK(r.felled == 1, "breaking a leaf took %d blocks, expected 1", r.felled);
+    int standing = 0;
+    for (int y = 0; y < 4; y++) standing += world_block(lx, base + y, lz) == BLK_LOG;
+    CHECK(standing == 4, "cutting a leaf took %d logs off the trunk under it", 4 - standing);
 
     // The NEIGHBOUR is untouched. This is the bound that matters: one
     // tree must never take the forest.

@@ -152,6 +152,12 @@ info.position = X %.1f   Y %.1f   Z %.1f
 info.facing = facing %s (%d)
 # %02d:%02d is the world's clock, %lld the day, counted from 1
 info.clock = %02d:%02d   day %lld
+# The scene's triangle lists filled and geometry was thrown away, so
+# part of the world is simply not drawn. On screen because the warning
+# that says so goes to a console nobody has while playing, which is how
+# this went unnoticed for six days. First %d is flat triangles lost,
+# second textured.
+info.dropped = GEOMETRY DROPPED %d flat %d textured
 info.recording = RECORDING (R to stop)
 # the first %d is the tick being played, the second how many there are
 info.replay = replay %d / %d

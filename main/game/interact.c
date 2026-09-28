@@ -123,7 +123,7 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
 
     int const before = item_entity_live();
     bool const placed = (world_state(x, y, z) & ST_PLACED) != 0;
-    if (block_fellable(b) && !placed) {
+    if (block_trunk(b) && !placed) {
         s_fell_tool = tool_item;
         r.felled    = interact_fell(x, y, z);
         r.was_tree  = true;

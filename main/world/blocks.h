@@ -74,6 +74,16 @@ typedef enum {
 // other rule. See break_result_t.needs_tool.
 #define BF2_TOOL_REQUIRED (1u << 2)
 
+// A TRUNK: cutting this is what starts a fell (Part F). Separate from
+// BF_FELLABLE, which means only "tree material" and is what the flood
+// fill spreads through -- leaves are fellable and are NOT trunks.
+//
+// They were one flag until 2026-09-28, and breaking a single leaf
+// therefore brought the whole tree down, which is not what anyone
+// wants from clearing a canopy. The two ideas had looked like one
+// because logs are the only thing that is both.
+#define BF2_TRUNK      (1u << 3)
+
 // Tool classes. `tool_level` is 0 hand, 1 wood, 2 stone, 3 iron.
 typedef enum {
     TOOL_NONE = 0,
@@ -205,8 +215,14 @@ static inline bool block_liquid(uint8_t id) {
 static inline bool block_replaceable(uint8_t id) {
     return (block_def(id)->flags & BF_REPLACEABLE) != 0;
 }
+// Tree material: what a fell SPREADS through (logs and leaves).
 static inline bool block_fellable(uint8_t id) {
     return (block_def(id)->flags & BF_FELLABLE) != 0;
+}
+// A trunk: what STARTS a fell. Breaking anything else fellable -- a
+// leaf -- is an ordinary single break.
+static inline bool block_trunk(uint8_t id) {
+    return (block_def(id)->flags2 & BF2_TRUNK) != 0;
 }
 static inline bool block_usable(uint8_t id) {
     return (block_def(id)->flags2 & BF2_USABLE) != 0;

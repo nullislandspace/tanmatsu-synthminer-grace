@@ -79,7 +79,7 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                  .mat      = M3(VM_LOG_TOP, VM_LOG_SIDE, VM_LOG_TOP),
                  .hardness = 40,
                  .tool     = TOOL_AXE,
-                 .flags    = BF_SOLID | BF_OPAQUE | BF_FELLABLE, .sound = SND_WOOD},
+                 .flags    = BF_SOLID | BF_OPAQUE | BF_FELLABLE, .flags2 = BF2_TRUNK, .sound = SND_WOOD},
 
     [BLK_PLANKS] = {.name     = "planks", .drop_item = BLK_PLANKS, .drop_min = 1, .drop_max = 1,
                     .kind     = K_CUBE,
@@ -205,7 +205,7 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                        .mat      = M3(VM_BIRCH_TOP, VM_BIRCH_SIDE, VM_BIRCH_TOP),
                        .hardness = 40,
                        .tool     = TOOL_AXE,
-                       .flags    = BF_SOLID | BF_OPAQUE | BF_FELLABLE, .sound = SND_WOOD},
+                       .flags    = BF_SOLID | BF_OPAQUE | BF_FELLABLE, .flags2 = BF2_TRUNK, .sound = SND_WOOD},
 
     [BLK_BIRCH_LEAVES] = {.name     = "birch_leaves",
                           .kind     = K_SEE,

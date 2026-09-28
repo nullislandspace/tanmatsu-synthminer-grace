@@ -319,6 +319,15 @@ void chunk_render_submit(double eye_wx, double eye_wz) {
     static mesh_mat_t flat_cache[FOG_STEPS][VM_COUNT];
     bool              flat_built[FOG_STEPS] = {false};
 
+    // PASS ONE: what is in view at all, and how far. Nothing is
+    // submitted yet -- the order it goes in decides what survives a
+    // full list, and that is the sort below.
+    static struct {
+        float   dist;
+        int16_t slot;
+    } vis[CH_SLOT_COUNT];
+    int vn = 0;
+
     for (int i = 0; i < CH_SLOT_COUNT; i++) {
         chunk_t* c = chunk_slot_at(i);
         if (c->cstate != CS_READY && c->cstate != CS_SAVING) continue;
@@ -337,6 +346,53 @@ void chunk_render_submit(double eye_wx, double eye_wz) {
         float const dist = box_dist(lo, hi, eye);
         if (dist > s_view.draw_dist) continue;
         if (outside_view(lo, hi, eye, &basis)) continue;
+
+        vis[vn].dist = dist;
+        vis[vn].slot = (int16_t)i;
+        vn++;
+    }
+
+    // NEAR TO FAR -- and this has nothing to do with overdraw. The
+    // z-buffer does not care what order it is given.
+    //
+    // THE SCENE'S LISTS DROP IN SUBMISSION ORDER when they fill
+    // (se_scene.h: "what disappears is whatever the game happened to
+    // submit last"). Until 2026-09-28 this loop ran in SLOT order, and
+    // a slot is (cx & 15) * 16 + (cz & 15) -- a wrapped coordinate hash
+    // with no relation to where the camera is. An overflowing list
+    // therefore threw away whichever chunks happened to hash late,
+    // which could be the one under the player's feet, and the wrap
+    // point moves as they walk, so the hole moved too. That is what
+    // "the block I placed is not showing up" was, and why it came and
+    // went: a dense canopy submits about 8500 textured triangles
+    // against a cap of 4096 (measured on the host, seed 1030), and the
+    // hash decided where the missing 4400 landed.
+    //
+    // Sorted, the same overflow falls off the FAR edge instead, inside
+    // the fog, which is the one place a missing chunk does not read as
+    // a bug. Insertion sort: `vn` is what survived the frustum, tens
+    // rather than the full 256, and one step of the camera leaves it
+    // very nearly sorted already.
+    for (int a = 1; a < vn; a++) {
+        float const   d = vis[a].dist;
+        int16_t const k = vis[a].slot;
+        int           b = a - 1;
+        while (b >= 0 && vis[b].dist > d) {
+            vis[b + 1] = vis[b];
+            b--;
+        }
+        vis[b + 1].dist = d;
+        vis[b + 1].slot = k;
+    }
+
+    // PASS TWO: submit, nearest first.
+    for (int vi = 0; vi < vn; vi++) {
+        chunk_t*     c    = chunk_slot_at(vis[vi].slot);
+        float const  dist = vis[vi].dist;
+        float const  ox   = (float)(c->cx * CH_W - s_origin_x);
+        float const  oz   = (float)(c->cz * CH_D - s_origin_z);
+        vec3_t const lo   = v3(ox, (float)c->bottom, oz);
+        vec3_t const hi   = v3(ox + CH_W, (float)c->top_max + 1.0f, oz + CH_D);
 
         // THE LEVEL OF DETAIL IS THE CHUNK'S, not the section's. Two
         // stacked sections at different resolutions would not line up
