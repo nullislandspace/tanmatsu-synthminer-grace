@@ -32,6 +32,17 @@
 // `farlands_x` is the world's Far Lands edge (world_meta_t.farlands_x,
 // farlands.h): chunks wholly west of it are Far Lands. FARLANDS_NONE for
 // a world without them.
+// Force the bottom layer of a chunk to unbreakable bedrock, whatever is
+// there. Idempotent, and cheap -- 256 cells.
+//
+// Called at the END of generation, after every generator has had its
+// say, AND on every chunk that arrives from the card. The second is how
+// a world written before this existed repairs itself: there is no
+// version bump and no migration pass, because the format's rule (D-30)
+// is that a world upgrades gradually as its chunks are written back,
+// and every resident chunk is now written back (chunk_worker.c).
+void worldgen_force_floor(chunk_t* c);
+
 void worldgen_chunk(chunk_t* c, uint32_t seed, int32_t farlands_x);
 
 // The surface height at a column: the y of the first air above the

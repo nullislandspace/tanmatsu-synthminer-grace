@@ -360,7 +360,7 @@ static void fill_column(chunk_t* c, int lx, int lz, int32_t wx, int32_t wz, uint
     for (int y = 0; y < CH_H; y++) {
         uint8_t b = BLK_AIR;
         if (y == CH_BEDROCK) {
-            b = BLK_STONE;  // the floor of the world; unbreakable stone stands in for bedrock
+            b = BLK_STONE;  // replaced wholesale by worldgen_force_floor()
         } else if (y < sy - soil - (int)bd->subsoil_depth) {
             b = BLK_STONE;
         } else if (y < sy - soil) {
@@ -555,6 +555,19 @@ static void place_edge_sign(chunk_t* c, uint32_t seed, int32_t edge_x) {
     col[y + 1] = BLK_SIGN;
 }
 
+void worldgen_force_floor(chunk_t* c) {
+    if (c == NULL) return;
+    for (int lz = 0; lz < CH_D; lz++) {
+        for (int lx = 0; lx < CH_W; lx++) {
+            c->id[CH_IDX(lx, CH_BEDROCK, lz)] = BLK_BEDROCK;
+            // The state byte goes with it: a floor cell that kept a
+            // ST_PLACED bit from whatever used to be there would tell
+            // the felling rule and everything else the wrong story.
+            c->st[CH_IDX(lx, CH_BEDROCK, lz)] = 0;
+        }
+    }
+}
+
 void worldgen_chunk(chunk_t* c, uint32_t seed, int32_t farlands_x) {
     if (c == NULL) return;
 
@@ -595,6 +608,14 @@ void worldgen_chunk(chunk_t* c, uint32_t seed, int32_t farlands_x) {
         decorate_plants(c, seed);
         place_edge_sign(c, seed, farlands_x);
     }
+
+    // THE LAST THING, ALWAYS, and after both generators rather than
+    // inside either. The floor of the world is not a decision a column
+    // gets to make: caves, ore veins, the Far Lands' own bedrock and
+    // whatever is written next all run before this, and any one of them
+    // could otherwise carve through the bottom. Forcing it here means
+    // no future generator has to remember not to.
+    worldgen_force_floor(c);
 
     c->flags |= CF_GENERATED;
     chunk_resummarise(c);

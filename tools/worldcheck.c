@@ -2661,6 +2661,58 @@ static void check_raycast(void) {
     printf("  %d directions checked against a brute-force march, %d hits, all agreed\n", checked, agreed);
 }
 
+// The floor of the world must be unbreakable, or it can be mined out.
+// Nobody falls THROUGH -- world_block() answers BLK_BARRIER below y = 0
+// -- but a hole in the bottom of the world is still a hole, and until
+// 2026-09-28 the bottom layer was ordinary stone.
+static void check_world_floor(void) {
+    printf("the floor of the world\n");
+    CHECK(block_def(BLK_BEDROCK)->hardness == HARDNESS_UNBREAKABLE, "bedrock is breakable");
+    CHECK(block_def(BLK_STONE)->hardness != HARDNESS_UNBREAKABLE,
+          "stone is unbreakable, which would make the rest of this prove nothing");
+
+    static uint8_t id[CH_CELLS], st[CH_CELLS];
+    chunk_t        c;
+    // Ordinary ground, far from the origin, and the Far Lands -- which
+    // has a generator of its own and lays Beta's ragged bedrock, so it
+    // is the one most likely to disagree.
+    struct {
+        int32_t cx, cz;
+    } const WHERE[] = {{0, 0}, {-40, 17}, {6250, -6250}, {(FARLANDS_X_DEFAULT / CH_W) - 2, 3}};
+    for (size_t i = 0; i < sizeof WHERE / sizeof WHERE[0]; i++) {
+        gen_into(&c, id, st, WHERE[i].cx, WHERE[i].cz, GEN_SEED);
+        int wrong = 0, placed = 0;
+        for (int z = 0; z < CH_D; z++) {
+            for (int x = 0; x < CH_W; x++) {
+                if (id[CH_IDX(x, CH_BEDROCK, z)] != BLK_BEDROCK) wrong++;
+                if (st[CH_IDX(x, CH_BEDROCK, z)] != 0) placed++;
+            }
+        }
+        CHECK(wrong == 0, "chunk (%d,%d): %d floor cell(s) are not bedrock", WHERE[i].cx, WHERE[i].cz, wrong);
+        CHECK(placed == 0, "chunk (%d,%d): %d floor cell(s) carry state", WHERE[i].cx, WHERE[i].cz, placed);
+    }
+    printf("  y=0 is bedrock in ordinary chunks and in the Far Lands\n");
+
+    // FORCED LAST, so no generator can punch through it. Carve the floor
+    // out by hand and re-force it: the property is that the forcing
+    // REPAIRS, not that worldgen happens to write bedrock in passing.
+    // This is also what heals a world saved before the rule existed.
+    gen_into(&c, id, st, 0, 0, GEN_SEED);
+    for (int i = 0; i < 8; i++) {
+        id[CH_IDX(i, CH_BEDROCK, 0)] = BLK_AIR;
+        st[CH_IDX(i, CH_BEDROCK, 0)] = ST_PLACED;
+    }
+    worldgen_force_floor(&c);
+    int holes = 0, dirt = 0;
+    for (int i = 0; i < 8; i++) {
+        holes += id[CH_IDX(i, CH_BEDROCK, 0)] != BLK_BEDROCK;
+        dirt += st[CH_IDX(i, CH_BEDROCK, 0)] != 0;
+    }
+    CHECK(holes == 0, "forcing the floor left %d hole(s): a cave generator could open the world", holes);
+    CHECK(dirt == 0, "forcing the floor left %d cell(s) carrying state", dirt);
+    printf("  a hole punched in the floor is closed again, state and all\n");
+}
+
 static void check_felling(void) {
     printf("the logging rule\n");
     CHECK(flat_world(8) != NULL, "the test world would not become resident");
@@ -4761,6 +4813,7 @@ int main(void) {
     check_rename();
     check_streaming();
     check_trace();
+    check_world_floor();
     if (!chunk_store_init()) {
         printf("  FAIL: chunk_store_init() for the player checks\n");
         return 1;

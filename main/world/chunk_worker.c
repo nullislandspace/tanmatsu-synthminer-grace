@@ -128,7 +128,23 @@ static bool do_load(int32_t cx, int32_t cz) {
 
     int const r = world_chunk_load(c);
     if (r == 1) {
+        // Repair the floor of a chunk written before it was forced. Any
+        // chunk from the card may predate that rule, and re-forcing one
+        // that does not is 256 stores (worldgen.h).
+        worldgen_force_floor(c);
         c->flags |= CF_GENERATED;
+        // AND MARK IT DIRTY, although nothing has touched it yet. The
+        // user's call, 2026-09-28: "if a player loads then unloads an
+        // existing chunk, we probably also need to always save that
+        // chunk, for animal movements, crops growing etc."
+        //
+        // A chunk is not a photograph. Time passes in it while it is
+        // resident -- animals walk, crops grow, furnaces burn down --
+        // and none of that is worth anything if leaving the area throws
+        // it away. It is also what makes the paragraph above work: the
+        // repaired floor reaches the card because the chunk is written
+        // back, without a migration pass to write.
+        c->flags |= CF_EDITED;
         chunk_resummarise(c);
         light_chunk_local(c);  // its own light, here on core 1 (light.h)
         return true;
