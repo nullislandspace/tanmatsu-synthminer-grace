@@ -23,10 +23,13 @@ chunks (its world is a fixed 128x32x128 array), player physics and collision,
 DDA block picking, items/inventory/crafting, entities and mobs, menus and key
 bindings, audio, and persistence.
 
-**User requirements.** Mining, crafting, farming (wheat, carrots, seeds, tree
-seeds), animal husbandry (pigs, cows, chickens, dogs), cooking, fishing. Dogs are
-found wild and tamed with steak. Mobs: zombies, skeletons, spiders — **no
-creepers, and no mob griefing**. Beds set spawn. Death **keeps the inventory**
+**User requirements.** Mining, crafting, farming, animal husbandry (pigs, cows,
+chickens, dogs), cooking, fishing — **re-imagined away from Minecraft's version
+on 2026-09-29 and specified in full in Part A**: five crops (wheat, potatoes,
+tomatoes, beans, rice), compost instead of bone meal, cooking on a kitchen stove
+that reads the chest beside it, and four small machines with their own timers
+(D-104..D-109). Tree seeds stay. Dogs are found wild and tamed with steak.
+Mobs: zombies, skeletons, spiders — **no creepers, and no mob griefing**. Beds set spawn. Death **keeps the inventory**
 and respawns at spawn with half health. Health + hunger + tool durability.
 Multiple seeded worlds on the SD card, written **only when needed**. Far Lands
 west of spawn, a short walk away (D-78). Core 1 for background work. Every key remappable in a menu.
@@ -39,9 +42,9 @@ or crafting. Survival is the full version: health, hunger and tool durability.
 
 ## About this document
 
-This file is committed with the work. It contains the design (Parts L, W, K, P,
-T, H, G, X, F), the step-by-step plan with a status table (Part D), and the
-findings and decisions logs (Part E).
+This file is committed with the work. It contains the design (Parts L, W, K, N,
+P, T, H, G, X, F, C, A), the step-by-step plan with a status table (Part D), and
+the findings and decisions logs (Part E).
 
 Numbering starts at **F-01 / D-01** — this is a different repository from the
 showreel, whose logs run to F-39 / D-54. Standing rules carried over from it:
@@ -1236,8 +1239,8 @@ mechanism for the furnace as well. Both do their arithmetic from
 No per-tick furnace list, no catch-up pass, no work at all for a furnace in a
 chunk nobody has visited -- and it is automatically correct across a chunk being
 evicted and reloaded, a world being closed for a week, and the clock being
-stepped by the N key. Crop growth in step 9 should use the same trick wherever
-it can.
+stepped by the N key. Crop growth in step 9 uses the same trick, and the four food
+machines of steps 9 to 11 are its next customers (Part A).
 
 Ten in-game minutes is **12000 ticks of playing** (the user's call: not the
 in-world clock, where a minute is a sixtieth of a 20-minute day and ten of them
@@ -1256,8 +1259,9 @@ worker does not allocate. A chunk's save walks the pool for cells inside it. The
 pool is bounded, and placing a container when it is full fails with a message
 rather than losing one quietly.
 
-Steps 11, 12 and 13 all land on the same machinery: a crop's stage fits in the
-state byte, but a cow does not.
+Steps 9 to 13 all land on the same machinery: a crop's stage fits in the
+state byte, but a cow does not -- and neither does the time a crop last grew,
+which is why step 9 buys a per-chunk stamp (Part A).
 
 ### The search box, on a keyboard that has one alphabet
 
@@ -1311,6 +1315,267 @@ reason Minecraft chose the other rule.
 
 ---
 
+## Part A: food, from a seed to a pizza
+
+The user re-imagined this whole chain on 2026-09-29 rather than copying
+Minecraft's, and gave it in one message. Four of the differences are not
+decoration -- they change what code has to exist:
+
+- **no bone meal.** Fertiliser comes out of a **composter**, which also
+  produces the **worms** fishing needs, so one machine feeds two
+  systems (D-104).
+- **cooking is not smelting.** The user: *"In Minecraft, preparing food
+  happens either on the crafting table or in the furnace. That makes
+  absolutely no sense."* Food is made on a **kitchen stove** that takes
+  its ingredients out of a **chest standing next to it** (D-105).
+- **farmland is wet or dry**, and a plant only goes into tilled soil
+  within four blocks of water on its own level (D-106).
+- **fishing comes before mobs**, the user's own reordering (D-109).
+
+Three tiers of time carry all of it, and all three already exist:
+
+| tier | mechanism | who uses it |
+|---|---|---|
+| sub-second | the wheel in `world/blockupdate.h` (D-98) | water, and later falling sand |
+| minutes | `now - stamp`, read when opened (D-51, `game/furnace.h`) | the stove and the sausage maker, one in-game minute a go |
+| a day | the same clock, a longer number | the composter and the cheese maker |
+
+Crops are the awkward one and are dealt with below: a crop is a block,
+not a block entity, so there is nowhere in a cell to write *when it last
+grew*.
+
+### The composter, and the worms (D-104)
+
+A placeable block with the furnace's shape of screen: an input holding up
+to a stack of compostable material -- leaves, food, flowers, seeds -- and
+**two** output slots, one compost, one worms. One in-game day turns one
+unit of material into one unit of compost, plus **0-2 worms**.
+
+- Compostability is one column in the item table, not a list in the
+  composter: `item_def_t.compost`. Food items are not blocks, so it
+  cannot be a block flag.
+- 0-2 worms has to come from the world's RNG, not `rand()` -- Part T:
+  the same world opened twice must compost the same way, and a replay
+  must reproduce it.
+- A full stack is 64 in-game days, which is 21 hours of play. That is
+  fine and is the point: it drips. The lazy clock means coming back
+  after a long absence pays out in one go, and the input is the cap.
+- Recipe: **not given by the user.** Proposed: 7 wooden planks, like the
+  cheese maker, since both are open wooden boxes.
+
+### Farmland is wet or dry, and water is four blocks away (D-106)
+
+Tilled with a **hoe**, from grass or dirt. The user's rule: *"The tilled
+soil must be within 4 blocks of a water block on the same level"*, and
+farmland is drawn **dark when wet, lighter when dry**.
+
+The cheap way to do this is to not watch the water. Wetness is
+recomputed **when the crop's growth event fires** -- tier 2, once a
+growth step -- rather than every time water moves. Dry farmland simply
+does not advance its crop. That way the fluid scheduler needs no
+"wake everything within four blocks" call, which is the one thing it
+cannot do cheaply today (its neighbourhood is one cell).
+
+Cost per check: the cells at distance 1..4 on the same y, which is under
+a hundred reads of an already resident chunk, a few times a minute, for
+a field a player is standing in.
+
+### Five crops, and where the first seed comes from (D-107)
+
+| crop | first one found | planted in |
+|---|---|---|
+| Wheat | grass seeds, from tall grass (already in the game) | tilled soil |
+| Potato | *"sometimes found in large grassy lands"* | tilled soil |
+| Tomato | *"sometimes found in birch forrests"*, made into seeds at the crafting bench | tilled soil |
+| Beans | *"sometimes found in normal forrests"* | tilled soil |
+| Rice | *"sometimes found on the shore in water one block deep"* | one-deep water on sand |
+
+*"Sometimes found"* is the user's own definition: **one or two plants
+generated in one instance of that biome.** Worldgen already places
+plants per biome from a `biome_def_t` column (step 33/35), so this is a
+second, much rarer column, not new machinery. It also means a world
+generated before this step has no potatoes in it until the player walks
+into fresh plains -- which is how every block added since 8.4 has
+behaved, and is not a migration.
+
+A wild plant is **the crop block at its last growth stage**, so finding
+one costs no extra block id.
+
+**Rice is the interesting one.** It grows in water, and a cell holds one
+block. Rather than a waterlogged bit, the rice block carries a flag that
+makes `world/fluid.c` read it as **a full source at level 0** and the
+mesher draw a water surface under the sprite. That is safe precisely
+because of the user's own constraint: rice only grows in water one block
+deep, so its water is always a source and there is never a level to
+store in state bits that growth already owns.
+
+### The stage of a crop is cheap; the time is not
+
+`BF_CROP` and `growth_max` have been in `block_def_t` since step 0.3 and
+nothing has used them: a stage lives in state bits 1..3, which is free.
+What does not fit is *when it last grew* -- and the user's own lazy
+catch-up -- the half of D-98 that nothing has used yet -- says a chunk
+loaded after an hour away should show the hour.
+
+So step 9 pays for **a per-chunk stamp**: a new chunk section (id 3),
+holding the tick the chunk was last saved. The section list already
+skips ids it does not know (`chunk_codec.h`), so old worlds read as
+"stamp absent, treat as now" and gain one the first time they are
+written -- and since step 49 a loaded chunk is already dirty, that is
+immediately. No format version bump (D-30).
+
+Growth then runs once per crop cell when a chunk arrives, advancing by
+elapsed days at the crop's own rate, and on a slow timer while resident.
+
+### Animals, and a bucket that already knows how to hold things
+
+Pigs drop **raw pork**, cows drop **raw beef**, and a cow **used with a
+bucket gives milk**. Milk is drunk for 1 hunger and no saturation, or
+turned into cheese.
+
+D-100 already settled the shape of this: a filled bucket is **its own
+item id**, and buckets do not stack. `ITEM_BUCKET_MILK` is one more row
+in `BUCKETS[]`, and `fred_build_bucket` already colours its contents
+from the table, so the held model needs no code. This was written down
+as a guess at lava and milk; it is the milk half being cashed in.
+
+### Two machines that take a day, two that take a minute (D-105, D-108)
+
+| block | recipe | fuel | in | out | time |
+|---|---|---|---|---|---|
+| Kitchen stove | 3 iron + 6 stone | **yes** | an adjacent chest, plus a recipe selector | 1 slot | 1 in-game minute |
+| Cheese maker | 7 wooden planks | no | 1 bucket of milk (**the bucket comes straight back**) | cheese | 1 in-game day |
+| Sausage maker | *"9 iron ore"* | not stated | 1 pork + 1 flower of any colour, or 2 beans | 1 sausage | 1 in-game minute |
+| Composter | not stated (proposed: 7 planks) | no | up to a stack of compostables | compost + 0-2 worms | 1 in-game day per unit |
+
+The cheese maker *"looks like an open barrel (quadratic, not round)"*
+with three appearances -- white with milk, yellow-orange with cheese,
+empty -- which is a texture set, not three block ids: it is a block
+entity, so its contents say which to draw.
+
+The **stove is the one with a new idea in it.** It has a fuel slot, an
+output slot and a recipe selector, and its ingredients come from *"a
+chest from which it takes its raw resources"*. If the recipe is short an
+ingredient, or there is no chest beside it at all, it says so -- the
+user asked for *"an appropriate info message"*, and that matters here
+for the same reason iron refusing a wooden pick needed a line on the HUD
+(step 8.4): a machine that does nothing and says nothing reads as
+broken.
+
+Mechanically it is the furnace's record plus a recipe id, and the chest
+is found through `blockent_find` on the four horizontal neighbours. Its
+picker should be **the crafting book's list**, searched the same way,
+not a new widget (Part C already solved searching on a keyboard with one
+alphabet).
+
+### Fishing, and what the reorder costs (D-109)
+
+The user: *"i want to implement 'Fishing' before 'Mobs and Combat', so
+switch the order of those two."* Done -- fishing is step 12, mobs are
+step 13.
+
+Bait is **worms, held in the inventory**. The catch is one of
+**sardines, salmon, shrimp**.
+
+The reorder has one consequence worth catching now: **there is no
+string in this game, and there will not be until spiders arrive in step
+13.** Minecraft's rod is sticks and string. So either the rod is not a
+tool (fish with a bare hand and a worm, which is odd), or it is made of
+what exists -- proposed: **2 sticks, 1 iron ingot for the hook, and
+cordage from tall grass**, which also gives tall grass a second use
+beyond wheat seeds. The user's call when it is built.
+
+### The food table
+
+Everything here is the user's number. Raw, and drunk or eaten as found:
+
+| food | hunger | saturation |
+|---|---|---|
+| Milk | 1 | 0 |
+| Tomato | 1 | 0 |
+
+Made by a machine that is not the stove:
+
+| food | station | ingredients | hunger | saturation |
+|---|---|---|---|---|
+| Cheese | cheese maker | 1 bucket of milk | 2 | 2 |
+| Pork sausage | sausage maker | 1 pork + 1 flower (any colour) | 2 | 2 |
+| Fake sausage | sausage maker | 2 beans | 2 | 2 |
+
+Cooked on the stove, one in-game minute each:
+
+| dish | ingredients | hunger | saturation |
+|---|---|---|---|
+| Baked potato | 1 potato | 1 | 1 |
+| Grilled tomatoes | tomatoes (count not given) | 2 | 0 |
+| Baked beans | beans (count not given) | 2 | 0 |
+| Bread | 3 wheat | 2 | 1 |
+| Rice patty | 2 rice | 3 | 1 |
+| Smoked salmon | 1 salmon | 2 | 4 |
+| Grilled shrimp | 3 shrimp | 2 | 2 |
+| Sashimi | 1 salmon + 1 rice | 4 | 0 |
+| Pork and beans | 1 pork + 1 beans | 5 | 2 |
+| Steak and potatoes | 1 beef + 1 potato | 5 | 2 |
+| **Pizza** | 2 wheat + 1 sausage + 1 cheese + 2 shrimp | **10** | **8** |
+
+Pizza is *"the superfood of this game"* and is priced like one: it needs
+a crop, a fished animal, a cow and a pig, so it needs all four systems
+working at once. Smoked salmon is the odd one and is right: 2 hunger but
+**4 saturation**, more than the pizza gives per hunger point, so it is
+the thing to carry when travelling rather than the thing to eat when
+starving.
+
+Hunger and saturation behave *"basically the same way as in Minecraft"*
+(the user), which is the model D-08 already committed to: saturation
+drains before hunger, hunger gates regeneration, and empty hunger
+damages. The HUD has drawn both bars since 4.3 with nothing moving them.
+
+`item_def_t` gains **two columns**, `hunger` and `saturation`, so a food
+stays a table row.
+
+### What it costs
+
+- **About eleven permanent block ids** (D-74, and a line each in
+  `tools/ids.txt`): farmland wet and dry, four machines, five crops.
+  Ids 31 up, the first spent since step 35.
+- **About thirty item ids**: three hoes, a rod, compost, worms, seeds
+  for wheat and tomatoes, five harvests, pork, beef, milk, cheese, two
+  sausages, three fish, eleven dishes.
+- **Thirty-two languages.** Roughly 35 new labels plus four machine
+  screens is the biggest string round since 8.5, and
+  `check_label_widths()` (F-76) decides whether the stove's picker fits
+  before a badge does.
+- **The block-entity pool.** `BE_MAX` is 192 records across the resident
+  ring, sized for chests and furnaces. A farm has a composter, a stove,
+  a cheese maker and a sausage maker in one place, and the pool is
+  shared: it may need raising, which is PSRAM and is measurable rather
+  than guessable.
+- **A chunk section and a new tag**, for the stamp above.
+
+### Open, and to be decided when it is built
+
+Written down so they are decided on purpose rather than by whoever
+types the code:
+
+- **The fishing rod's recipe**, per D-109 above -- no string exists yet.
+- **Grilled tomatoes and baked beans take how many?** Not given. Two
+  each is proposed: one tomato grilled for 2 hunger would make the raw
+  tomato pointless.
+- **"9 iron ore"** for the sausage maker is what the user wrote, and
+  every other recipe in the game takes ingots. Ore would mean the
+  machine can be built without ever lighting a furnace. Kept verbatim
+  until they say.
+- **Which chest** the stove uses when more than one touches it.
+  Proposed: a fixed order (+X, -X, +Z, -Z), with the screen naming the
+  one it found.
+- **One worm per catch, or per cast?** And does a rod wear out?
+- **Composter and hoe recipes** were not given.
+- **Whether the fake sausage may be a pizza's sausage.** It should be:
+  the pizza has shrimp in it, so it is not a vegetarian dish either way,
+  and refusing would only be a trap.
+
+---
+
 ## Part D: step-by-step plan with status tracking
 
 **Status values:** `todo` / `in progress` / `done` / `blocked (why)` /
@@ -1353,7 +1618,7 @@ reason Minecraft chose the other rule.
 | **4** | **Items** | | |
 | 4.1 | `items.c`, `inventory.c`, merged-stack drops, `item_entity.c` | done (not persisted) | 2026-09-21: **item ids below `BLK_COUNT` ARE block ids** (D-53), so a stack of cobblestone needs no second table and the inventory can draw a block the block registry already describes. Stacking fills partial stacks before empty slots — host-tested, because the other order silently gives you five slots of three cobblestone. Drops spawn from the block table's new drop column, scatter deterministically, fall, and fly to the player. **Age is elapsed ticks** (D-51), despawn asserted at exactly 12000. **Not saved yet**: `SECTION_ENTITIES` is reserved and nothing writes it, so drops are lost on reload — block 5. |
 | 4.2 | Tool durability; hotbar (F1-F6) and the inventory screen (Tab) | done | 2026-09-21: breaking is **held, not tapped** — `item_break_ticks()` of them, so hardness and the tool in hand finally mean something, and progress belongs to a cell so looking away abandons it. The right tool class only: a pickaxe does not dig dirt faster. Too soft a tool still breaks the block and drops nothing. One use of durability per **break**, so felling a tree is one swing of the axe, not forty. Tab opens the grid; F1-F6 swaps a stack onto the hotbar, which is the one operation without which everything past the sixth slot is unreachable. |
-| 4.3 | `hud.c`: crosshair, hotbar, health, hunger | done | 2026-09-21: hotbar with counts and a wear bar, ten hearts, ten drumsticks, and a mining progress bar. **Tools are drawn as shapes, not colours** (D-54) — three stone tools as flat squares are three identical grey squares. Drawn through `se_direct565.h`, not PAX: that is the difference between **13.4 ms a frame and 0.8** (F-46). Health and hunger are displayed but nothing moves them yet; the systems are block 12. |
+| 4.3 | `hud.c`: crosshair, hotbar, health, hunger | done | 2026-09-21: hotbar with counts and a wear bar, ten hearts, ten drumsticks, and a mining progress bar. **Tools are drawn as shapes, not colours** (D-54) — three stone tools as flat squares are three identical grey squares. Drawn through `se_direct565.h`, not PAX: that is the difference between **13.4 ms a frame and 0.8** (F-46). Health and hunger are displayed but nothing moves them yet; the systems are steps 10 (hunger) and 13 (damage). |
 | | **Accept:** the item registry, stacking, durability and drops are host-tested; breaking yields what the block table says and only to a tool that qualifies | **done** | 2026-09-21: in `make check`. Tool speed by class, harvest qualification, partial-stack filling, a full inventory refusing the overflow, two differently-worn tools staying two, a wooden pickaxe lasting exactly its durability, drops appearing and being collected only after `ITEM_PICKUP_DELAY`, despawn at exactly 12000 ticks, felling dropping every block it takes, and a full entity pool refusing rather than corrupting. |
 | **5** | **First playable — worlds on the SD card** | | |
 | 5.1 | `screens.c`: title -> world list -> new world (name + seed, or rolled) -> play | done | 2026-09-21: the **title** is the showreel's idea rebuilt on a streamed world (D-58). 2026-09-22: **Play / Settings / Quit** along the bottom of it, under the word; Play opens the **eight save slots** (D-60), a used slot offers Play / Rename / Delete, an empty one the new-world form — name, and a seed that is a number, any text (hashed), or blank for random. All in `ui/menu.c`, drawn with the engine's list menu, which has no scrolling of its own, so long lists window round the cursor. |
@@ -1393,11 +1658,11 @@ reason Minecraft chose the other rule.
 | 31 | **How many to move, and a cheat console** | done | 2026-09-23, asked for by the user. `ui/amount_ui.{c,h}`: moving a stack of more than one into or out of a chest, or into a furnace, asks first -- a slider AND a number, because one answers "about half" and the other answers "exactly seventeen" and neither answers both. It starts at everything, which is what the key did before it asked, and a stack of ONE never asks: there is nothing to decide and the modal would be a keypress added to every move. Taking a furnace's output never asks either (the user's rule: there is no reason to leave half a smelt behind). `ui/cheat_ui.{c,h}` on the backtick: every item in the game, searched by its STABLE name -- "pickaxe_wood", "iron_ore" -- which is English already, is what the save format keys on, is unambiguous, and needs no translation, which is exactly what the user asked for. |
 | 8.6 | The 8.4 screens in all 32 languages | done | 2026-09-23: 24 more keys each. Three languages spell "disassembly bench" wider than the column that holds an item name (Portuguese, Greek, Bulgarian) and were shortened rather than the column widened -- it is already the widest layout in the game. F-83. |
 | 8.5 | Item names and the crafting UI in all 32 languages | done | 2026-09-23: 63 keys x 31 languages -- every block and item a player can carry, the crafting book, the furnace and its picker. **Six overflowed and the check caught all six** before the badge did (French, Irish, Albanian, Greek, Bulgarian, Serbian), and widening the two crafting panels to hold them exposed something nothing had been measuring: **the book's row labels are ITEM NAMES**, and Russian "Деревянная лопата" is half as wide again as "Wooden shovel". `item.` joined `LABEL_COLUMNS`, the panels went to the wide layout, and the fold table grew to cover 82978 characters across the 32 languages. |
-| 9 | Farming: tilled soil, wheat, carrots, seeds, saplings, growth on the tick | todo | |
-| 10 | Cooking and the hunger loop | todo | |
-| 11 | Animals: pigs, cows, chickens; breeding; dogs (wild, tamed with steak) | todo | |
-| 12 | Mobs: zombies, skeletons, spiders; spawning, pathing, combat; beds and spawn; death keeps the inventory | todo | |
-| 13 | Fishing | todo | |
+| 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | todo | Designed 2026-09-29 from the user's own re-imagining -- **Part A** has all of it, D-104 and D-106 and D-107 the choices. Not Minecraft's list and not its fertiliser: wheat, potatoes, tomatoes, beans and **rice that grows in one-deep water**, planted only in tilled soil **within four blocks of water on the same level**, and fed by **compost from a composter** rather than bone meal -- the same machine that makes the **worms** step 12 needs for bait. The crop blocks are nearly free (`BF_CROP` and `growth_max` have been sitting unused in `block_def_t` since step 0.3, and the data plane the mesher needs to draw a stage by is the one the fluids already handed it, D-101). **The real cost is time, not stage**: a crop is a block, so there is nowhere in a cell to write when it last grew, and lazy catch-up needs **a per-chunk stamp** -- a new skippable chunk section, no format bump (D-30), and old worlds gain one on their first write, which since step 49 is immediately. About eleven permanent block ids (D-74). |
+| 10 | **Food, hunger, and the kitchen stove** | todo | Designed 2026-09-29, and the user's verdict on the alternative was blunt: cooking on a crafting table or in a furnace *"makes absolutely no sense"*. So food is made on a **stove that reads its ingredients out of the chest beside it** (D-105) -- a recipe selector, a fuel slot, an output slot, one in-game minute a dish, and **a message naming what is missing** when a recipe is short or no chest touches it, for the same reason iron refusing a wooden pick needed a line on the HUD. Eleven dishes, every number the user's, with **pizza as the superfood** at 10 hunger and 8 saturation because it needs a crop, a fish, a cow and a pig -- all four systems at once. `item_def_t` gains `hunger` and `saturation`, so a food is a table row. The hunger loop is Minecraft's model, which D-08 committed to on day one; the HUD has drawn both bars since 4.3 with nothing moving them. |
+| 11 | **Animals: pigs, cows, chickens; milk, cheese and sausages; dogs** | todo | Pigs give pork, cows give beef, and **a cow used with a bucket gives milk** -- which D-100 already paid for: a filled bucket is its own item id, so `ITEM_BUCKET_MILK` is one row in `BUCKETS[]` and the held model colours its own contents from the block table. Two slow machines of their own (D-108): the **cheese maker**, 7 planks, an open square barrel that shows white, then yellow-orange, then empty, takes a bucket of milk (**returning the bucket at once**) and an in-game day; and the **sausage maker**, which turns pork and a flower into a sausage in a minute, or **two beans into a vegetarian one with identical stats**. Breeding, and dogs found wild and tamed with steak, are unchanged from the original requirement. |
+| 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, which is why the composter in step 9 has two output slots. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. One thing the reorder exposes and Part A records: **there is no string in this game until spiders arrive in step 13**, so Minecraft's rod recipe is unavailable and the rod has to be made of something that exists. |
+| 13 | **Mobs: zombies, skeletons, spiders; spawning, pathing, combat; beds and spawn; death keeps the inventory** | todo | Now after fishing (D-109). Unchanged otherwise, and still the biggest single block left: it is the first thing in the game that needs an entity with a mind rather than a record with a timer. |
 | 14 | **Audio: sound effects, and music that is mostly silence** (D-82, D-83, D-84, D-85) | done | 2026-09-23: the mixer starts at boot. 21 effects as table rows (`audio/sfx.c`), and which one a block makes is its own registry row (`block_def_t.sound`), so a new block brings its sounds with it. Music is eleven public-domain MIDI files played by a ported sequencer and a six-shape synth: 72 KB for half an hour, against megabytes for the same music as MP3. `worldcheck`'s `check_midi` proves every shipped file parses, ends, rewinds identically and survives truncation at any length (F-72). The raw voice sum clipped, so the synth carries a master gain and a cubic soft limiter (F-73). **Three volume sliders** in Settings -> Audio (D-85): the badge's own, then how loudly the music and the effects are each mixed in. The effects turned out to be inaudible whenever the music was off -- the amplifier was asleep and eating them (F-75) -- which is why the engine is 2.2. Two checks came out of the round and stay behind: `tools/symcheck.sh`, after an unexported `strcasecmp` made the app link clean and then refuse to start with no message at all (F-74), and `check_label_widths()`, after the sliders' labels turned out to be the least of it -- three settings screens had been overlapping their own text in a dozen languages since the day the language count went to 32 (F-76). |
 | 15 | Block and sky lighting | done | 2026-09-22, asked for by the user (torches that light the area, computed when a block changes). Pulled forward from the end of the plan: a light plane per chunk (sky and block light, 0..15 each, D-69), flooded when a chunk arrives -- its own light on core 1, the border exchange on the main task (F-58) -- and updated with the two-queue flood on every block change. The mesher keys faces on light; a per-frame table turns light into brightness for the time of day, through the engine's new `SE_TRI_LIGHT`. Host-tested: fall-off, removal, a shaft opened and capped, across a chunk border and into a chunk arriving late. On the badge: a placed torch lights the ground at night. |
 | 16 | **Day and night; sun, moon, clouds, stars** | done | 2026-09-22, asked for by the user. `game/daytime.{c,h}`: a 20-minute day from the world's tick count -- sun direction, sky and fog colours with an orange band at sunrise and sunset, a daylight fraction, the light table. The showreel's blocky sun, moon and clouds (`voxel/voxel_sky.c`, clouds laid out in world coordinates) and its starfield. Night takes 9 light levels off the sky, not Minecraft's 11 (F-57). Clouds are a Graphics toggle; the title has none (they flew through its letters). |
@@ -4497,6 +4762,164 @@ reason Minecraft chose the other rule.
   water along any ray -- and that is what makes this affordable: the
   thing that makes transparency miserable in Minecraft, sorting many
   layers of it, mostly does not arise here.
+
+- **D-104** 2026-09-29, **the user**: **compost, not bone meal -- and the
+  composter makes the fishing bait too.**
+
+  Their words: *"Minecraft uses bone meal as a fertilizer. Instead, we
+  use a composter... It has two output slots, one for compost and one
+  for worms... It takes one in game day to generate one unit of compost
+  from one unit of raw materials. And it generates from zero to two
+  worms (used as bait for fishing)."*
+
+  What makes this a better design than the thing it replaces is that it
+  **couples two systems that Minecraft leaves unrelated**: bone meal
+  comes from killing things, and fishing bait does not exist at all.
+  Here the leaves a player cuts down and the food they let spoil feed
+  both the farm and the fishing, so a farm is the thing that makes the
+  rest of the chain go rather than a side activity.
+
+  Two implementation notes that are decisions in their own right.
+  Compostability is **a column in the item table** (`item_def_t.compost`),
+  not a list inside the composter, because food items are not blocks and
+  a list in one machine is the thing this project has refused since
+  Part L. And **0-2 worms comes from the world's RNG, never `rand()`**:
+  Part T says the same world opened twice composts the same way, and a
+  replay has to reproduce it.
+
+  A full stack is 64 in-game days, about 21 hours of play. That is the
+  point rather than a problem -- it drips, the input slot is the cap, and
+  the lazy clock (D-51) pays out an absence in one go.
+
+- **D-105** 2026-09-29, **the user**: **cooking gets its own station, and
+  it reads out of the chest next to it.**
+
+  Their words: *"In Minecraft, preparing food happens either on the
+  crafting table or in the furnace. That makes absolutely no sense.
+  Instead we make a new placable block, a kitchen stove. The kitchen
+  stove needs to be placed next to a chest from which it takes its raw
+  resources. The stove has recipe selector, a fuel slot and an output
+  slot... If a recipe is missing one or more raw ingredient (or there is
+  no chest next to the stove) we get an appropriate info message."*
+
+  **The chest is the interesting half.** Every station in the game so
+  far has been fed by hand from the player's inventory, and a kitchen
+  that pulls from storage standing beside it is the first machine in this
+  world that is part of a *build* rather than a thing you stand at. It
+  also removes the worst part of cooking eleven dishes on a badge with
+  six hotbar keys: shuffling twelve ingredients into slots.
+
+  Mechanically it costs very little, which is why it is worth doing
+  early: the record is the furnace's plus a recipe id, and the chest is
+  `blockent_find` on the four horizontal neighbours. Its picker should be
+  **the crafting book's list and search**, not a new widget -- Part C
+  already solved searching on a keyboard with one alphabet, and this is
+  the same question asked again.
+
+  The info message is not politeness. Iron refusing a wooden pick needed
+  a line on the HUD for exactly this reason (step 8.4): **a machine that
+  does nothing and says nothing is indistinguishable from a bug**, and
+  this one has two separate ways of doing nothing.
+
+- **D-106** 2026-09-29, **the user**: **plants need tilled soil, and
+  tilled soil needs water within four blocks on its own level.**
+
+  Their words: *"Plants can only be planted on a tilled soil (using a hoe
+  tool). The tilled soil must be within 4 blocks of a water block on the
+  same level... Farmland is either wet (dark) or dry (lighter color)."*
+
+  The visible half matters as much as the rule: **wet is dark and dry is
+  lighter**, so a player can see why nothing is growing without being
+  told. That is the same argument as the water levels in D-101 -- the
+  state of the simulation should be legible from the geometry and the
+  colour, not from a wiki.
+
+  The implementation choice underneath it is **not to watch the water.**
+  Wetness is recomputed when the crop's own growth event fires, on tier
+  2, and dry farmland simply does not advance. Watching instead would
+  mean waking every farmland cell within four blocks of any water
+  change, and four blocks is the one radius the fluid scheduler cannot
+  reach cheaply: its neighbourhood is a single cell, by design. So a
+  hundred reads of a resident chunk a few times a minute, in a field
+  someone is standing in, replaces a new wake path through D-98.
+
+- **D-107** 2026-09-29, **the user**: **five crops, and you find the
+  first one growing wild.**
+
+  Wheat from grass seeds; potatoes *"sometimes found in large grassy
+  lands"*; tomatoes *"sometimes found in birch forrests"*, turned into
+  seeds at the crafting bench; beans *"sometimes found in normal
+  forrests"*; rice *"sometimes found on the shore in water one block
+  deep"*. The user defined the phrase themselves: *"'sometimes found'
+  means one or two plants generate in one of those biomes."*
+
+  This is a **seed economy with no crafting recipe in it** -- the first
+  potato is a place you went, which is what makes the birch woods of
+  step 35 worth walking into and gives the shore a reason to exist
+  beyond sand. It costs nothing new in worldgen: a rare second plant
+  column on `biome_def_t`, beside the one step 33 already reads. A wild
+  plant is **the crop block at its last growth stage**, so finding one
+  spends no extra block id.
+
+  Worlds that already exist grow no potatoes until the player walks into
+  ground that has not been generated yet. That is how every block added
+  since 8.4 has behaved and is not a migration.
+
+  **Rice is the one with a real problem in it**, and the user's own
+  constraint solves it. A cell holds one block, so rice in water wants a
+  waterlogged bit that the state byte has no room for -- growth owns
+  those bits. Instead the rice block carries a flag that makes
+  `world/fluid.c` read it as **a full source at level 0** and the mesher
+  draw a water surface under the sprite. It is safe *because* rice only
+  grows in water one block deep: its water is always a source, so there
+  is never a level to store.
+
+- **D-108** 2026-09-29, **the user**: **cheese and sausages come from two
+  machines of their own, and one of them hands the bucket straight
+  back.**
+
+  The cheese maker: 7 wooden planks, *"looks like an open barrel
+  (quadratic, not round)"*, no fuel, one bucket of milk in, **the empty
+  bucket returned immediately**, cheese an in-game day later. The
+  sausage maker: pork plus a flower of any colour as spice, one in-game
+  minute, or **two beans into a fake sausage with identical stats** --
+  the user's own vegetarian option, and identical stats rather than
+  worse ones is the decision, because a second-class version of a dish
+  is not an option, it is a tax.
+
+  Returning the bucket at once, rather than with the cheese, is the
+  detail that makes the machine usable at all: there is exactly one
+  bucket early on, buckets do not stack (D-100), and a day is a very
+  long time to be without the only thing that carries water.
+
+  Both are the furnace's record with a different timer, so neither needs
+  machinery that does not exist. Three appearances of the cheese maker
+  -- milk, cheese, empty -- are a texture set chosen from its contents,
+  **not three block ids**.
+
+- **D-109** 2026-09-29, **the user**: **fishing is built before mobs.**
+
+  Their words: *"Also, i want to implement 'Fishing' before 'Mobs and
+  Combat', so switch the order of those two."* Fishing is now step 12 and
+  mobs are step 13; the numbers were swapped rather than the rows moved,
+  so nothing else in this file has to be renumbered.
+
+  It is the right order for two reasons the user did not have to give.
+  Fishing finishes the food chain -- three of the eleven dishes need
+  fish, and the composter's worms have no purpose until it exists -- so
+  the farming and cooking blocks are only half useful without it.
+  And mobs are the first thing in this game that needs an entity with a
+  mind rather than a record with a timer, which makes them the block
+  most likely to overrun; putting a small finished system in front of it
+  means the food chain is playable even if combat takes twice as long as
+  planned.
+
+  **One consequence to catch now**: Minecraft's fishing rod is sticks and
+  string, and **there is no string in this game until spiders arrive in
+  step 13.** So the rod has to be made of what exists. Part A proposes
+  two sticks, an iron ingot for the hook and cordage from tall grass --
+  which would also give tall grass a second use -- but it is the user's
+  call when it is built.
 
 - **D-96** 2026-09-26, out of the user's question and then their
   instruction: **the audio codec is ours, and it is public domain.**
