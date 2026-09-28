@@ -1437,6 +1437,7 @@ reason Minecraft chose the other rule.
 | 55 | **Water that flows, and the scheduler under it** | done | 2026-09-28, the user: *"Let's implement water/fluid physics"*, with the design given in the same message -- know which blocks are actually doing something so the rest cost nothing, save the state, and use the same machine later for falling sand and for crops. Built as TWO TIERS (D-98): `world/blockupdate.h` is a wheel of 64 tick-buckets over an explicit set of woken cells, with **one bit per cell in a fourth chunk plane** saying whether it is in the queue -- both the duplicate filter and the literal answer to the user's *"know if a block even has active physics going on"*; `world/fluid.h` is Minecraft's rule on top of it (levels 0-7 in the state byte, a falling bit, down-first, two sources make a third, and a cut-off flow that dries up). **Settled water is not in the queue at all**, and a full sea chunk arriving wakes exactly 0 of its 11520 cells -- both pinned by host checks. The **bucket** is three iron ingots, fills only from a source and casts its own `RAY_FLUID` ray because the crosshair looks through water on purpose; it has a drawn icon and, after the user found it being held as a coloured cube, a model of its own beside the pick and the axe (`FRED_HOLD_BUCKET`, a tapered pail with a wire handle, its contents coloured from the block table so lava and milk will need no code). **The user's verdict on the model: "a bit strange, not really like a bucket. But i guess it's good enough for now"** -- so it is a placeholder that works, not a finished thing. Costs 512 KiB of PSRAM for the active plane. **The seam is the hard part and it is the user's own catch** (D-99): a missing chunk reads as BLK_BARRIER, so a flow stops at the edge of the loaded world -- and `blockupdate_chunk_join()`, called from the same place in `apply()` as `light_chunk_join()`, wakes both the arriving chunk's unsettled fluid and the facing border of the chunks already there. Not yet: Minecraft's flow-toward-a-hole preference, lava, and falling sand -- which is one `dispatch()` line away. |
 | 56 | **Water you can read: partial heights and a visible waterfall** | done | 2026-09-28, the user, on being told partial heights needed a different mesher: *"What's the problem with partial water heights? That seems to be integral as feedback to the player."* They were right and the claim was wrong (D-101). A flow is emitted per cell beside the plants and the torches, where this file has always put the blocks that are not boxes -- surface part-way up the cell, **corners averaged from the neighbouring cells so the sheet tilts the way it is running**, and the tilt is the flow arrow without anything working out a direction. Sources stay in the greedy pass, so every ocean is byte-identical and D-86 stands where it was made. **It also fixed a bug nobody had seen yet**: under D-86's "a liquid draws no sides" a falling column emits *nothing at all* -- no top (the cell above is water), no bottom, no sides -- so a waterfall was invisible between the spring and the splash (D-102). Held to **12 triangles for the worst-case cell** by naming a direction on every face and emitting one winding a wall, against 20 for the double-sided version; meshcheck pins the number, the slope, the surface height and the fact that a source pool is untouched. |
 | 57 | **Played, and the numbers say it is free** | done | 2026-09-28, the user's first test game: *"Water works surprisingly well."* The flight recorder agrees and says why. The physics queue peaked at **201 cells, dropped 0, carried 0, and returned to 0 every time** -- settled water really does cost nothing, which is the claim the whole design rests on. Mesh lag stayed at a **median of 89 ms** with every real case between 78 and 163 ms, so the remesh churn I had predicted from water edits marking sections urgent did not happen. 114 chunks saved at a mean of 16.8 ms, no compaction, no card refusals. **The one alarming number in the report was mine** (F-118): a 31281 ms mesh lag that turned out to be the recorder matching a mesh against an unrelated edit. Also visible for the first time: `pace_after_write`, the cargo left from the refuted erase-cycle theory, **waited 173 ms across four pauses, worst 68 ms** -- it is not inert, and now has a measured cost rather than a suspicion. |
+| 58 | **Water you can actually see through** | done, **default on** | 2026-09-29, the user, after being told partial heights were the expensive part: *"Currently we have fake transparency for water (like leaves). How much actual FPS impact would it be to have actual water transparency?"* The estimate said 5-20%, scaling with how much water fills the view. They asked for it behind a key so the two could be compared in one place, played it, and reported *"The new transparent water looked much better and framerates seems comparable."* Now a Graphics setting, **on by default and on for upgrades too** (D-103). `SE_TRI_BLEND` in the engine (2.5): a 50/50 RGB565 mix, and -- the part that matters -- blended triangles sorted after every opaque one and far-to-near among themselves, which cost **one bit of the existing depth key and no extra pass**, because a positive float never sets its sign bit and the top bit was always spare. D-86 is amended a second time: water is no longer only its surface's cut-out, it is a real mix, and `water_blend.png` is the same texture without its checkerboard. **The frame-rate claim is the user's, not the trace's**: their A/B in one spot is controlled and the trace was not, because nothing recorded which mode was running -- which is now fixed (`trace_event`, F-119). |
 
 ---
 
@@ -2722,6 +2723,33 @@ reason Minecraft chose the other rule.
   was measuring something adjacent to the question and reporting it as
   the answer.
 
+- **F-119** 2026-09-29, trying to check the user's *"framerates seems
+  comparable"* against the recorder and finding I could not: **a trace
+  of a session whose settings changed half way through is worth less
+  than a trace of either half.**
+
+  Three sessions were on the card -- 356 s at a median of 12.9 fps
+  before blending existed, then 134 s at 15.3 and 164 s at 15.6 with it.
+  That looks like a clean answer and is not one. The sessions covered
+  different ground with different amounts of water in view; the last of
+  them had **no water edits and one physics line at all**, so its 15.6
+  says nothing about blended water; and nothing recorded which mode was
+  running, so the two could not be separated even in principle.
+
+  **The user's own A/B was the controlled experiment and mine was not.**
+  Flipping in one spot and watching the counter compares two settings
+  over one view. Averaging a whole session compares two walks.
+
+  `trace_event()` is the fix -- a `!` line stamped with the moment a
+  setting changed -- and `traceanalyse.py` now splits its frame-rate
+  report on those marks instead of printing one mean that belongs to no
+  configuration that was ever running. It sits beside `trace_note()`,
+  which states settings once at the top; the difference is that this one
+  records them CHANGING.
+
+  (`trace_note` already existed, which I found by compiling a
+  redefinition of it. Grep first.)
+
 - **F-115** 2026-09-28, out of **the user**: *"Loading the main menu takes
   a long time (both from game start and also when quitting a world back to
   the main menu)."* **The title runs on a scratch world, so its 81 chunks
@@ -3920,10 +3948,12 @@ reason Minecraft chose the other rule.
   "no sides and bottom" as an optimisation -- as the definition of what a
   liquid IS in a renderer with no blending.
 
-  (Amended by **D-102**, 2026-09-28: a flow or a fall draws its sides,
-  because a falling column that draws only its surface draws nothing at
-  all. A SOURCE is exactly as described here, so lakes and oceans are
-  unchanged.)
+  (Amended twice. **D-102**, 2026-09-28: a flow or a fall draws its
+  sides, because a falling column that draws only its surface draws
+  nothing at all. **D-103**, 2026-09-29: the engine grew blending, so
+  the surface is a real 50/50 mix rather than a cut-out standing in for
+  one -- but the SHAPE below is unchanged, and it is what makes that
+  affordable.)
 
   The problem was stated plainly: water is an opaque cube, "that's sort of
   fine for now. But if we enter a place where the water covers our 'eyes',
@@ -4431,6 +4461,42 @@ reason Minecraft chose the other rule.
   meshes to the same triangles it did before, and the change is
   confined to water that is moving -- which is water that was put there
   by a player, since generated water is all springs.
+
+- **D-103** 2026-09-29, **the user**: **transparent water is a Graphics
+  setting, on by default, and on for cards that already exist.**
+
+  Their words: *"Make the transparent water a graphics setting and
+  default it to on (when newly installed or upgrading an older
+  installation)."*
+
+  The upgrade half needed no migration code, and that is worth writing
+  down because it looks like luck and is not. `settings.txt` is parsed
+  key by key and **anything the build does not recognise is ignored** --
+  so a file written by an older build simply has no `water_blend` line,
+  the variable keeps the `true` it was initialised with, and the player
+  gets the new default without their other choices being touched. Every
+  future default arrives the same way.
+
+  It is a setting rather than a decision because the cost is real and
+  depends entirely on what is on screen: what lies behind water now has
+  to be drawn in full, where the cut-out let about half of it lose the
+  depth test. A player on a slow view should be able to take it back.
+
+  **M still exists and now flips the SETTING**, not just the renderer,
+  so the Graphics screen and the key cannot disagree and a comparison
+  survives leaving the world.
+
+  One guard: if `water_blend.png` is not in the install -- which any
+  card flashed before this is -- the switch refuses, says so, and turns
+  the setting back off, so the menu shows what is actually being drawn
+  rather than what was asked for.
+
+  **D-86 is amended a second time** (after D-102). It said a liquid is
+  only ever its surface, because the engine had no blending; now it has
+  some. What survives is the shape -- no sides on a source, one layer of
+  water along any ray -- and that is what makes this affordable: the
+  thing that makes transparency miserable in Minecraft, sorting many
+  layers of it, mostly does not arise here.
 
 - **D-96** 2026-09-26, out of the user's question and then their
   instruction: **the audio codec is ours, and it is public domain.**
