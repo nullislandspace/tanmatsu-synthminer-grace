@@ -69,6 +69,7 @@ graphics.view = Fad radhairc
 graphics.textures = Uigeachtaí
 graphics.resolution = Taifeach
 graphics.clouds = Scamaill
+graphics.water = Uisce trédhearcach
 graphics.camera = Ceamara
 graphics.hand = Lámh Fred
 view.near = Gar

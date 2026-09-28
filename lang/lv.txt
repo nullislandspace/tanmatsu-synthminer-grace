@@ -69,6 +69,7 @@ graphics.view = Redzamība
 graphics.textures = Tekstūras
 graphics.resolution = Izšķirtspēja
 graphics.clouds = Mākoņi
+graphics.water = Caurspīdīgs ūdens
 graphics.camera = Kamera
 graphics.hand = Freda roka
 view.near = Tuvu

@@ -269,6 +269,10 @@
           "target_file": "textures/water.png"
         },
         {
+          "source_file": "textures/water_blend.png",
+          "target_file": "textures/water_blend.png"
+        },
+        {
           "source_file": "music/bach_sheep_may_safely_graze.mid",
           "target_file": "music/bach_sheep_may_safely_graze.mid"
         },

@@ -69,6 +69,7 @@ graphics.view = Απόσταση θέασης
 graphics.textures = Υφές
 graphics.resolution = Ανάλυση
 graphics.clouds = Σύννεφα
+graphics.water = Διάφανο νερό
 graphics.camera = Κάμερα
 graphics.hand = Το χέρι του Φρεντ
 view.near = Κοντά

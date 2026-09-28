@@ -123,3 +123,16 @@ int chunk_render_evicted(void);
 // uses it to draw a block as ITSELF rather than as the flat average
 // colour that stood in for it (D-03) -- one table of files, not two.
 char const* chunk_render_mat_file(int mat);
+
+// --- Water transparency (M in game) -----------------------------------
+//
+// Swap the water material between the CUT-OUT checkerboard it has
+// always used (D-86) and a real 50/50 blend against the framebuffer
+// (SE_TRI_BLEND). A switch rather than a decision, so the two can be
+// compared in one view: the cost is real and depends entirely on how
+// much water is on screen, which nothing can tell you from a still.
+//
+// False if the blend could not be turned on -- water_blend.png missing
+// from the install, which an older card would be.
+bool chunk_render_set_water_blend(bool on);
+bool chunk_render_water_blend(void);

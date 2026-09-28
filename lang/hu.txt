@@ -69,6 +69,7 @@ graphics.view = Látótávolság
 graphics.textures = Textúrák
 graphics.resolution = Felbontás
 graphics.clouds = Felhők
+graphics.water = Átlátszó víz
 graphics.camera = Kamera
 graphics.hand = Fred keze
 view.near = Közeli

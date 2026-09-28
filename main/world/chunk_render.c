@@ -131,12 +131,28 @@ sm_view_t sm_view_preset(int level) {
 #define TORCH_FPS    6.0f
 static se_texture_t const* s_torch[TORCH_FRAMES];
 
+// REAL WATER TRANSPARENCY, off by default and switchable in game (M),
+// so the two can be compared in the same view rather than across two
+// builds.
+//
+// Two things change together and neither works without the other: the
+// TEXTURE loses its checkerboard (the cut-out is what stands in for
+// transparency today, and blending a texture that is already half holes
+// would be transparency twice), and the material gains SE_TRI_BLEND,
+// which tells the engine to mix the texel with the framebuffer AND to
+// draw it after everything opaque.
+static se_texture_t const* s_water_cut;    // water.png, the checkerboard
+static se_texture_t const* s_water_solid;  // water_blend.png, no holes
+static bool               s_water_blend;
+
 bool chunk_render_init(void) {
     for (int m = 0; m < VM_COUNT; m++) {
         se_texture_t const* tex = texcache_get(MAT_FILES[m].file);
         s_tex_mats[m]           = (mesh_mat_t){tex, MAT_FILES[m].argb, 0};
         s_mean[m]               = tex != NULL ? tex->mean_argb : MAT_FILES[m].argb;
     }
+    s_water_cut   = s_tex_mats[VM_WATER].tex;
+    s_water_solid = texcache_get("water_blend.png");
     s_torch[0] = s_tex_mats[VM_TORCH].tex;   // torch.png, already loaded above
     s_torch[1] = texcache_get("torch_1.png");
     s_torch[2] = texcache_get("torch_2.png");
@@ -144,6 +160,23 @@ bool chunk_render_init(void) {
     s_view  = sm_view_preset(1);
     s_ready = true;
     return true;
+}
+
+bool chunk_render_set_water_blend(bool on) {
+    // Refuse rather than half-apply: without the solid texture the
+    // blend would run over the checkerboard and look like neither.
+    if (on && s_water_solid == NULL) return false;
+    s_water_blend = on;
+    // The whole switch, and it takes effect on the next frame. No
+    // remesh: a material's texture and flags are read at SUBMIT time,
+    // which is the same reason the torch can animate (below).
+    s_tex_mats[VM_WATER].tex   = on ? s_water_solid : s_water_cut;
+    s_tex_mats[VM_WATER].flags = on ? SE_TRI_BLEND : 0u;
+    return true;
+}
+
+bool chunk_render_water_blend(void) {
+    return s_water_blend;
 }
 
 void chunk_render_shutdown(void) {

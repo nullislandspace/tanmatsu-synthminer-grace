@@ -64,6 +64,7 @@ graphics.view = Sichtweite
 graphics.textures = Texturen
 graphics.resolution = Auflösung
 graphics.clouds = Wolken
+graphics.water = Klares Wasser
 graphics.camera = Kamera
 graphics.hand = Freds Hand
 view.near = Nah

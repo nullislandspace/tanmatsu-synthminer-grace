@@ -69,6 +69,7 @@ graphics.view = Matymo atstumas
 graphics.textures = Tekstūros
 graphics.resolution = Raiška
 graphics.clouds = Debesys
+graphics.water = Skaidrus vanduo
 graphics.camera = Kamera
 graphics.hand = Fredo ranka
 view.near = Arti

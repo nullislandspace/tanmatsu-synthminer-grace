@@ -89,6 +89,7 @@ graphics.view = View distance
 graphics.textures = Textures
 graphics.resolution = Resolution
 graphics.clouds = Clouds
+graphics.water = Transparent water
 graphics.camera = Camera
 graphics.hand = Fred's hand
 view.near = Near

@@ -69,6 +69,7 @@ graphics.view = Näkyvyysetäisyys
 graphics.textures = Tekstuurit
 graphics.resolution = Tarkkuus
 graphics.clouds = Pilvet
+graphics.water = Läpinäkyvä vesi
 graphics.camera = Kamera
 graphics.hand = Fredin käsi
 view.near = Lähellä

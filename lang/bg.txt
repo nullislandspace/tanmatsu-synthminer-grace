@@ -64,6 +64,7 @@ graphics.view = Видимост
 graphics.textures = Текстури
 graphics.resolution = Резолюция
 graphics.clouds = Облаци
+graphics.water = Прозрачна вода
 graphics.camera = Камера
 graphics.hand = Ръката на Фред
 view.near = Близо

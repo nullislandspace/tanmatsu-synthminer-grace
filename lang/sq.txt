@@ -69,6 +69,7 @@ graphics.view = Largësia e pamjes
 graphics.textures = Teksturat
 graphics.resolution = Rezolucioni
 graphics.clouds = Retë
+graphics.water = Ujë i tejdukshëm
 graphics.camera = Kamera
 graphics.hand = Dora e Fredit
 view.near = Afër

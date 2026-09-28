@@ -31,6 +31,7 @@ static uint8_t s_sfx_vol   = 100;
 static bool s_gyro     = false;
 static bool s_autocraft = true;  // on by default: it only ever does what you asked for
 static bool s_clouds   = true;
+static bool s_water    = true;   // transparent water: on for new cards AND for upgrades
 static bool s_third    = false;
 static bool s_left     = false;
 
@@ -75,6 +76,8 @@ static void apply_line(char* line) {
         s_autocraft = v != 0;
     } else if (strcmp(key, "clouds") == 0) {
         s_clouds = v != 0;
+    } else if (strcmp(key, "water_blend") == 0) {
+        s_water = v != 0;
     } else if (strcmp(key, "third_person") == 0) {
         s_third = v != 0;
     } else if (strcmp(key, "left_handed") == 0) {
@@ -122,9 +125,9 @@ void settings_save(void) {
     fprintf(f, "language=%s\n", i18n_language_code(i18n_language()));
     fprintf(f,
             "view=%d\ntextures=%d\nhalf_res=%d\nclouds=%d\nthird_person=%d\nleft_handed=%d\nmusic=%d\neffects=%d\n"
-            "music_volume=%u\neffects_volume=%u\ngyro=%d\nautocraft=%d\n",
+            "music_volume=%u\neffects_volume=%u\ngyro=%d\nautocraft=%d\nwater_blend=%d\n",
             s_view, s_textured, s_half, s_clouds, s_third, s_left, s_music, s_sfx, (unsigned)s_music_vol,
-            (unsigned)s_sfx_vol, s_gyro, s_autocraft);
+            (unsigned)s_sfx_vol, s_gyro, s_autocraft, s_water);
     for (int a = 0; a < SM_ACTION_COUNT; a++) {
         fprintf(f, KEY_PREFIX "%s=0x%04x\n", input_action_id((sm_action_t)a), (unsigned)input_key((sm_action_t)a));
     }
@@ -267,6 +270,16 @@ bool settings_clouds(void) {
 void settings_set_clouds(bool on) {
     if (on == s_clouds) return;
     s_clouds = on;
+    settings_save();
+}
+
+bool settings_water_blend(void) {
+    return s_water;
+}
+
+void settings_set_water_blend(bool on) {
+    if (on == s_water) return;
+    s_water = on;
     settings_save();
 }
 

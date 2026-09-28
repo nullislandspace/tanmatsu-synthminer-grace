@@ -69,6 +69,7 @@ graphics.view = Synsvidde
 graphics.textures = Teksturer
 graphics.resolution = Oppløsning
 graphics.clouds = Skyer
+graphics.water = Gjennomsiktig vann
 graphics.camera = Kamera
 graphics.hand = Freds hånd
 view.near = Nær

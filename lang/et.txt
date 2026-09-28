@@ -69,6 +69,7 @@ graphics.view = Nägemiskaugus
 graphics.textures = Tekstuurid
 graphics.resolution = Eraldusvõime
 graphics.clouds = Pilved
+graphics.water = Läbipaistev vesi
 graphics.camera = Kaamera
 graphics.hand = Fredi käsi
 view.near = Lähedal

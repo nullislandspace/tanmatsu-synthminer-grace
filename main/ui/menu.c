@@ -572,7 +572,7 @@ static void update_controls(void) {
 // Fetched when drawn, not once: the language can change under them.
 static sm_str_t const VIEW_NAMES[SETTINGS_VIEW_COUNT] = {SM_STR_VIEW_NEAR, SM_STR_VIEW_MEDIUM,
                                                          SM_STR_VIEW_FAR};
-#define GRAPHICS_ROWS 7
+#define GRAPHICS_ROWS 8
 #define DISPLAY_ROWS  4
 
 static menu_cmd_t update_graphics(void) {
@@ -598,8 +598,15 @@ static menu_cmd_t update_graphics(void) {
                 cmd.kind = MENU_CMD_GRAPHICS;
                 break;
             case 3: settings_set_clouds(!settings_clouds()); break;
-            case 4: settings_set_third_person(!settings_third_person()); break;
-            case 5: settings_set_left_handed(!settings_left_handed()); break;
+            case 4:
+                settings_set_water_blend(!settings_water_blend());
+                // Like textures and the view distance, this one has to
+                // reach the renderer: it swaps the water material's
+                // texture and its blend flag (chunk_render.h).
+                cmd.kind = MENU_CMD_GRAPHICS;
+                break;
+            case 5: settings_set_third_person(!settings_third_person()); break;
+            case 6: settings_set_left_handed(!settings_left_handed()); break;
             default:
                 if (s_act & ACT_OK) go(SCR_SETTINGS);
                 break;
@@ -963,6 +970,7 @@ void menu_draw(pax_buf_t* fb) {
                  .kind  = SE_MENU_VAL_TEXT,
                  .value = T(settings_half_res() ? SM_STR_RES_HALF : SM_STR_RES_FULL)},
                 {.label = T(SM_STR_GRAPHICS_CLOUDS), .kind = SE_MENU_VAL_CHECK, .checked = settings_clouds()},
+                {.label = T(SM_STR_GRAPHICS_WATER), .kind = SE_MENU_VAL_CHECK, .checked = settings_water_blend()},
                 {.label = T(SM_STR_GRAPHICS_CAMERA),
                  .kind  = SE_MENU_VAL_TEXT,
                  .value = T(settings_third_person() ? SM_STR_CAMERA_THIRD : SM_STR_CAMERA_FIRST)},

@@ -482,7 +482,7 @@ def sm_sand():
     return sm_rgb(lum, (214, 200, 150))
 
 
-def sm_water():
+def sm_water(cut=True):
     """The surface of water, and the only face a liquid ever draws
     (blocks.h, K_LIQUID): deep blue with lighter wave crests running
     across u, so a scrolled u reads as flowing.
@@ -507,6 +507,12 @@ def sm_water():
             crest[(y + (k % 2)) % B, (off + k) % B] = True
     yy, xx = np.mgrid[0:B, 0:B]
     holes = ((xx + yy) % 2 == 0) & ~crest
+    if not cut:
+        # SOLID, for the blended path: the rasterizer mixes the whole
+        # texel with what is behind it, so punching holes in it as well
+        # would be transparency twice and the checkerboard would still
+        # be visible through the mix.
+        return sm_alpha(sm_rgb(lum, (48, 84, 196)), np.zeros_like(holes))
     return sm_alpha(sm_rgb(lum, (48, 84, 196)), holes)
 
 
@@ -1316,6 +1322,8 @@ TEXTURES = {
     "item_axe_iron.png": lambda: sm_item_axe((222, 222, 228)),
     "item_shovel_iron.png": lambda: sm_item_shovel((222, 222, 228)),
     "item_stick.png": sm_item_stick,
+    # The same water without its holes, for SE_TRI_BLEND (M in game).
+    "water_blend.png": lambda: sm_water(cut=False),
     "item_bucket.png": sm_item_bucket,
     "item_bucket_water.png": sm_item_bucket_water,
     "item_pickaxe_wood.png": lambda: sm_item_pickaxe((176, 128, 64)),

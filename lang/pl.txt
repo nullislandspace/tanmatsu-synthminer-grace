@@ -69,6 +69,7 @@ graphics.view = Zasięg widzenia
 graphics.textures = Tekstury
 graphics.resolution = Rozdzielczość
 graphics.clouds = Chmury
+graphics.water = Przezroczysta woda
 graphics.camera = Kamera
 graphics.hand = Ręka Freda
 view.near = Blisko

@@ -69,6 +69,7 @@ graphics.view = Dohľadnosť
 graphics.textures = Textúry
 graphics.resolution = Rozlíšenie
 graphics.clouds = Oblaky
+graphics.water = Priehľadná voda
 graphics.camera = Kamera
 graphics.hand = Fredova ruka
 view.near = Blízko

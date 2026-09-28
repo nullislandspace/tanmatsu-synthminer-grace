@@ -61,6 +61,7 @@ typedef enum {
     SM_STR_GRAPHICS_TEXTURES,           // graphics.textures
     SM_STR_GRAPHICS_RESOLUTION,         // graphics.resolution
     SM_STR_GRAPHICS_CLOUDS,             // graphics.clouds
+    SM_STR_GRAPHICS_WATER,              // graphics.water
     SM_STR_GRAPHICS_CAMERA,             // graphics.camera
     SM_STR_GRAPHICS_HAND,               // graphics.hand
     SM_STR_VIEW_NEAR,                   // view.near

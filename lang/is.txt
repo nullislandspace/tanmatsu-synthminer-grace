@@ -69,6 +69,7 @@ graphics.view = Sjónlengd
 graphics.textures = Áferðir
 graphics.resolution = Upplausn
 graphics.clouds = Ský
+graphics.water = Gegnsætt vatn
 graphics.camera = Myndavél
 graphics.hand = Hönd Freds
 view.near = Nálægt

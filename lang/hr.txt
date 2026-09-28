@@ -69,6 +69,7 @@ graphics.view = Daljina pogleda
 graphics.textures = Teksture
 graphics.resolution = Razlučivost
 graphics.clouds = Oblaci
+graphics.water = Prozirna voda
 graphics.camera = Kamera
 graphics.hand = Fredova ruka
 view.near = Blizu

@@ -957,6 +957,16 @@ static void on_init(void* user) {
         log_lines("retire", report);
     }
     settings_load(SM_DATA_DIR);
+    // The water material follows the setting, which is ON unless the
+    // card says otherwise -- a settings.txt written by an older build
+    // has no such key, so an upgrade gets the new default without a
+    // migration (settings.h). If the texture is missing, which an
+    // install that predates it would be, the switch refuses and the
+    // setting is put back so the menu shows what is actually drawn.
+    if (!chunk_render_set_water_blend(settings_water_blend())) {
+        ESP_LOGW(TAG, "water: no water_blend.png in this install -- staying with the cut-out");
+        settings_set_water_blend(false);
+    }
     // settings.txt named the language; this is where a player's own
     // corrections to that language, if they have put any on the card,
     // come in over the baked-in text (i18n.h).
@@ -1752,6 +1762,7 @@ static void on_update(float dt, void* user) {
                 break;
             case MENU_CMD_GRAPHICS:
                 chunk_render_set_textured(settings_textured());
+                chunk_render_set_water_blend(settings_water_blend());
                 if (s_app == APP_PLAY) {
                     sm_view_t const v = sm_view_preset(view_setting());
                     chunk_render_set_view(&v);
@@ -2065,6 +2076,29 @@ static void on_input(bsp_input_event_t const* ev, void* user) {
             tick_reset(&s_tick, showtime_now());
             ESP_LOGI(TAG, "camera: %s", s_cam_mode == CAM_PLAYER ? "player" : "free flight");
             break;
+
+        case BSP_INPUT_SCANCODE_M: {
+            // Water: the cut-out checkerboard (D-86) or a real 50/50
+            // blend. A switch rather than a decision -- the cost is
+            // entirely a function of how much water is on screen, and
+            // the only way to judge either half is to flip between them
+            // standing in the same place.
+            // The SETTING, not just the renderer: one source of truth,
+            // so the Graphics screen and this key can never disagree
+            // and a comparison survives leaving the world.
+            bool const want = !settings_water_blend();
+            if (!chunk_render_set_water_blend(want)) {
+                ESP_LOGW(TAG, "water: blended needs water_blend.png -- run `make install`");
+            } else {
+                settings_set_water_blend(want);
+                ESP_LOGI(TAG, "water: %s", want ? "BLENDED (50/50, drawn last)" : "cut-out checkerboard");
+                // Into the trace as well, or a session that was flipped
+                // half way through averages the two frame rates
+                // together and the number belongs to neither.
+                trace_event("water %s", want ? "blended" : "cutout");
+            }
+            break;
+        }
 
         case BSP_INPUT_SCANCODE_N: {
             // Testing: the world's clock a quarter of a day on -- morning,

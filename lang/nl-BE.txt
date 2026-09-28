@@ -62,6 +62,7 @@ graphics.view = Zichtbaarheid
 graphics.textures = Texturen
 graphics.resolution = Resolutie
 graphics.clouds = Wolken
+graphics.water = Doorzichtig water
 graphics.camera = Camera
 graphics.hand = Freds hand
 view.near = Dichtbij

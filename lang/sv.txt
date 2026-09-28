@@ -69,6 +69,7 @@ graphics.view = Siktvidd
 graphics.textures = Texturer
 graphics.resolution = Upplösning
 graphics.clouds = Moln
+graphics.water = Genomskinligt vatten
 graphics.camera = Kamera
 graphics.hand = Freds hand
 view.near = Nära

@@ -69,6 +69,7 @@ graphics.view = Görüş uzaklığı
 graphics.textures = Dokular
 graphics.resolution = Çözünürlük
 graphics.clouds = Bulutlar
+graphics.water = Saydam su
 graphics.camera = Kamera
 graphics.hand = Fred'in eli
 view.near = Yakın

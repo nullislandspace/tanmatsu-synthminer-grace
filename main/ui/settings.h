@@ -69,6 +69,23 @@ void settings_set_half_res(bool on);
 bool settings_clouds(void);
 void settings_set_clouds(bool on);
 
+// TRANSPARENT WATER: the surface is mixed 50/50 with what is behind it
+// (SE_TRI_BLEND) instead of being a cut-out checkerboard you see
+// through the holes of (D-86).
+//
+// ON BY DEFAULT, AND THAT INCLUDES EVERY CARD THAT ALREADY HAS A
+// settings.txt. A key this build does not find in the file simply
+// keeps the value the variable was born with, so an upgrade gets the
+// new default without a migration and without touching what the player
+// has already chosen. That is not an accident of the parser -- it is
+// why the parser ignores what it does not know.
+//
+// It costs what is behind the water being drawn in full, where the
+// checkerboard let half of it lose the depth test, so it is here to be
+// turned off on a slow view rather than as a matter of taste.
+bool settings_water_blend(void);
+void settings_set_water_blend(bool on);
+
 // Third person: the camera behind Fred instead of behind his eyes.
 // First person, with his arm and what it holds, by default.
 bool settings_third_person(void);

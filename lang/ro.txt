@@ -69,6 +69,7 @@ graphics.view = Distanța vizibilă
 graphics.textures = Texturi
 graphics.resolution = Rezoluție
 graphics.clouds = Nori
+graphics.water = Apă transparentă
 graphics.camera = Cameră
 graphics.hand = Mâna lui Fred
 view.near = Aproape
