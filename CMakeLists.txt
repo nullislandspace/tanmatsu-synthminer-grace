@@ -129,6 +129,18 @@ if(NOT APP_GIT_HASH)
     set(APP_GIT_HASH "unknown")
 endif()
 string(TIMESTAMP APP_BUILD_TIME "%Y-%m-%dT%H:%M:%SZ" UTC)
+
+# THE RELEASE VERSION, read from metadata.json rather than written down
+# a second time here. metadata.json is what the app repository and every
+# badge that installs from it already believe, so a second copy in the
+# source would be a second thing to forget: the title screen would go on
+# claiming 0.1.0 after a release that said otherwise.
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/metadata/metadata.json APP_METADATA_JSON)
+string(JSON APP_VERSION ERROR_VARIABLE APP_VERSION_ERR GET "${APP_METADATA_JSON}" version)
+if(APP_VERSION_ERR OR NOT APP_VERSION)
+    message(WARNING "metadata.json has no \"version\": the title will not show one")
+    set(APP_VERSION "")
+endif()
 configure_file(main/app_version.h.in ${CMAKE_CURRENT_BINARY_DIR}/generated/app_version.h @ONLY)
 
 # Include directories — add paths to your headers here

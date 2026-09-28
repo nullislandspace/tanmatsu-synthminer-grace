@@ -101,6 +101,11 @@ void chunk_render_stream(double wx, double wz);
 int chunk_render_nine(double wx, double wz);
 
 // Submit everything visible. The camera must already be set.
+// Advance anything in the world that animates: today the torches, which
+// all share one material and so all flicker together. Call once a frame
+// before submitting.
+void chunk_render_animate(double t);
+
 void chunk_render_submit(double eye_wx, double eye_wz);
 
 // What the last submit did, for the HUD and the perf records. A chunk

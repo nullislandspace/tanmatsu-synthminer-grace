@@ -226,11 +226,16 @@ static void drumstick(pax_buf_t* fb, int x, int y, uint32_t argb) {
 // its own icon. The things that are not blocks have a 16x16 of their
 // own, named after the item (tools/make_textures.py).
 static char const* icon_file(uint16_t item) {
-    if (item_is_block(item)) {
+    static char name[48];
+    // A BLOCK DRAWN AS A CUBE is best shown by its own side texture --
+    // one table, and a new block brings its icon with it. A block that
+    // is not a cube is not: BF2_ITEM_ICON says "I have a drawn one"
+    // (blocks.h), which is how the torch stops looking like a plank
+    // with a glowing edge.
+    if (item_is_block(item) && !block_has_item_icon((uint8_t)item)) {
         int const mat = voxel_face_mat((uint8_t)item, VF_SIDE);
         return mat < 0 ? NULL : chunk_render_mat_file(mat);
     }
-    static char name[48];
     snprintf(name, sizeof(name), "item_%s.png", item_def(item).name);
     return name;
 }
@@ -395,6 +400,25 @@ void hud_slot_grid(pax_buf_t* fb, int x0, int y0, inv_slot_t const* slot, int n,
     }
 }
 
+// The name of whatever is in `sl`, centred, at `y`. Nothing at all for
+// an empty slot -- a line that says "Empty" is noise, and a line that
+// appears and disappears as the cursor moves is how the eye finds it.
+//
+// Shared by every screen that has a cursor over slots: the inventory,
+// the chest, the trashcan and the bench all want the same answer to
+// the same question.
+void hud_slot_name(pax_buf_t* fb, inv_slot_t const* sl, int y) {
+    if (fb == NULL || sl == NULL || sl->item == 0 || sl->count <= 0) return;
+    char const* const name = T(item_label(sl->item));
+    if (name == NULL || name[0] == '\0') return;
+    pax_vec2f const sz = rendertext_size(NULL, 20.0f, name);
+    float const     x  = ((float)DISPLAY_LOG_W - sz.x) * 0.5f;
+    // A shadow, because this sits over the dimmed world rather than
+    // over the panel and the world behind it is any colour at all.
+    rendertext_draw(fb, 0xFF000000u, NULL, 20.0f, x + 1.5f, (float)y + 1.5f, name);
+    rendertext_draw(fb, 0xFFFFE8A0u, NULL, 20.0f, x, (float)y, name);
+}
+
 void hud_inventory(pax_buf_t* fb, player_t const* p) {
     if (fb == NULL || p == NULL || !p->inv.open) return;
     hud_begin(fb);
@@ -427,15 +451,28 @@ void hud_inventory(pax_buf_t* fb, player_t const* p) {
         one_slot(fb, x, y, sw, &p->inv.slot[i], i == p->inv.cursor, sel, true);
     }
 
+    // WHAT IS UNDER THE CURSOR, by name. The icons say what a thing
+    // looks like and not what it is called, which is fine for grass and
+    // no use at all for the three stone tools or the two kinds of
+    // leaves. The user asked for it: "it might help to also have a
+    // dynamic legend that displays the name of the currently
+    // highlighted icon."
+    hud_slot_name(fb, &p->inv.slot[p->inv.cursor], gy + gh + 8);
+
     // CENTRED ON THE SCREEN, not on the panel: the line is wider than
     // the grid, and hung off the panel's left edge it ran off the right
     // of the display (the user's catch). Centring gives it the whole
     // 800 px, and worldcheck measures it in all 32 languages.
+    //
+    // AND CLEAR OF THE PANEL. It sat at gy + gh + 4, four pixels below
+    // the last row of slots but INSIDE the panel, which ends at
+    // gy + gh + 12 -- so the descenders overlapped the border (the
+    // user's catch). The name above it needs room as well.
     {
         char const* const  hint = T(SM_STR_HUD_INVENTORY_HINT);
         pax_vec2f const    sz   = rendertext_size(NULL, 16.0f, hint);
         rendertext_draw(fb, 0xFFB0B0B8u, NULL, 16.0f, ((float)DISPLAY_LOG_W - sz.x) * 0.5f,
-                        (float)(gy + gh + 4), hint);
+                        (float)(gy + gh + 32), hint);
     }
 }
 

@@ -44,6 +44,11 @@ void hud_player(pax_buf_t* fb, player_t const* p);
 // The Tab screen, over everything. Nothing if it is not open.
 void hud_inventory(pax_buf_t* fb, player_t const* p);
 
+// The name of what a cursor is over, centred at `y`. Nothing for an
+// empty slot. Every screen with slots and a cursor wants this, so it
+// lives here rather than in four of them.
+void hud_slot_name(pax_buf_t* fb, inv_slot_t const* sl, int y);
+
 // The cracks over the block being mined: a progress bar is not what
 // Minecraft does, but a bar is legible where cracks need a texture set
 // that does not exist yet (the crack overlay is `voxel_fx`, waiting on

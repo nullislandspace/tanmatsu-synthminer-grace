@@ -116,12 +116,31 @@ sm_view_t sm_view_preset(int level) {
     }
 }
 
+// The torch's flipbook. Every torch in the world shares one material,
+// so animating it is one pointer a frame and no per-torch state at all
+// -- which is only possible because the user said the flicker may be
+// synchronised: "If all torches show a syncronized animation, that is
+// fine. We don't need a per block clock."
+//
+// The alternative was the showreel's: a flame quad per torch, drawn
+// from a hard-coded list of positions because it was a scripted scene.
+// In a streamed world that needs a register of where every torch is,
+// kept up to date as blocks are placed and broken and chunks come and
+// go. This needs none of it.
+#define TORCH_FRAMES 4
+#define TORCH_FPS    6.0f
+static se_texture_t const* s_torch[TORCH_FRAMES];
+
 bool chunk_render_init(void) {
     for (int m = 0; m < VM_COUNT; m++) {
         se_texture_t const* tex = texcache_get(MAT_FILES[m].file);
         s_tex_mats[m]           = (mesh_mat_t){tex, MAT_FILES[m].argb, 0};
         s_mean[m]               = tex != NULL ? tex->mean_argb : MAT_FILES[m].argb;
     }
+    s_torch[0] = s_tex_mats[VM_TORCH].tex;   // torch.png, already loaded above
+    s_torch[1] = texcache_get("torch_1.png");
+    s_torch[2] = texcache_get("torch_2.png");
+    s_torch[3] = texcache_get("torch_3.png");
     s_view  = sm_view_preset(1);
     s_ready = true;
     return true;
@@ -300,6 +319,14 @@ static bool outside_view(vec3_t lo, vec3_t hi, vec3_t eye, mat3_t const* b) {
         if (out[k] == 8) return true;
     }
     return false;
+}
+
+void chunk_render_animate(double t) {
+    int const f = (int)(t * (double)TORCH_FPS) & (TORCH_FRAMES - 1);
+    // A frame that failed to load leaves the material alone rather than
+    // blanking every torch in the world (texcache returns NULL and says
+    // so once).
+    if (s_torch[f] != NULL) s_tex_mats[VM_TORCH].tex = s_torch[f];
 }
 
 void chunk_render_submit(double eye_wx, double eye_wz) {

@@ -161,6 +161,10 @@
           "target_file": "textures/item_stick.png"
         },
         {
+          "source_file": "textures/item_torch.png",
+          "target_file": "textures/item_torch.png"
+        },
+        {
           "source_file": "textures/leaves.png",
           "target_file": "textures/leaves.png"
         },
@@ -227,6 +231,18 @@
         {
           "source_file": "textures/torch.png",
           "target_file": "textures/torch.png"
+        },
+        {
+          "source_file": "textures/torch_1.png",
+          "target_file": "textures/torch_1.png"
+        },
+        {
+          "source_file": "textures/torch_2.png",
+          "target_file": "textures/torch_2.png"
+        },
+        {
+          "source_file": "textures/torch_3.png",
+          "target_file": "textures/torch_3.png"
         },
         {
           "source_file": "textures/torch_flame.png",

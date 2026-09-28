@@ -5,6 +5,8 @@
 #include "audio/sfx.h"
 #include "ui/menu.h"
 
+#include "app_version.h"
+
 #include "se_stream.h"
 
 #include <stdio.h>
@@ -805,6 +807,21 @@ static void draw_title_bar(pax_buf_t* fb) {
     if (st != NULL) {
         float const sw = rendertext_size(NULL, 16.0f, st).x;
         rendertext_draw(fb, SE_UI_COL_NORMAL, NULL, 16.0f, (fw - sw) * 0.5f, y - 36.0f, st);
+    }
+
+    // THE RELEASE, top right. Baked in from metadata/metadata.json at
+    // build time (app_version.h), so it is the same number the app
+    // repository hands out and cannot drift from it -- a version
+    // written down twice is a version that will disagree with itself.
+    // Not translated: "0.1.0" is the same in every language.
+    if (APP_VERSION[0] != '\0') {
+        char v[32];
+        snprintf(v, sizeof(v), "v%s", APP_VERSION);
+        float const vw = rendertext_size(NULL, 18.0f, v).x;
+        // Over the sky, which is bright, so it gets the same shadow the
+        // position overlay uses rather than trusting the contrast.
+        rendertext_draw(fb, 0xFF000000u, NULL, 18.0f, fw - vw - 14.0f + 1.5f, 15.5f, v);
+        rendertext_draw(fb, 0xFFE0E0E8u, NULL, 18.0f, fw - vw - 14.0f, 14.0f, v);
     }
 }
 

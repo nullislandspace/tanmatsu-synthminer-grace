@@ -132,7 +132,15 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         // one operation the screen has to support, since without it
         // everything past the sixth slot is unreachable.
         for (int i = 0; i < INV_HOTBAR && !p->ui_open; i++) {
-            if (act_held(pressed, (sm_action_t)(SM_SLOT1 + i))) inv_swap(&p->inv, p->inv.cursor, i);
+            if (!act_held(pressed, (sm_action_t)(SM_SLOT1 + i))) continue;
+            inv_swap(&p->inv, p->inv.cursor, i);
+            // AND SELECT IT. Putting a thing on the hotbar is almost
+            // always followed by wanting it in hand, and the user asked
+            // for the second step to stop being a step: "when putting
+            // an icon into the hotbar using a function key, it helps
+            // the user experience to make that automatically the
+            // selected hotbar."
+            p->inv.selected = i;
         }
 
         // Still fall while reading: standing over a hole and opening

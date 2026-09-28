@@ -289,6 +289,17 @@ void chest_ui_draw(pax_buf_t* fb, inventory_t const* inv) {
 
     if (s_asking) amount_draw(fb);
 
+    // What the cursor is over, by name, on whichever side it is on
+    // (hud.h). The icons do not distinguish a stone axe from a stone
+    // shovel at a glance, and this screen is where a player is moving
+    // dozens of things about.
+    {
+        blockent_t const* const be2 = blockent_at(s_x, s_y, s_z);
+        inv_slot_t const* const sl =
+            s_on_chest ? (be2 != NULL ? &be2->slot[s_cur_chest] : NULL) : &inv->slot[s_cur_inv];
+        hud_slot_name(fb, sl, (int)DISPLAY_LOG_H - 58);
+    }
+
     char const* const hint = T(SM_STR_CHEST_HINT);
     pax_vec2f const   hsz  = rendertext_size(NULL, 15.0f, hint);
     rendertext_draw(fb, 0xFF9090A0u, NULL, 15.0f, ((float)DISPLAY_LOG_W - hsz.x) * 0.5f,

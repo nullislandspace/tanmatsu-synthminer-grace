@@ -1046,15 +1046,70 @@ def sm_glass():
     return sm_alpha(rgb, holes)
 
 
-def sm_torch():
-    """The torch's stick: dark wood, with a glowing coal band at the top
-    (the flame itself is the shared flame asset)."""
-    gen = sm_gen(18)
+# The torch burns: TORCH_FRAMES of it, swapped by chunk_render on a
+# timer so every torch in the world flickers together. One shared
+# material means one texture pointer to change and no per-torch state,
+# which is the whole reason this is a flipbook rather than geometry --
+# the user's call: "If all torches show a syncronized animation, that is
+# fine. We don't need a per block clock."
+TORCH_FRAMES = 4
+
+
+def sm_torch_frame(frame):
+    """The torch's stick: dark wood, with a burning tip that pulses.
+
+    The STICK is identical in every frame -- only the fire changes, or
+    the torch would appear to wobble in its own cell. What varies is how
+    far down the flame reaches and how bright it is, which is what a
+    flame does and what reads at sixteen texels. A first attempt varied
+    a stripe pattern instead and the four frames came out
+    indistinguishable.
+    """
+    gen = sm_gen(18)                      # the same wood every frame
     lum = gen.integers(-10, 11, (B, B)).astype(float)
     img = sm_rgb(lum, (110, 80, 44)).astype(int)
-    img[0:3, :] = (255, 214, 96)
-    img[3, :] = (200, 110, 40)
-    return img.astype(np.uint8)
+
+    # A LADDER OF FIRE COLOURS, and each frame starts further down it.
+    # Dimming by multiplying every channel was the first attempt and
+    # came out GREY: a flame that is going out turns orange and then
+    # red, it does not desaturate. Stepping down the ladder keeps the
+    # hue right because the ladder already has the right hues in it.
+    ladder = [(255, 252, 226), (255, 248, 206), (255, 200, 72), (226, 120, 32), (168, 72, 20), (120, 44, 12)]
+    # per frame: how many rows burn, and how far down the ladder to start
+    tall, step = ((4, 1), (5, 0), (4, 2), (3, 3))[frame % 4]
+    for row in range(tall):
+        img[row, :] = ladder[min(step + row, len(ladder) - 1)]
+    # The char line under the fire, so the wood does not meet the flame
+    # with a hard edge.
+    if tall < B:
+        img[tall, :] = (200, 110, 40)
+    return np.clip(img, 0, 255).astype(np.uint8)
+
+
+def sm_torch():
+    return sm_torch_frame(0)
+
+
+def sm_item_torch():
+    """The torch as an ITEM: a stick with a flame on top and everything
+    else cut away.
+
+    The inventory used to draw the BLOCK's side texture here, which is a
+    full 16x16 square of wood with a glowing band across the top -- "the
+    torch image in the inventory looks like a block with a yellow top
+    instead of a torch" (the user, 2026-09-28). A torch is a thin thing
+    and has to be drawn as one."""
+    img = _icon()
+    # The stick: two texels wide, standing in the lower two thirds.
+    for y in range(6, 15):
+        _dot(img, 7, y, HANDLE)
+        _dot(img, 8, y, _shade(HANDLE, -30))
+    # The burning end.
+    _rect(img, 6, 4, 10, 6, (226, 120, 32))
+    _rect(img, 7, 2, 9, 5, (255, 200, 72))
+    _dot(img, 7, 1, (255, 248, 206))
+    _dot(img, 8, 2, (255, 248, 206))
+    return img
 
 
 def sm_bedrock():
@@ -1190,6 +1245,10 @@ TEXTURES = {
     "tall_grass.png": sm_tall_grass,
     "glass.png": sm_glass,
     "torch.png": sm_torch,
+    "torch_1.png": lambda: sm_torch_frame(1),
+    "torch_2.png": lambda: sm_torch_frame(2),
+    "torch_3.png": lambda: sm_torch_frame(3),
+    "item_torch.png": sm_item_torch,
     "leaves_fast.png": sm_leaves_fast,
     "bedrock.png": sm_bedrock,
     "gravel.png": sm_gravel,

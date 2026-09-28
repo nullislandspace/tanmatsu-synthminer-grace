@@ -100,6 +100,17 @@ typedef enum {
 // becomes one of its rules instead of a special case in interact.c.
 #define BF2_STACKED    (1u << 4)
 
+// DRAW ME FROM item_<name>.png IN THE INVENTORY, not from my own side
+// texture. Most blocks are cubes and their side texture IS what they
+// look like in the hand; a torch is a stick, and its side texture is a
+// full square of wood with a glowing band along the top -- "the torch
+// image in the inventory looks like a block with a yellow top instead
+// of a torch" (the user, 2026-09-28).
+//
+// Anything drawn as a thin thing rather than as a cube wants this:
+// signs and rails when they arrive, and the torch today.
+#define BF2_ITEM_ICON  (1u << 5)
+
 // Tool classes. `tool_level` is 0 hand, 1 wood, 2 stone, 3 iron.
 typedef enum {
     TOOL_NONE = 0,
@@ -243,6 +254,10 @@ static inline bool block_trunk(uint8_t id) {
 // Needs the block below it; a stack comes down together (BF2_STACKED).
 static inline bool block_stacked(uint8_t id) {
     return (block_def(id)->flags2 & BF2_STACKED) != 0;
+}
+// Has a drawn inventory icon of its own (BF2_ITEM_ICON).
+static inline bool block_has_item_icon(uint8_t id) {
+    return (block_def(id)->flags2 & BF2_ITEM_ICON) != 0;
 }
 static inline bool block_usable(uint8_t id) {
     return (block_def(id)->flags2 & BF2_USABLE) != 0;

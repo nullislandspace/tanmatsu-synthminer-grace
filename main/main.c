@@ -2065,6 +2065,7 @@ static void on_render(pax_buf_t* fb, void* user) {
     // camera, so the floats the rasteriser sees stay small however far
     // out this is (D-01). The camera goes into the same space.
     trace_set_time((double)(esp_timer_get_time() - s_world_t0_us) / 1000000.0);
+    chunk_render_animate(showtime_now());
     chunk_render_set_origin((int32_t)floor(s_cam.wx), (int32_t)floor(s_cam.wz));
     int32_t ox, oz;
     chunk_render_origin(&ox, &oz);
