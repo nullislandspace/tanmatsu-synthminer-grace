@@ -69,6 +69,7 @@ def main():
 
 def report(raw_lines):
     header, ticks, edits, meshes, drops, io, compacts, cardfails = [], [], [], [], [], [], [], []
+    notes = []
     for raw in raw_lines:
         line = raw.strip()
         if not line:
@@ -84,6 +85,11 @@ def report(raw_lines):
             edits.append(f)
         elif kind == "M":
             meshes.append(f)
+        elif kind == "!":
+            # A setting changed mid-session. The fps report splits on
+            # these, because averaging across a change is what makes a
+            # trace of two settings worth less than a trace of one.
+            notes.append((float(f.get("t", 0)), line[2:].split(" ", 1)[-1], len(ticks)))
         elif line.startswith("cardfail="):
             if ticks:
                 f.setdefault("t", ticks[-1].get("t", "?"))
@@ -124,6 +130,24 @@ def report(raw_lines):
         print(f"\n{len(ticks)} seconds recorded, {t0:.0f} to {t1:.0f} s")
         if fps:
             print(f"  fps  min {min(fps):.1f}  mean {sum(fps)/len(fps):.1f}  max {max(fps):.1f}")
+
+        # SPLIT ON THE SETTINGS THAT CHANGED. A mean over a session that
+        # was flipped half way through describes no configuration that
+        # was ever running -- and the whole reason to flip in the first
+        # place is to compare, so the comparison is what to print.
+        if notes:
+            print("\n  settings changed mid-session; frame rate either side:")
+            marks = [(0.0, "start", 0)] + notes + [(None, None, len(ticks))]
+            for i in range(len(marks) - 1):
+                _, what, i0 = marks[i]
+                i1 = marks[i + 1][2]
+                seg = [num(d, "fps") for d in ticks[i0:i1] if "fps" in d]
+                if len(seg) < 3:
+                    continue
+                seg_sorted = sorted(seg)
+                med = seg_sorted[len(seg_sorted) // 2]
+                print(f"      {what:<24} {len(seg):>4} s   median {med:5.1f}   "
+                      f"min {min(seg):5.1f}   max {max(seg):5.1f}")
 
         def peak(key):
             best, cap = 0, 0

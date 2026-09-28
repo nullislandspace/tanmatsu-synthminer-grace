@@ -116,6 +116,19 @@ void trace_set_time(double t);
 // everything else. The chunk and section are derived here.
 void trace_edit(char kind, int32_t x, int32_t y, int32_t z, char const* block, int extra);
 
+// SOMETHING THE PLAYER SWITCHED, AND WHEN. Written as
+// `! t=<when> <text>`, which is what makes it different from
+// trace_note() above: that one states a setting once, at the top, and
+// this one records a setting CHANGING part way through.
+//
+// A session that was flipped half way through cannot be read without
+// it. The water blend is the case that showed this up: a trace of one
+// setting and a trace of the other are both worth having, and a trace
+// that silently contains both is worth less than either -- the frame
+// rates average together and the number belongs to no configuration
+// that was ever running. traceanalyse.py splits its fps report here.
+void trace_event(char const* fmt, ...) __attribute__((format(printf, 1, 2)));
+
 // A rebuilt mesh arriving. Prints how long ago the matching edit was,
 // when there was one -- the lag between changing a block and being able
 // to see it, which is the number nothing else in the game reports.

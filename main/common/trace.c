@@ -176,6 +176,17 @@ void trace_tick(trace_tick_t const* s) {
     flush();
 }
 
+void trace_event(char const* fmt, ...) {
+    if (s_f == NULL) return;
+    char    text[96];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof text, fmt, ap);
+    va_end(ap);
+    say("! t=%.1f %s", s_now, text);
+    flush();  // a setting changed: worth a sector, so a crash keeps it
+}
+
 void trace_edit(char kind, int32_t x, int32_t y, int32_t z, char const* block, int extra) {
     if (s_f == NULL) return;
     int32_t const cx = chunk_of(x), cz = chunk_of(z);
