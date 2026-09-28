@@ -253,7 +253,17 @@ bool worldstore_open_bench(uint32_t seed, world_meta_t* meta, player_state_t* pl
 // level.smw because it answers a different question: level.smw says
 // what the world IS, this says which build's intentions it was built
 // to, and a mismatch means throw it away rather than try to read it.
-#define SM_TITLE_GEN 1
+// 2: the world written by generation 1 is not trustworthy. A full
+// sweep of save requests overran the worker's 48-deep queue and the
+// refusals were silent, so a "complete" title went to the card with 49
+// of its 81 chunks -- and the missing ones came back generated, without
+// letters in them. On the badge that showed as "Miner" standing alone:
+// the cobblestone half survived and the grass half did not.
+//
+// The save is fixed (save_dirty_chunks, main.c), but a world that is
+// already marked is never rebuilt, which is precisely the situation
+// this number exists for.
+#define SM_TITLE_GEN 2
 
 // Open the title's world, generating a fresh one if what is on the card
 // was made for another seed or another SM_TITLE_GEN. `fresh` says which
