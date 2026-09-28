@@ -1414,6 +1414,9 @@ reason Minecraft chose the other rule.
 | 41 | **A world worth measuring on** | done | 2026-09-25, out of F-91 and the user's call: *"a persisted, pre-generated test world seems the best option... Clear a flight path so you don't get blocked... The world should be separate from the worlds i can manage through savegames and also be based on a fixed seed."* `game/benchpath.h` holds the seed, the path and `bench_path_at()`, and `tools/worldcheck.c`'s `check_bench_path` asserts the path against the generator that is compiled in, so a worldgen change that moves this terrain fails the build. **The path was chosen by search, not by eye**: 4000 seeds x 8 headings, keeping only those whose ground never steps more than two blocks, then the busiest -- seed 1030 due +z crosses ALL FIVE biomes in 240 blocks with 23 blocks of relief and a worst step of ONE, so nothing had to be carved and the ground-following camera can never be buried. The world lives at `<base>/bench/`, OUTSIDE `worlds/`, which is the whole of how it stays invisible: `worldstore_list()` scans `worlds/`, so the world-select screen cannot show it, open it or delete it, and the slug is reserved so a player-named world cannot collide. A bench world whose seed does not match is deleted and generated again rather than measured. `bench_gen` walks the path in 8-block stops waiting for `missing == 0` at each (generated chunks are already `CF_EDITED`, so eviction writes them; 49 chunks, ~45 s, once); `bench` and `bench_fullres` fly it off the card in 735 ms of loading and 40 s of flight, view distance forced to near so two runs compare. The perf clock and accumulators restart when the world is resident (`devtest_perf_restart`), so the card is not averaged into the rasteriser. |
 | 42 | **CraftMiner becomes SynthMiner** | done | 2026-09-25, the user's call after a Discord discussion (D-91), and done with no badge to hand. 445 references over 84 files, in one scripted pass so the ordering is auditable rather than a chain of hand edits: the showreel's own paths are sentinelled out first (`main/craftminer/...` and `cm_title.c` name files in ANOTHER repository and are not this game's to rename), then identifiers, then extensions and magics, then the name itself, including the declined forms five translations carry -- `CraftMinerom`, `CraftMinerem`, `CraftMinerjem`, `CraftMinerilla`, `CraftMineriga` -- which stay correct because the ending attaches to a stem that was swapped, not to the word. Two things the sweep could not have caught on its own: `-DCM_HOST` in the Makefile, where the `D` is a word character so the boundary guard did not fire, and a `www.cmr.no` in a vendored zlib header that the `.cmr` rule matched and that was reverted. **The title screen keeps its framing by arithmetic, not by luck**: the block font never had S, y or h, and the three were drawn in its style so that "SynthMiner" comes out at exactly 48 blocks, the width "CraftMiner" was and the width the camera path is framed on. Migration and its host check are D-91; the cleanup that follows it, and the appfs finding, are D-92. **Verified end to end on the badge on 2026-09-26**, on a real card with a real world, after three bugs that only hardware could show: the stack (F-93), the half-migrated world that read as an empty slot (D-93), and a directory removal that reported success without removing anything (F-94). The card now holds `/sd/synthminer` and `/sd/apps/at.cavac.synthminer` and nothing of CraftMiner's; the world came through as `level.smw` and 21 `.smr` regions. |
 | 43 | **Livestream the screen into OBS** | done (untested on the badge), **moved into the engine** | 2026-09-26, the user's ask. Ported from `tanmatsu-nfmtest-grace`, which was built to answer exactly this question: `nfm/{netraw,usbnet,tsmux}.{c,h}` come across **byte-identical**, TinyUSB is vendored beside them (`components/tinyusb`, the loader does not export it), and `nfm/stream.c` is the one that was rewritten -- there the frames came from a test pattern in its own task at a fixed rate, here they come from the game. So the shape changed: **the colour conversion is inline in `on_render`**, because that is the only moment the framebuffer is still (the engine flips pages), and everything after it -- encoder, muxer, USB -- is the stream task's. A frame offered while the encoder is busy is DROPPED, never waited for: a stream that stutters beats a game that does. `nfm/livestream.{c,h}` is the switch, and the Display menu's fourth row is the only way to work it. The encoder came from `upstream/main` (`8add127`, "Sync with graceloader: the hardware H.264 encoder") -- before that merge `fakelib` exported none of `esp_h264_*` and the port could not have linked, let alone loaded. **2026-09-26, the user: "it would also be a good idea to implement all the streaming in the engine, so we can re-use it in other apps."** So all of it moved: `se_stream.h` is engine API now, TinyUSB is vendored under `src/internal/tinyusb` and built only in plain-CMake mode (under the IDF the host has its own), and this app keeps nothing but one call in `on_render` and one menu row. Moving it also made AUDIO the engine's to give rather than the game's to wire: the mixer is already there, so `cfg.audio` needs no tap and no callback from any app. **The switch is the last row of the main Settings menu**, not a Display setting, by the user's correction (D-95). **And `cfg.audio` now carries audio** (engine 2.3): it used to log "no audio in this stream; video only" and degrade, because there was no permissively licensed encoder to put behind it. There is now -- `pdmp2`, written for this, public domain, MPEG-2 LSF Layer II at the mixer's own 22050 so nothing is resampled (D-96). The vendored shine is gone and nothing in the engine is copyleft. Verified on the host at six rate/channel/bitrate combinations and through the muxer into a `.ts` that reads back as `mp2 / 0x0004, 22050 Hz, stereo, 128 kb/s`; **the two findings that cost the most are F-95 (the syncword is 12 bits) and F-96 (the analysis window is not a design choice)**. **Tested on the badge on 2026-09-26, and it works: picture and sound in OBS.** Getting there took three bugs the host could not have shown, all of them in the transport rather than the codec: the parameter sets were too rare for a receiver to join reliably (F-99), quitting the app mid-stream wedged the badge's USB (F-100), and the video and audio clocks ran at different rates so the sound fell steadily further behind (F-101). **Diagnosing any of it needed an instrument, because the console is what the stream takes away.** During the hunt the counters were drawn on screen, which is the only output channel a running stream leaves; they were taken off again once it worked, at the user's request -- *"Remove the debug info onscreen."* What stays is `se_stream_stop()` logging the same figures at the first moment there is anywhere to print them: `published`/`frames`/`dgrams`/`dgrams_failed`/`audio_frames` separate "the game never offered a frame" from "the encoder refused it" from "the muxer emitted nothing" from "the link took nothing". That is enough for a stream that is already known to work, and if a future stream does not, the overlay is four lines of `se_stream_get_stats()` in `on_render` again. Still open: a possible constant audio/video offset, untested, with the ring backlog the prime suspect (F-101). |
+| 44 | **Why the livestream stalls, and audio shipped off** | done (video), **audio parked** | 2026-09-27, out of the user's packet capture and then five rounds of instrumentation (F-102..F-108). **Nothing was wrong with the link or the game.** The capture exonerated the network -- clean continuity counters on all five PIDs, 0 bad sync bytes, `dgfail` 33/11688, constant arrival-minus-PTS skew -- and the badge's own counters exonerated everything else: PPA 14.5 ms, H.264 8.0 ms and mux 2 ms constant in and out of collapse, `pub` 9-10 offers/s throughout, `audn` 86.1 pushes/s at 24 us straight through. **STARVED was 0%**, so the task held the CPU and the `WORKER_PRIO` change I had been about to make could never have helped. Three theories died on facts already in hand (F-104: `chunk_worker.c` has no mutex at all; the job queue is `xQueueSend(..., 0)`; core 1 was not saturated). The accounting did not close until three untimed calls were timed (F-103), and `aud_us` turned out to be measuring the mixer's push rather than the encode, so the MP2 cost had never been measured on hardware at all. The answer is F-108: `allocate()` sweeping the encoder's 5.6 KB struct out of PSRAM, 1.3 ms -> 160 ms, a 125x swing. The fix is written and **unmeasured** -- it takes the codec to 22.5 KB of internal SRAM and chunk loading broke -- so the user's call was *"Fuck audio streaming for now."* `SM_STREAM_AUDIO` is 0 in every ordinary build (`make STREAM_AUDIO=1` for a measurement run, which prints a banner), the code all stays, and with it off `se_stream_audio_prepare()` is never called so no buffer, ring or PID exists. **Owed before anyone tries again: an internal-RAM budget for the whole app.** The instruments stay in the tree -- `tools/streamcap.py`, `tools/streamanalyse.py`, `tools/infoanalyse.py`, and `/sd/defuckinfo.txt` written by `se_stream_stop()` -- because the console is what the stream takes away, and every wrong turn in this round was reasoning where a timer would have answered. |
+| 45 | **App icons** | done | 2026-09-28, asked for by the user: the three icons `metadata.json` names were placeholder question marks. They are the game's iron pickaxe on the game's own stone darkened right down, generated like the textures -- `tools/make_icons.py` imports `sm_stone` from `make_textures.py` rather than copying it, so the backdrop cannot drift from the rock the player digs. One drawing on a 16-unit grid multiplied by 1, 2 and 4, so the three sizes stay one picture; `make icons` regenerates them byte-identically. Two shapes earned comments by being wrong first -- a flat bar with two teeth under it reads as a table with a stick leaning on it, and a shaft that passes the head makes the whole icon a figure 7 -- and the dark outline is skipped at 16, where it merges with the background instead of separating from it. |
+| 46 | **The app repository gets the whole game** | done, **publish not committed** | 2026-09-28, the user: *"Verify that metadata.json includes all required files... And make sure that `make apprepo` also copies the files correctly."* Both were broken, and F-109 is why neither could have been noticed here. `metadata.json`'s asset list is now generated from the same directories the install rules glob (`tools/make_metadata.py`, `make metadata`, `make metadatacheck`, and `metadata` is a dependency of `make check`); `apprepo` copies the textures and the music and then `tools/apprepocheck.py` walks what the file promises, reporting anything stale **without deleting it**, because `APP_REPO_PATH` points outside this checkout. The publish was run for real into `../tanmatsu-app-repository/at.cavac.synthminer` -- a first publish, the slug directory had never existed -- and verified four ways: the repository's own schema against all 64 apps (0 failing), 70 promised files present and 0 unexpected, the runtime layout traced from `install_basepath` to `texcache_init`, and all 61 texture names the code can ask for resolved. The comma left the description and the torch flame found its file (F-110). **The directory is untracked in that repository and left for the user**, since committing there is a pull request. |
 
 ---
 
@@ -2604,6 +2607,55 @@ reason Minecraft chose the other rule.
   been of the generator. Fixed by step 41: a persisted world, pre-generated
   once, streamed off the card (`0 missing`, `refused 0`, queue 0-6 of 48, and
   735 ms to load instead of eleven seconds to generate).
+- **F-110** 2026-09-28, found only because the app-repository publish forced
+  an audit of every asset path: **`voxel_fx` asked for
+  `synthminer/torch_flame.png`, and nothing has ever written a
+  `synthminer/` directory.** The torch flame has been failing to load and
+  drawing flat since the port, on the badge as much as from the repository.
+
+  It is a leftover from the showreel, whose textures live one subdirectory
+  per reel segment; step 0.2 flattened them to `textures/` and this one
+  string kept the old shape. It did not fail loudly because texcache is
+  built not to: a missing texture logs `-- drawn flat` and returns NULL,
+  which is right for a renderer and wrong for the only person who could
+  have noticed. Every other texture path in the app is flat, and the
+  grep that says so is two lines.
+
+  The audit that caught it is worth keeping as a habit: resolve **every**
+  texture name the code can ask for -- the 41 string literals and the
+  twelve `item_<name>.png` built at runtime from the `ITEMS` table -- and
+  check each against what ships. It came out 61 of 61 after the fix, with
+  the seven `/int/icons/*.png` key-caps correctly excluded as firmware's.
+- **F-109** 2026-09-28, on being asked to verify metadata.json before a
+  first publish: **there are two install paths, and the one nobody here
+  uses had rotted.** `metadata.json` named 25 of the 54 textures and none
+  of the 11 pieces of music, and `make apprepo` copied the metadata, the
+  icons and `app.so` and stopped.
+
+  Either fault alone hands a stranger a game with no item icons, no
+  furnace, no chest, no birch, and silence. Neither could be noticed here,
+  because `make install` over BadgeLink globs `textures/` and
+  `assets/music/` in the Makefile and never reads `metadata.json` -- so the
+  badge on this desk has always been complete, and the file that describes
+  it to everyone else drifted for 34 assets without a symptom.
+
+  **The lesson is not "check metadata.json".** It is that a second
+  description of the same fact, maintained by hand, in the path that is
+  never exercised, is a fact that will be wrong. Both lists now come from
+  the directories the install rules already glob
+  (`tools/make_metadata.py`), and `tools/apprepocheck.py` walks what the
+  file promises against what was copied.
+
+  Two more came out of the same audit. The repository's schema forbids a
+  comma in `description` -- the pattern is letters, digits and a short list
+  of punctuation -- and validating all 64 apps already published showed
+  every one passing and **ours the only comma in the repository**, so the
+  pull request would have failed `verify_metadata` before a human read it.
+  And the layout was checked rather than assumed: graceloader sets
+  `install_basepath` to the directory holding the executable, the
+  repository copies each asset to `<mount>/apps/<slug>/<target_file>`, and
+  the app opens `<basepath>/textures` and `<basepath>/music` -- the same
+  tree `make install` writes, which is the one known to work.
 - **F-108** 2026-09-27, from per-phase timing inside the codec, after two
   wrong answers to the same question: **it is allocate(), sweeping the
   encoder's own struct in PSRAM.** Streaming audio ships OFF
@@ -4149,8 +4201,11 @@ visible thing left that does not say what this is.
 
 - **Lifted from `../tanmatsu-showreel-grace`:** `main/craftminer/voxel/*`,
   `main/{mesh,mesh_render,xform,camera,backdrop,horizon}.{c,h}`,
-  `main/common/texcache.*`, `textures/synthminer/*.png`,
-  `tools/{make_textures.py,meshcheck.c,scenecheck.c}`.
+  `main/common/texcache.*`, `textures/*.png`,
+  `tools/{make_textures.py,meshcheck.c,scenecheck.c}`. The textures were
+  **flattened** in step 0.2 -- the showreel keeps one subdirectory per reel
+  segment, this is one app -- and a `synthminer/` prefix that survived the
+  flattening in one string is F-110.
 - **Adapted from `../tanmatsu-synthracer-grace`:** `main/controls_settings.{c,h}`
   and `main/keybind_ui.{c,h}` (the `se_bindings` + `se_ui` + `se_ui_capture_key`
   pattern), and the `main/screens.c` menu shape.
@@ -4159,6 +4214,13 @@ visible thing left that does not say what this is.
 - **Changed:** `CMakeLists.txt`, `Makefile`, `metadata/metadata.json`,
   `main/main.c`, `README.md`, and `main/testkit/profile.{c,h}` (`PROF_HUD`,
   F-46).
+- **Written here, and generated rather than drawn or typed:**
+  `tools/make_icons.py` (the launcher's three icons, from the game's own
+  pickaxe and stone, step 45), `tools/make_metadata.py` (metadata.json's
+  asset list, from the directories the install rules glob) and
+  `tools/apprepocheck.py` (what the published directory holds against what
+  the file promises) -- both of the last two out of F-109. The instruments
+  from step 44 are `tools/{streamcap,streamanalyse,infoanalyse}.py`.
 - **Engine: CHANGED, with permission (D-39).** No longer "no changes planned",
   which it was until the user asked for the rasteriser to be looked at.
   SynthEngine3D is a submodule and its commits are its own; the version went
