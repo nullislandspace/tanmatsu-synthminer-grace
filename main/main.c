@@ -21,6 +21,12 @@
 #include <time.h>
 #include "audio/audio.h"
 #include "audio/music.h"
+#include "common/trace.h"
+
+// Set by CMake; the same one the test kit reports.
+#ifndef APP_GIT_HASH
+#define APP_GIT_HASH "unknown"
+#endif
 #include "audio/sfx.h"
 #include "bsp/device.h"
 #include "common/texcache.h"
@@ -180,6 +186,10 @@ typedef enum {
 } app_state_t;
 
 static app_state_t s_app = APP_TITLE;
+// When the current world was opened. The trace's times are seconds from
+// here, so a line in the file means something without knowing when the
+// badge booted.
+static int64_t     s_world_t0_us;
 static double      s_title_t0;
 
 static bool enter_title(void);
@@ -687,6 +697,34 @@ static void frame_stats(void) {
              (unsigned)(chunk_store_bytes() / 1024),
              (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
 
+    // ... and the same numbers to the card, where they will still be
+    // when a bug is noticed an hour from now (common/trace.h).
+    if (s_app == APP_PLAY) {
+        trace_tick(&(trace_tick_t){
+            .t            = (double)(now - s_world_t0_us) / 1000000.0,
+            .fps          = fps,
+            .px           = s_player.body.x,
+            .py           = s_player.body.y,
+            .pz           = s_player.body.z,
+            .yaw          = (int)(s_player.yaw * (180.0f / 3.14159265f)) % 360,
+            .flat         = flat_n,
+            .flat_cap     = SE_SCENE_TRI_CAP,
+            .tex          = tex_n,
+            .tex_cap      = SE_SCENE_TEXTURED_TRI_CAP,
+            .drop_flat    = dropped_tri,
+            .drop_tex     = dropped_ttri,
+            .drawn        = drawn,
+            .sections     = sections,
+            .resident     = resident,
+            .missing      = missing,
+            .queue        = f.in_flight,
+            .queue_cap    = f.capacity,
+            .mesh_kib     = (unsigned)(mesh_bytes / 1024),
+            .psram_kib    = (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024),
+            .internal_kib = (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+        });
+    }
+
     s_window_us = 0;
     s_frames    = 0;
 }
@@ -915,6 +953,7 @@ static void drain_and_clear(void) {
 }
 
 static bool enter_title(void) {
+    trace_close();
     s_in_replay = false;
     // Stop mid-stride: a footstep left ringing across the world change,
     // and a step accumulator carried into the next world, would both be
@@ -956,6 +995,14 @@ static bool enter_world(int slot, bool create, char const* name, uint32_t seed) 
     }
     ESP_LOGI(TAG, "world \"%s\" (slot %d) %s, seed %u", s_meta.name, slot + 1, create ? "created" : "opened",
              (unsigned)s_meta.seed);
+
+    // The flight recorder, from here until the world is left. It is not
+    // a setting and there is no way to turn it off: a bug is noticed
+    // while playing, not while preparing to debug (common/trace.h).
+    s_world_t0_us = esp_timer_get_time();
+    trace_open(SM_DATA_DIR, APP_GIT_HASH, se_version_string(), s_meta.seed, s_meta.name);
+    trace_note("H view=%d textures=%s half=%s slot=%d", view_setting(), settings_textured() ? "on" : "off",
+               settings_half_res() ? "on" : "off", slot + 1);
 
     chunk_worker_set_world(s_meta.seed, s_meta.farlands_x);
     // The player's own view distance: the title's is generous because
@@ -1966,6 +2013,7 @@ static void on_render(pax_buf_t* fb, void* user) {
     // Everything is submitted relative to an integer origin near the
     // camera, so the floats the rasteriser sees stay small however far
     // out this is (D-01). The camera goes into the same space.
+    trace_set_time((double)(esp_timer_get_time() - s_world_t0_us) / 1000000.0);
     chunk_render_set_origin((int32_t)floor(s_cam.wx), (int32_t)floor(s_cam.wz));
     int32_t ox, oz;
     chunk_render_origin(&ox, &oz);

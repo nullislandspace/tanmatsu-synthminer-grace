@@ -37,6 +37,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "world/chunk_worker.h"
+#include "common/trace.h"
 #include "world/chunkmesh.h"
 #include "world/light.h"
 #include "world/worldstore.h"
@@ -2031,6 +2032,81 @@ static void check_palette(void) {
 //  loader is the code doing the filling. The badge drew an empty world
 //  at a confident 30 fps. Nothing below would have passed.
 // ---------------------------------------------------------------------
+
+// ---------------------------------------------------------------------
+//  The flight recorder. It runs on every world the user plays, so the
+//  two things that must hold are that it writes what it says it writes
+//  and that it CANNOT grow without bound on the card.
+// ---------------------------------------------------------------------
+static long file_size(char const* path) {
+    FILE* f = fopen(path, "rb");
+    if (f == NULL) return -1;
+    fseek(f, 0, SEEK_END);
+    long const n = ftell(f);
+    fclose(f);
+    return n;
+}
+
+static void check_trace(void) {
+    printf("the flight recorder\n");
+    char cur[256], prev[256];
+    snprintf(cur, sizeof cur, "%s/trace.txt", STORE_BASE);
+    snprintf(prev, sizeof prev, "%s/trace.prev.txt", STORE_BASE);
+    sm_remove(cur);
+    sm_remove(prev);
+
+    CHECK(trace_open(STORE_BASE, "deadbee", "2.4", 12648430u, "Testworld"), "trace_open failed");
+    trace_note("H view=%d textures=%s", 1, "on");
+
+    // An edit, then the mesh that answers it: the lag between them is
+    // the number nothing else in the game reports.
+    trace_set_time(10.0);
+    trace_edit('P', -2031, 33, 255, "torch", 1);
+    trace_set_time(10.31);
+    trace_mesh(chunk_of(-2031), chunk_of(255), 0, ch_sect_of(33));
+
+    trace_tick(&(trace_tick_t){.t = 11.0, .fps = 11.4, .px = -2032.8, .py = 32.0, .pz = 254.7,
+                               .flat = 1184, .flat_cap = 6144, .tex = 412, .tex_cap = 4096,
+                               .drawn = 14, .sections = 25, .resident = 49, .queue_cap = 48});
+    trace_close();
+
+    // What came out.
+    FILE* f = fopen(cur, "rb");
+    CHECK(f != NULL, "no trace file was written");
+    if (f == NULL) return;
+    char body[4096] = {0};
+    size_t const got = fread(body, 1, sizeof body - 1, f);
+    fclose(f);
+    CHECK(got > 0, "the trace file is empty");
+    CHECK(strstr(body, "seed=12648430") != NULL, "the trace does not name the seed");
+    CHECK(strstr(body, "world=\"Testworld\"") != NULL, "the trace does not name the world");
+    CHECK(strstr(body, "blk=torch") != NULL, "the trace did not record the placed block");
+    CHECK(strstr(body, "lag=310ms") != NULL, "the trace did not time the mesh that answered the edit");
+    CHECK(strstr(body, "tex=412/4096") != NULL, "the trace did not record how full the lists got");
+    printf("  %d lines, %ld bytes, and the mesh lag came out at 310 ms\n", trace_lines(), file_size(cur));
+
+    // ROTATION. A file past the cap becomes trace.prev.txt and the new
+    // session starts clean -- two files on the card, never more.
+    f = fopen(cur, "ab");
+    CHECK(f != NULL, "could not reopen the trace to pad it");
+    if (f == NULL) return;
+    char pad[1024];
+    memset(pad, 'x', sizeof pad);
+    for (unsigned i = 0; i <= TRACE_MAX_BYTES / sizeof pad; i++) fwrite(pad, 1, sizeof pad, f);
+    fclose(f);
+    long const big = file_size(cur);
+    CHECK(big > (long)TRACE_MAX_BYTES, "the padding did not take the trace past the cap");
+
+    CHECK(trace_open(STORE_BASE, "deadbee", "2.4", 1u, "again"), "trace_open failed after the cap");
+    trace_close();
+    CHECK(file_size(prev) == big, "the full trace did not become trace.prev.txt (%ld vs %ld)",
+          file_size(prev), big);
+    CHECK(file_size(cur) > 0 && file_size(cur) < 1024, "the new trace did not start clean (%ld bytes)",
+          file_size(cur));
+    printf("  rotated at %ld bytes; the new file starts at %ld\n", big, file_size(cur));
+    sm_remove(cur);
+    sm_remove(prev);
+}
 
 static void check_streaming(void) {
     printf("streaming\n");
@@ -4684,6 +4760,7 @@ int main(void) {
     check_datadir();
     check_rename();
     check_streaming();
+    check_trace();
     if (!chunk_store_init()) {
         printf("  FAIL: chunk_store_init() for the player checks\n");
         return 1;

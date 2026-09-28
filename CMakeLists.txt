@@ -39,6 +39,7 @@ set(APP_SOURCES
     main/world/chunk_worker.c
     main/world/chunk_render.c
     main/common/rng.c
+    main/common/trace.c
     main/common/tags.c
 
     # A camera to fly by hand, and the player who walks.

@@ -5,6 +5,8 @@
 #include "audio/sfx.h"
 #include "game/player.h"
 
+#include "common/trace.h"
+
 #include <math.h>
 
 #include "game/interact.h"
@@ -285,6 +287,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         } else if (++p->mine_ticks >= p->mine_needed) {
             break_result_t const r = interact_break(p->aim.x, p->aim.y, p->aim.z, held);
             if (r.ok) {
+                trace_edit('B', p->aim.x, p->aim.y, p->aim.z, block_def(aimed)->name, r.felled);
                 // One use per BREAK, not per felled block: a tree is
                 // one swing of the axe, not forty.
                 inv_wear_held(&p->inv, 1);
@@ -318,6 +321,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         } else {
             uint8_t const block = item_block(held);
             if (block != BLK_AIR && interact_place(&p->aim, block, &p->body)) {
+                trace_edit('P', p->aim.px, p->aim.py, p->aim.pz, block_def(block)->name, 1);
                 inv_consume_held(&p->inv);
                 sfx_play_place(block);
             }

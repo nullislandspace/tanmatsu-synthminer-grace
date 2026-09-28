@@ -3,6 +3,8 @@
 // =====================================================================
 
 #include "world/chunk_worker.h"
+
+#include "common/trace.h"
 #include "world/light.h"
 #include <string.h>
 #include "common/psram.h"
@@ -206,6 +208,10 @@ static void apply(result_t* r) {
             // and an empty mesh is not "drawable", it is "nothing to
             // draw". Only real geometry counts as built, or the
             // fallback below would pick an empty mesh over a good one.
+            // The trace wants this moment and nothing else does: it is
+            // the end of the wait between changing a block and being
+            // able to see the change.
+            trace_mesh(c->cx, c->cz, r->lod, r->sect);
             if (slot->tn > 0) c->lod_built |= CH_MESH_BIT(r->lod, r->sect);
             else c->lod_built &= (uint16_t)~CH_MESH_BIT(r->lod, r->sect);
             memset(&r->mesh, 0, sizeof(r->mesh));

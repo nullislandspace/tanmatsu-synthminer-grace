@@ -15,3 +15,5 @@ __pycache__/
 
 # Pulled off the badge by `make pullinfo`; overwritten every run.
 defuckinfo.txt
+trace.txt
+trace.prev.txt

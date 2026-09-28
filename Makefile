@@ -84,6 +84,7 @@ HOSTCFLAGS  := -O1 -Wall -Wextra -Werror=implicit-function-declaration \
 
 PURE_SRCS       := main/math/xform.c main/math/mesh.c main/voxel/voxel_mesh.c \
                    main/world/blocks.c main/world/chunk.c main/common/rng.c main/common/tags.c \
+                   main/common/trace.c \
                    main/world/worldgen.c main/world/farlands.c main/world/chunk_codec.c main/world/region.c main/world/blockent.c \
                    main/world/vfs_compat.c main/world/light.c main/world/worldstore.c main/world/datadir.c main/world/chunkmesh.c main/world/chunk_worker.c \
                    main/game/physics.c main/game/raycast.c main/game/interact.c main/game/furnace.c main/game/daytime.c main/game/replay.c \
@@ -278,6 +279,15 @@ push: build mode
 # gone by the time BadgeLink is back, and the badge is on someone else's
 # network. Needs BadgeLink, so the app must have EXITED (stopping the
 # stream is what writes the file).
+# The flight recorder (common/trace.h), which is always on. Needs
+# BadgeLink, so the app must have exited -- leaving the world is what
+# closes and flushes the file.
+.PHONY: pulltrace
+pulltrace: mode
+	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs download /sd/synthminer/trace.txt ../../trace.txt
+	@echo "=== trace.txt: $$(wc -l < trace.txt) lines ==="
+	python3 tools/traceanalyse.py
+
 .PHONY: pullinfo
 pullinfo: mode
 	cd badgelink/tools; ./badgelink.sh $(BADGELINK_CONN) fs download /sd/defuckinfo.txt ../../defuckinfo.txt
