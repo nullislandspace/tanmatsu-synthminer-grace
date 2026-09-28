@@ -1079,9 +1079,18 @@ block a player places, never by worldgen. It round-trips through the RLE with th
 rest of the state plane, so a felled tree behaves the same after a reload. It
 also gives "placed leaves never decay" for free later.
 
-- not `BF_FELLABLE` -> normal single drop;
-- `BF_FELLABLE` **with** `ST_PLACED` -> single drop, no fell;
-- `BF_FELLABLE` **without** `ST_PLACED` -> fell.
+**Two flags, because there are two questions.** `BF_FELLABLE` is tree
+MATERIAL -- what a fell spreads through -- and `BF2_TRUNK` is what STARTS
+one. Logs are both; leaves are only the first. They were a single flag
+until 2026-09-28, which meant snipping one leaf brought the tree down
+(D-97).
+
+- not `BF2_TRUNK` -> normal single drop, leaves included;
+- `BF2_TRUNK` **with** `ST_PLACED` -> single drop, no fell;
+- `BF2_TRUNK` **without** `ST_PLACED` -> fell.
+
+The fill below still spreads through `BF_FELLABLE`, so a canopy comes
+down with its trunk exactly as before.
 
 Connectivity, two phases:
 
@@ -1417,6 +1426,7 @@ reason Minecraft chose the other rule.
 | 44 | **Why the livestream stalls, and audio shipped off** | done (video), **audio parked** | 2026-09-27, out of the user's packet capture and then five rounds of instrumentation (F-102..F-108). **Nothing was wrong with the link or the game.** The capture exonerated the network -- clean continuity counters on all five PIDs, 0 bad sync bytes, `dgfail` 33/11688, constant arrival-minus-PTS skew -- and the badge's own counters exonerated everything else: PPA 14.5 ms, H.264 8.0 ms and mux 2 ms constant in and out of collapse, `pub` 9-10 offers/s throughout, `audn` 86.1 pushes/s at 24 us straight through. **STARVED was 0%**, so the task held the CPU and the `WORKER_PRIO` change I had been about to make could never have helped. Three theories died on facts already in hand (F-104: `chunk_worker.c` has no mutex at all; the job queue is `xQueueSend(..., 0)`; core 1 was not saturated). The accounting did not close until three untimed calls were timed (F-103), and `aud_us` turned out to be measuring the mixer's push rather than the encode, so the MP2 cost had never been measured on hardware at all. The answer is F-108: `allocate()` sweeping the encoder's 5.6 KB struct out of PSRAM, 1.3 ms -> 160 ms, a 125x swing. The fix is written and **unmeasured** -- it takes the codec to 22.5 KB of internal SRAM and chunk loading broke -- so the user's call was *"Fuck audio streaming for now."* `SM_STREAM_AUDIO` is 0 in every ordinary build (`make STREAM_AUDIO=1` for a measurement run, which prints a banner), the code all stays, and with it off `se_stream_audio_prepare()` is never called so no buffer, ring or PID exists. **Owed before anyone tries again: an internal-RAM budget for the whole app.** The instruments stay in the tree -- `tools/streamcap.py`, `tools/streamanalyse.py`, `tools/infoanalyse.py`, and `/sd/defuckinfo.txt` written by `se_stream_stop()` -- because the console is what the stream takes away, and every wrong turn in this round was reasoning where a timer would have answered. |
 | 45 | **App icons** | done | 2026-09-28, asked for by the user: the three icons `metadata.json` names were placeholder question marks. They are the game's iron pickaxe on the game's own stone darkened right down, generated like the textures -- `tools/make_icons.py` imports `sm_stone` from `make_textures.py` rather than copying it, so the backdrop cannot drift from the rock the player digs. One drawing on a 16-unit grid multiplied by 1, 2 and 4, so the three sizes stay one picture; `make icons` regenerates them byte-identically. Two shapes earned comments by being wrong first -- a flat bar with two teeth under it reads as a table with a stick leaning on it, and a shaft that passes the head makes the whole icon a figure 7 -- and the dark outline is skipped at 16, where it merges with the background instead of separating from it. |
 | 46 | **The app repository gets the whole game** | done, **publish not committed** | 2026-09-28, the user: *"Verify that metadata.json includes all required files... And make sure that `make apprepo` also copies the files correctly."* Both were broken, and F-109 is why neither could have been noticed here. `metadata.json`'s asset list is now generated from the same directories the install rules glob (`tools/make_metadata.py`, `make metadata`, `make metadatacheck`, and `metadata` is a dependency of `make check`); `apprepo` copies the textures and the music and then `tools/apprepocheck.py` walks what the file promises, reporting anything stale **without deleting it**, because `APP_REPO_PATH` points outside this checkout. The publish was run for real into `../tanmatsu-app-repository/at.cavac.synthminer` -- a first publish, the slug directory had never existed -- and verified four ways: the repository's own schema against all 64 apps (0 failing), 70 promised files present and 0 unexpected, the runtime layout traced from `install_basepath` to `texcache_init`, and all 61 texture names the code can ask for resolved. The comma left the description and the torch flame found its file (F-110). **The directory is untracked in that repository and left for the user**, since committing there is a pull request. |
+| 47 | **Blocks that did not appear, and leaves that felled trees** | done (render cap still open) | 2026-09-28, both out of the user's play session. F-111 and F-112. The render bug was two faults: a dense canopy asks for 8540 textured triangles against a 4096 cap, **and** submission ran in slot order -- a wrapped coordinate hash -- so the overflow landed anywhere, including the chunk underfoot, and moved as the player walked. Now sorted near to far, so a full list loses its far edge into the fog, and the drop counter is on the position overlay instead of only in a console no player has. **The cap is deliberately unchanged** until the badge says whether the list is in internal SRAM or PSRAM. Felling: Part F gave one flag two jobs, so `BF_FELLABLE` now means tree material (what a fell spreads through) and `BF2_TRUNK` what starts one; worldcheck covers both directions. |
 
 ---
 
@@ -2607,6 +2617,54 @@ reason Minecraft chose the other rule.
   been of the generator. Fixed by step 41: a persisted world, pre-generated
   once, streamed off the card (`0 missing`, `refused 0`, queue 0-6 of 48, and
   735 ms to load instead of eleven seconds to generate).
+- **F-112** 2026-09-28, out of **the user** after a play session: *"when
+  cutting trees, just remove leaves cuts down the tree, but the 'cut the
+  whole tree up from this point' should only happen when cutting the
+  trunk."* Part F is what was wrong, not the code -- it gave one flag two
+  jobs, and `interact.c` did faithfully what it said. Split into
+  `BF_FELLABLE` (tree material, what the fill spreads through) and
+  `BF2_TRUNK` (what starts a fell). The two ideas had looked like one
+  because a log is the only thing that is both, which is the whole shape
+  of the mistake: a flag named for its consequence rather than its
+  meaning.
+- **F-111** 2026-09-28, out of **the user**: *"stuff i place isn't showing
+  up visually, especially in dense forrests. I suspect we are running
+  again into the issue with the render lists getting full."* Right on
+  both counts, and it is **two faults**.
+
+  Measured on the host -- the mesher is pure, so this needed no badge --
+  at seed 1030, the densest canopy in a 9x9, the medium preset:
+
+      textured chunk (-4, 3) dist  8.0 : 2672 tris
+      textured chunk (-3, 3) dist 11.3 : 1918 tris
+      textured chunk (-4, 4) dist  0.0 : 2406 tris   <- underfoot
+      textured chunk (-3, 4) dist  8.0 : 1544 tris
+      TEXTURED 8540 against a cap of 4096 -- 2.1x over
+      FLAT      5948 against 6144 -- fits, barely
+
+  The chunk the player stands in is 2406 triangles by itself, so two
+  chunks of canopy in view overflow the textured list. That is the
+  capacity fault, and it is the one the user named.
+
+  **The second is why it read as "my block did not appear."**
+  `chunk_render_submit` iterated slots 0..255, and a slot is
+  `(cx & 15) * 16 + (cz & 15)` -- a wrapped coordinate hash unrelated to
+  the camera. The scene drops in SUBMISSION order, so the hole landed
+  wherever the hash put it, underfoot as readily as at the horizon, and
+  it moved as the player walked because the wrap point moves. Sorting
+  near to far turns an arbitrary hole into one at the far edge, inside
+  the fog. It costs 2 KB of bss and an insertion sort over what survived
+  the frustum.
+
+  Two things worth keeping from this. The engine's own header says a full
+  list "drops whatever the game happened to submit last" -- the game was
+  never submitting in an order that made that sentence safe, and nobody
+  had connected the two. And the drop counter has been logged since D-72,
+  to a console a player does not have while playing; it is now on the
+  position overlay, which is where a number that means "the picture is
+  incomplete" has to be. **The cap itself was NOT raised**: at 68 bytes a
+  triangle 4096 is 272 KB, the engine tries internal SRAM first, and
+  after F-108 that is not a thing to guess at from here.
 - **F-110** 2026-09-28, found only because the app-repository publish forced
   an audit of every asset path: **`voxel_fx` asked for
   `synthminer/torch_flame.png`, and nothing has ever written a
