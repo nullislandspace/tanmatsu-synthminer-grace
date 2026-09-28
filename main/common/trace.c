@@ -163,6 +163,10 @@ void trace_tick(trace_tick_t const* s) {
             s->save_n, s->save_avg_us, s->save_max_us);
     }
     if (s->save_failed > 0 || s->paced_ms > 0) say("  cardfail=%d paced=%dms", s->save_failed, s->paced_ms);
+    if (s->phys_pending > 0 || s->phys_fired > 0 || s->phys_dropped > 0) {
+        say("  phys pending=%d peak=%d fired=%d dropped=%d carried=%d", s->phys_pending, s->phys_peak,
+            s->phys_fired, s->phys_dropped, s->phys_carried);
+    }
     if (s->compact_n > 0) {
         say("  compact n=%d avg=%dus max=%dus", s->compact_n, s->compact_avg_us, s->compact_max_us);
     }
@@ -193,15 +197,49 @@ void trace_mesh(int32_t cx, int32_t cz, int lod, int sect) {
     // Only meshes that answer an edit are worth a line -- the streamer
     // builds hundreds a minute and they are already counted in the T
     // line's rates. What is NOT counted anywhere is this lag.
+    // ONLY THE DETAILED MESH ANSWERS AN EDIT. The far levels are
+    // rebuilt whenever the streamer gets round to them and the player
+    // is, by definition, too far away to be looking -- so timing them
+    // against an edit measures the queue's spare capacity, not anyone's
+    // wait.
+    //
+    // This used to report them too, and not clear the entry when it
+    // did, which is how a session of perfectly ordinary 80-110 ms lags
+    // came back claiming a worst case of 31281 ms. See below for the
+    // other half of that.
+    if (lod != 0) return;
+
     double const t = s_now;
+    // THE OLDEST OUTSTANDING EDIT IN THIS SECTION, and then EVERY
+    // outstanding edit in it is answered at once.
+    //
+    // A rebuild draws the section as it is NOW, so it answers every
+    // change made to it since the last one -- and edits coalesce on
+    // purpose (chunk.h, lod_stale is a bitmask), so three quick breaks
+    // in one section are one mesh, not three. Clearing only one entry
+    // left the others live to be matched, minutes later, against a
+    // mesh that answered something else entirely; the number that came
+    // out was the gap between two unrelated events.
+    int    oldest = -1;
     for (int i = 0; i < PENDING; i++) {
         if (!s_pending[i].live) continue;
         if (s_pending[i].cx != cx || s_pending[i].cz != cz || s_pending[i].sect != sect) continue;
-        say("M t=%.1f ch=%d,%d s=%d lod=%d lag=%dms", t, (int)cx, (int)cz, sect, lod,
-            (int)((t - s_pending[i].t) * 1000.0 + 0.5));
-        if (lod == 0) s_pending[i].live = false;   // the detailed one is the one the player sees
-        return;
+        if (oldest < 0 || s_pending[i].t < s_pending[oldest].t) oldest = i;
     }
+    if (oldest < 0) return;
+
+    // The worst wait of the edits this mesh answers, and how many it
+    // answered -- so a coalesced rebuild says so rather than looking
+    // like edits that were never drawn.
+    int n = 0;
+    for (int i = 0; i < PENDING; i++) {
+        if (!s_pending[i].live) continue;
+        if (s_pending[i].cx != cx || s_pending[i].cz != cz || s_pending[i].sect != sect) continue;
+        s_pending[i].live = false;
+        n++;
+    }
+    say("M t=%.1f ch=%d,%d s=%d lod=%d lag=%dms n=%d", t, (int)cx, (int)cz, sect, lod,
+        (int)((t - s_pending[oldest].t) * 1000.0 + 0.5), n);
 }
 
 int trace_lines(void) {

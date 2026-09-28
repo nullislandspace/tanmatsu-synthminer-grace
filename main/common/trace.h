@@ -76,6 +76,18 @@ typedef struct {
     int      compact_n, compact_avg_us, compact_max_us;
     int      save_failed;   // writes the card refused this second
     int      paced_ms;      // ... and how long we waited for it to recover
+
+    // THE PHYSICS QUEUE (world/blockupdate.h). Water that never
+    // finishes flowing and water that stops half-way look the same from
+    // the outside and are opposite faults: `pending` staying high is
+    // the first, `dropped` above zero is the second. Neither is
+    // visible from a screenshot, which is the whole argument for the
+    // recorder.
+    int      phys_pending;
+    int      phys_peak;
+    int      phys_fired;    // cells stepped this second
+    int      phys_dropped;  // updates the queue refused
+    int      phys_carried;  // held over by the per-tick budget
 } trace_tick_t;
 
 // Start a file for a world. `dir` is where it lives (SM_DATA_DIR on the

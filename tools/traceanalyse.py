@@ -79,7 +79,7 @@ def report(raw_lines):
             header.append(line[2:])
         elif kind == "T":
             ticks.append(f)
-        elif kind in "PB":
+        elif kind in "PBU":
             f["kind"] = kind
             edits.append(f)
         elif kind == "M":
@@ -192,11 +192,19 @@ def report(raw_lines):
                     pass
             return best
 
-        if cardfails:
-            n = sum(int(r.get("cardfail", 0)) for r in cardfails)
-            print(f"  *** THE CARD REFUSED {n} CHUNK WRITE(S) in {len(cardfails)} second(s) ***")
+        # A refusal and a pause are written on the same line, and only
+        # one of them is bad news. Reporting the LINES as refusals made
+        # a session with none of them shout "THE CARD REFUSED 0 CHUNK
+        # WRITE(S)", which is the sort of banner people learn to skip.
+        refused = sum(int(r.get("cardfail", 0)) for r in cardfails)
+        paced = [int(r.get("paced", "0ms").rstrip("ms")) for r in cardfails]
+        paced = [p for p in paced if p > 0]
+        if refused:
+            print(f"  *** THE CARD REFUSED {refused} CHUNK WRITE(S) ***")
             print("      nothing is lost -- those chunks stay dirty and are retried -- but a")
             print("      card that keeps refusing pins slots and the world stops streaming")
+        if paced:
+            print(f"  save pacing: waited {sum(paced)} ms across {len(paced)} pause(s), worst {max(paced)} ms")
         if compacts:
             n = sum(int(r.get("n", 0)) for r in compacts)
             mx = max(int(r.get("max", "0us").rstrip("us")) for r in compacts)
