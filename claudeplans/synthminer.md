@@ -1433,6 +1433,7 @@ reason Minecraft chose the other rule.
 | 51 | **A cactus comes down as one** | done | 2026-09-28, the user, from a play session the recorder had already logged them doing the hard way -- six breaks in fourteen seconds. `BF2_STACKED` on the registry rather than a hard-coded id, so sugar cane arrives with it working. It is SUPPORT, not the felling rule: it ignores ST_PLACED, goes straight up one column, and stops at the first block that is not the same kind. A stand-in for block updates, and says so. |
 | 52 | **The main menu takes fifteen seconds** | **done** (F-117) | 2026-09-28, the user's observation, answered but not fixed: the title runs on a scratch world, so its 81 chunks are generated every time, at 186 ms each (F-115). Loading them off the card instead is 2.4-3.0 ms a chunk. The bench world of step 41 is the pattern and the title is a better fit for it -- fixed seed, fixed camera, nothing a player can change. |
 | 53 | **The SD card's write timeouts were ESP-Hosted** | done | 2026-09-28, out of the user's question *"does the filesystem handle this correctly, or do we silently corrupt the FAT file system?"* -- which turned out to be the right question asked of the wrong layer, twice over. fsck.fat said no corruption but **45 leaked clusters in six chains**, exactly the FatFs behaviour: a cluster allocated by create_chain() before a failed write stays marked in use while the directory entry that would reference it is never written, and sync_window() discards the second FAT copy's write result entirely. The cause was neither the card nor the filesystem: the ESP32-P4 has one SDMMC controller and it was shared with the WiFi co-processor (F-116). WiFi is gone from graceloader, the errors with it, and 42 KiB of internal heap came back. What remains in the tree for the next time: a retrying disk layer in graceloader (ESP-IDF's does not retry at all), region_recover_tmp() for a compaction interrupted between the remove and the rename, cache_drop() on every region failure path -- **one read error used to poison a cached FILE\* and stall the world for ever** -- and `cardfail=` in the flight recorder. |
+| 54 | **The C6 radio is powered down at startup** | done | 2026-09-28, the user, once WiFi had left graceloader: *"can we also tell the coprocessor during graceloader startup to power down the C6 radio processor completely?"* It can, but not from the loader (D-97): `bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_OFF)` needs a coprocessor handle, and `bsp_tanmatsu_coprocessor_get_handle()` answers ESP_FAIL rather than initialising on demand -- while graceloader's first comment says it links every component and initialises none, because the app decides. So it sits in `on_init`, where the engine has already brought the BSP up, in **synthminer and synthracer** both. Failure is logged and ignored: a badge whose coprocessor will not answer has a worse problem than an idle radio. **It persists past the app** -- the coprocessor holds the state -- so a launcher that wants WiFi has to ask for it back. |
 
 ---
 
@@ -4205,6 +4206,24 @@ reason Minecraft chose the other rule.
   screen to the livestream."* nfmtest paced its own clock and skipped slots;
   this offers every frame the game finishes and drops the ones the encoder
   cannot take.
+
+- **D-97** 2026-09-28, **the user**, after finding that the loader could
+  not do it: **the radio power-down lives in each app, not in
+  graceloader.**
+
+  The call itself is one line and the BSP offers it cleanly. What it
+  needs is an initialised coprocessor, and graceloader has a rule about
+  that written into the first comment in its main.c: *"The graceloader
+  LINKS all components (BSP, WiFi, PAX, BT, etc.) so their symbols are
+  available to app.so, but does NOT initialize them. The app decides
+  what to initialize."* Adding `bsp_device_initialize()` there to make
+  one call work would have traded that rule for a line, and the app
+  initialises the BSP a moment later anyway.
+
+  The cost of the decision is that every app has to remember. That is
+  the right side to err on: an app that forgets wastes some battery, and
+  a loader that initialises hardware behind an app's back is a class of
+  bug nobody would find quickly.
 
 - **D-96** 2026-09-26, out of the user's question and then their
   instruction: **the audio codec is ours, and it is public domain.**
