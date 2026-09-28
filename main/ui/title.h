@@ -23,6 +23,7 @@
 #include <stdint.h>
 
 #include "world/chunk_render.h"
+#include "world/worldstore.h"
 
 // Where the camera should be, `t` seconds in. Loops.
 typedef struct {
@@ -34,9 +35,11 @@ typedef struct {
 // and two copies of a constant is one copy too many.
 uint32_t title_seed(void);
 
-// Build the scratch world and work out the camera path. False if the
-// world could not be opened.
-bool title_begin(void);
+// Open (or generate) the title's world and work out the camera path.
+// The meta and player it opened with are handed back, because the
+// caller is the one that has to write level.smw for it if it turns out
+// to be fresh. False if the world could not be opened.
+bool title_begin(world_meta_t* out_meta, player_state_t* out_player);
 void title_end(void);
 
 // Nothing, now that the letters are part of the world. Kept so the

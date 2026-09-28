@@ -179,9 +179,9 @@ static float loop_s(double t) {
     return 0.5f - 0.5f * cosf(2.0f * 3.14159265f * ft / LOOP_SECS);
 }
 
-bool title_begin(void) {
-    static world_meta_t   meta;
-    static player_state_t player;
+bool title_begin(world_meta_t* out_meta, player_state_t* out_player) {
+    world_meta_t   meta;
+    player_state_t player;
     // THE WORLD IS KEPT, not generated every time (worldstore.h,
     // F-115). `fresh` means there was nothing usable on the card, so
     // the caller has to build the letters in and save it.
@@ -190,6 +190,12 @@ bool title_begin(void) {
     build_title();
     s_fresh  = made;
     s_active = true;
+    // THE CALLER NEEDS THIS META. It used to stay in a static in here,
+    // and main.c then wrote level.smw for the title world out of the
+    // meta belonging to whatever world it had open last -- which at
+    // boot is a zeroed struct with no slug and no seed.
+    if (out_meta != NULL) *out_meta = meta;
+    if (out_player != NULL) *out_player = player;
     return true;
 }
 

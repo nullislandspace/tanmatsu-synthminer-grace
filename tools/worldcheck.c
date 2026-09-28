@@ -1690,6 +1690,68 @@ static void check_title_world(void) {
     worldstore_delete(SM_TITLE_SLUG);
 }
 
+// Does a chunk generated in the TITLE world actually reach the card?
+// On the badge it did not: the world was created and marked, and its 81
+// chunks were generated and "saved" every boot without one region file
+// appearing. This walks the same path the title does.
+static void check_title_persists(void) {
+    printf("the title world keeps its terrain\n");
+    world_meta_t   m;
+    player_state_t pl;
+    bool           fresh = false;
+
+    CHECK(worldstore_init(STORE_BASE), "worldstore_init failed");
+    worldstore_delete(SM_TITLE_SLUG);
+    CHECK(chunk_store_init(), "chunk_store_init failed");
+    CHECK(worldstore_open_title(0xB05u, 1u, &m, &pl, &fresh), "open_title failed");
+    CHECK(fresh, "a title world that was just deleted did not report itself fresh");
+    CHECK(chunk_worker_start(m.seed), "chunk_worker_start failed");
+
+    // Generate one, exactly as the loading screen does.
+    CHECK(chunk_worker_request_load(0, 0), "request_load refused");
+    chunk_t* c = chunk_find(0, 0);
+    CHECK(c != NULL, "the chunk never became resident");
+    if (c == NULL) return;
+    CHECK((c->flags & CF_EDITED) != 0, "a freshly generated chunk is not marked for saving");
+    uint8_t const sample = c->id[CH_IDX(3, CH_BEDROCK, 3)];
+
+    // And save it, exactly as the title does when it is fresh.
+    CHECK(chunk_worker_request_save(0, 0), "request_save refused");
+    while (!chunk_worker_idle()) chunk_worker_collect(64);
+
+    // THE FILE HAS TO BE THERE. This is the assertion the badge failed.
+    char dir[192], path[224];
+    snprintf(dir, sizeof(dir), "%s/%s/region", STORE_BASE, SM_TITLE_SLUG);
+    CHECK(region_path(path, sizeof(path), dir, region_of(0), region_of(0)), "region_path failed");
+    FILE* f = fopen(path, "rb");
+    CHECK(f != NULL, "no region file at %s -- the title's terrain was not written", path);
+    long sz = 0;
+    if (f != NULL) {
+        fseek(f, 0, SEEK_END);
+        sz = ftell(f);
+        fclose(f);
+    }
+    CHECK(sz > 0, "the region file is empty (%ld bytes)", sz);
+    printf("  one generated chunk wrote %ld bytes to %s\n", sz, path);
+
+    // And it must come BACK, rather than being generated again.
+    chunk_worker_stop();
+    chunk_store_shutdown();
+    worldstore_close();
+    CHECK(chunk_store_init(), "chunk_store_init (second) failed");
+    CHECK(worldstore_open_title(0xB05u, 1u, &m, &pl, &fresh), "reopen failed");
+    CHECK(chunk_worker_start(m.seed), "chunk_worker_start (second) failed");
+    CHECK(chunk_worker_request_load(0, 0), "request_load (second) refused");
+    chunk_t* c2 = chunk_find(0, 0);
+    CHECK(c2 != NULL, "the chunk did not come back");
+    if (c2 != NULL) {
+        CHECK(c2->id[CH_IDX(3, CH_BEDROCK, 3)] == sample, "the reloaded chunk differs from the saved one");
+    }
+    chunk_worker_stop();
+    chunk_store_shutdown();
+    worldstore_delete(SM_TITLE_SLUG);
+}
+
 static void check_datadir(void) {
     printf("the data directory\n");
     char const* const OLD = "build/host/ddtest/apps/at.cavac.synthminer";
@@ -4993,6 +5055,7 @@ int main(void) {
     check_sections();
     check_worldstore();
     check_title_world();
+    check_title_persists();
     check_palette();
     check_slots();
     check_datadir();

@@ -991,7 +991,10 @@ static bool enter_title(void) {
     sm_audio_leave_world();
     drain_and_clear();
     worldstore_close();
-    if (!title_begin()) return false;
+    if (!title_begin(&s_meta, &s_saved)) return false;
+    ESP_LOGI(TAG, "title world: %s (seed %u)", title_is_fresh() ? "GENERATING, first time or a new SM_TITLE_GEN"
+                                                                : "reading from the card",
+             (unsigned)s_meta.seed);
     chunk_worker_set_world(title_seed(), FARLANDS_X_DEFAULT);
     sm_view_t const tv = title_view();
     chunk_render_set_view(&tv);
