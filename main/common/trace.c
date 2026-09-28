@@ -162,7 +162,7 @@ void trace_tick(trace_tick_t const* s) {
         say("  io load=%d@%dus,max%dus save=%d@%dus,max%dus", s->load_n, s->load_avg_us, s->load_max_us,
             s->save_n, s->save_avg_us, s->save_max_us);
     }
-    if (s->save_failed > 0) say("  cardfail=%d", s->save_failed);
+    if (s->save_failed > 0 || s->paced_ms > 0) say("  cardfail=%d paced=%dms", s->save_failed, s->paced_ms);
     if (s->compact_n > 0) {
         say("  compact n=%d avg=%dus max=%dus", s->compact_n, s->compact_avg_us, s->compact_max_us);
     }

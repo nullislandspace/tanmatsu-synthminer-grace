@@ -79,6 +79,11 @@ typedef struct {
     // that cannot be written pin their slots, so a card failing for
     // long enough fills the ring and the world stops arriving.
     int32_t save_failed;
+    // How long the worker spent deliberately NOT writing, to let the
+    // card finish its own housekeeping (chunk_worker.c). Zero on a
+    // healthy card; if it climbs, the card is the bottleneck and the
+    // world is streaming slower because of it.
+    int32_t paced_ms, paced_n;
 } chunk_worker_io_t;
 
 void chunk_worker_io_stats(chunk_worker_io_t* out);

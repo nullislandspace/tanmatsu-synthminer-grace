@@ -359,7 +359,21 @@ int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
 
     uint32_t waste = 0;
     region_t r;
-    if (!header_read(f, &waste) || !region_open_state(f, &r)) return -1;
+    // EVERY FAILURE DROPS THE HANDLE, and this is not tidiness -- it is
+    // the difference between a card hiccup and a world that stops
+    // arriving.
+    //
+    // A FILE* that has failed keeps its error flag, and every read
+    // through it fails from then on. With the handle cached, one
+    // `sdmmc_read_blocks failed` poisons that region for the rest of
+    // the session: the badge, 2026-09-28, sat at "24 resident, 57
+    // missing" with the streamer asking 240 times a second and loading
+    // nothing, for ever. Before the cache existed each read opened
+    // fresh and a transient error simply retried.
+    if (!header_read(f, &waste) || !region_open_state(f, &r)) {
+        cache_drop(path);
+        return -1;
+    }
 
     int const     idx = region_local(c->cz) * REGION_DIM + region_local(c->cx);
     entry_t const e   = r.dir[idx];
@@ -368,6 +382,7 @@ int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
     static uint8_t buf[CHUNK_PAYLOAD_MAX];
     if (e.length > sizeof(buf) || fseek(f, (long)e.offset, SEEK_SET) != 0 ||
         fread(buf, 1, e.length, f) != e.length) {
+        cache_drop(path);
         return -1;
     }
 
@@ -398,10 +413,27 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     long  existing = -1;
     FILE* f        = cache_open(path, false);
     if (f != NULL) {
-        if (fseek(f, 0, SEEK_END) == 0) existing = ftell(f);
+        if (fseek(f, 0, SEEK_END) == 0) {
+            existing = ftell(f);
+        } else {
+            // Same rule as the read path: a handle that has failed once
+            // fails for ever, so let go of it and open it again.
+            cache_drop(path);
+            f = cache_open(path, false);
+            if (f == NULL || fseek(f, 0, SEEK_END) != 0) {
+                // The file IS there and we still cannot work with it.
+                // Give up for now and DO NOT fall through to the create
+                // below: that opens "w+b", which would truncate a
+                // region that is very likely fine once the card
+                // settles. The chunk stays dirty and is retried.
+                cache_drop(path);
+                return false;
+            }
+            existing = ftell(f);
+        }
     } else {
-        // The bucket directory may not exist yet: this is the first
-        // region anyone has written in this 2048 x 2048 square.
+        // Nothing there at all: the first region anyone has written in
+        // this 2048 x 2048 square, so its bucket may not exist either.
         if (!region_bucket_dir(dir, rx, rz)) return false;
         f = cache_open(path, true);
         if (f == NULL) return false;
@@ -471,7 +503,10 @@ bool region_should_compact(char const* dir, int32_t rx, int32_t rz) {
     // this module already holds open is a way to read a stale header.
     FILE* f = cache_open(path, false);
     if (f == NULL) return false;
-    if (fseek(f, 0, SEEK_SET) != 0) return false;
+    if (fseek(f, 0, SEEK_SET) != 0) {
+        cache_drop(path);
+        return false;
+    }
     uint32_t waste = 0;
     bool     yes   = false;
     if (header_read(f, &waste)) {

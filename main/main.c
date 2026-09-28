@@ -708,6 +708,11 @@ static void frame_stats(void) {
     if (failed > 0) {
         ESP_LOGE(TAG, "card/s: %d chunk write(s) REFUSED BY THE CARD -- kept in memory and retried", failed);
     }
+    int const paced = io.paced_ms - prev_io.paced_ms;
+    if (paced > 0) {
+        ESP_LOGW(TAG, "card/s: waited %d ms across %d pause(s) for the card to finish its own work", paced,
+                 io.paced_n - prev_io.paced_n);
+    }
     if (comp_n > 0) {
         ESP_LOGI(TAG, "card/s: %d region compaction(s) at %.1f ms (worst %.1f)", comp_n, comp_avg / 1000.0,
                  io.compact_max / 1000.0);
@@ -758,6 +763,7 @@ static void frame_stats(void) {
             .compact_avg_us = comp_avg,
             .compact_max_us = (int)io.compact_max,
             .save_failed    = failed,
+            .paced_ms       = paced,
         });
     }
 

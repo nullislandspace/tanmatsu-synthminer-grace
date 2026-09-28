@@ -75,6 +75,7 @@ typedef struct {
     int      load_max_us, save_max_us;
     int      compact_n, compact_avg_us, compact_max_us;
     int      save_failed;   // writes the card refused this second
+    int      paced_ms;      // ... and how long we waited for it to recover
 } trace_tick_t;
 
 // Start a file for a world. `dir` is where it lives (SM_DATA_DIR on the

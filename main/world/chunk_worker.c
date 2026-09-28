@@ -107,7 +107,8 @@ static int64_t  s_load_max, s_save_max;
 static int32_t  s_load_n, s_save_n;
 static int64_t  s_compact_us, s_compact_max;
 static int32_t  s_compact_n;
-static int32_t  s_save_failed;  // writes the card refused; see apply()
+static int32_t  s_save_failed;
+static int32_t  s_paced_ms, s_paced_n;   // time given back to the card  // writes the card refused; see apply()
 
 void chunk_worker_io_stats(chunk_worker_io_t* out) {
     if (out == NULL) return;
@@ -121,6 +122,8 @@ void chunk_worker_io_stats(chunk_worker_io_t* out) {
     out->compact_us  = s_compact_us;
     out->compact_max = s_compact_max;
     out->save_failed = s_save_failed;
+    out->paced_ms    = s_paced_ms;
+    out->paced_n     = s_paced_n;
 }
 
 void chunk_worker_gen_stats(int* n_ord, int64_t* us_ord, int* n_far, int64_t* us_far) {
@@ -216,21 +219,66 @@ static bool do_mesh(int32_t cx, int32_t cz, int lod, int sect, mesh_t* out) {
     return chunkmesh_build(cx, cz, lod, sect, s_scratch, out);
 }
 
+// --- Giving the card room to breathe ----------------------------------
+//
+// WHY THE CARD STALLS. An SD card does its own erase-block management,
+// and a write that lands on a block needing an erase starts an internal
+// cycle that can hold the bus busy for hundreds of milliseconds. If the
+// host's timeout is shorter than that, the transaction fails --
+// `sdmmc_write_blocks failed (0x106)`, which is ESP_ERR_TIMEOUT.
+//
+// And we feed it the worst possible pattern: a burst of many small
+// writes scattered across different region files, each with its own
+// flush and its own FAT metadata update. 81 of them back to back when
+// the title world is built, 49 when a world is left.
+//
+// So: WHEN THE CARD SHOWS SIGNS OF BEING BUSY, STOP WRITING FOR A
+// MOMENT. A healthy save here is 12-20 ms and gets no delay at all --
+// paying a pause on every write would cost more than it saves. One that
+// took far longer means the card was already doing internal work, and
+// the next write is the one most likely to time out.
+#define SAVE_SLOW_US    (60 * 1000)   // beyond this, the card is busy
+#define SAVE_PACE_MAX_MS 120
+#define SAVE_FAIL_PACE_MS 100         // it already refused; do not rush back
+
+static void pace_after_write(int64_t took_us, bool ok) {
+#ifndef SM_HOST
+    int ms = 0;
+    if (!ok) {
+        ms = SAVE_FAIL_PACE_MS;
+    } else if (took_us > SAVE_SLOW_US) {
+        // Half of what it just cost: enough to matter, bounded so a
+        // pathological reading cannot stall the streamer outright.
+        ms = (int)(took_us / 2000);
+        if (ms > SAVE_PACE_MAX_MS) ms = SAVE_PACE_MAX_MS;
+    }
+    if (ms <= 0) return;
+    s_paced_ms += ms;
+    s_paced_n++;
+    vTaskDelay(pdMS_TO_TICKS(ms));
+#else
+    (void)took_us;
+    (void)ok;
+#endif
+}
+
 static bool do_save(int32_t cx, int32_t cz) {
     chunk_t const* c = chunk_find(cx, cz);
     if (c == NULL) return false;
 #ifndef SM_HOST
     int64_t const ts0 = esp_timer_get_time();
 #endif
-    if (!world_chunk_save(c)) return false;
+    bool const wrote = world_chunk_save(c);
 #ifndef SM_HOST
-    {
-        int64_t const dt = esp_timer_get_time() - ts0;
+    int64_t const dt = esp_timer_get_time() - ts0;
+    if (wrote) {
         s_save_us += dt;
         if (dt > s_save_max) s_save_max = dt;
         s_save_n++;
     }
+    pace_after_write(dt, wrote);
 #endif
+    if (!wrote) return false;
     // Rewrites leave dead bytes behind. Tidying them up is a whole-file
     // rewrite, so it happens here on core 1 and only when the waste has
     // actually built up -- never on the frame path.
