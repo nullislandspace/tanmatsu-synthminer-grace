@@ -43,8 +43,33 @@ def main():
     if not path.exists():
         sys.exit(f"{path}: not there. `make pulltrace` fetches it off the card.")
 
+    # THE FILE HOLDS EVERY SESSION until it rotates, appended. Merging
+    # them silently is how a "worst since boot" from last week ends up
+    # reported as today's, which is exactly what happened the first time
+    # two sessions were in one file. Each `H build=` opens a new one;
+    # the last is the one that just happened, and `--all` walks them.
+    raw_lines = path.read_text(errors="replace").splitlines()
+    sessions, cur = [], []
+    for line in raw_lines:
+        if line.startswith("H build=") and cur:
+            sessions.append(cur)
+            cur = []
+        cur.append(line)
+    if cur:
+        sessions.append(cur)
+
+    print(f"=== {path} ===")
+    print(f"  {len(sessions)} session(s) in the file")
+    want = sessions if "--all" in sys.argv else sessions[-1:]
+    for i, lines in enumerate(want):
+        n = len(sessions) - len(want) + i + 1
+        print(f"\n--- session {n} of {len(sessions)} ---")
+        report(lines)
+
+
+def report(raw_lines):
     header, ticks, edits, meshes, drops, io, compacts = [], [], [], [], [], [], []
-    for raw in path.read_text(errors="replace").splitlines():
+    for raw in raw_lines:
         line = raw.strip()
         if not line:
             continue
@@ -76,7 +101,6 @@ def main():
         elif ticks and "flat" in f:
             ticks[-1].update(f)          # the continuation of the T above
 
-    print(f"=== {path} ===")
     for h in header:
         print(f"  {h}")
     if not ticks and not edits:

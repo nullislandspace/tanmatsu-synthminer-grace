@@ -72,6 +72,13 @@ typedef struct {
     int32_t cx, cz;
 } job_t;
 
+// Whether a job waits its turn or goes to the head of the queue. See
+// submit(), which is where the reasoning is.
+typedef enum {
+    Q_NORMAL = 0,
+    Q_FRONT
+} queue_where_t;
+
 typedef struct {
     uint8_t kind;
     uint8_t lod;
@@ -235,16 +242,21 @@ static bool do_save(int32_t cx, int32_t cz) {
 #ifndef SM_HOST
     int64_t const tc0 = esp_timer_get_time();
 #endif
-    world_region_maintain(cx, cz);
+    bool const compacted = world_region_maintain(cx, cz);
 #ifndef SM_HOST
-    {
+    // Counted on the RETURN VALUE, not on elapsed time. The first
+    // version called anything over a millisecond a compaction, which
+    // cannot tell a real rewrite from a slow should-compact check --
+    // and it reported 316 compactions for 316 saves, which is exactly
+    // the sort of too-round number that turns out to be the instrument.
+    if (compacted) {
         int64_t const dt = esp_timer_get_time() - tc0;
-        if (dt > 1000) {  // a no-op check is microseconds; only real work counts
-            s_compact_us += dt;
-            if (dt > s_compact_max) s_compact_max = dt;
-            s_compact_n++;
-        }
+        s_compact_us += dt;
+        if (dt > s_compact_max) s_compact_max = dt;
+        s_compact_n++;
     }
+#else
+    (void)compacted;
 #endif
     return true;
 }
@@ -286,6 +298,9 @@ static void apply(result_t* r) {
             // again while the job was in flight, which the edit_seq
             // check above has already ruled out.
             c->lod_stale &= (uint16_t)~CH_MESH_BIT(r->lod, r->sect);
+            // The edit has been answered; this section goes back to
+            // being ordinary streaming work (chunk.h, lod_urgent).
+            c->lod_urgent &= (uint16_t)~CH_MESH_BIT(r->lod, r->sect);
             // Empty is a legitimate answer -- solid rock, open sky --
             // and an empty mesh is not "drawable", it is "nothing to
             // draw". Only real geometry counts as built, or the
@@ -339,7 +354,21 @@ static void run_job(job_t const* j, result_t* r) {
 
 // --- Submitting -------------------------------------------------------
 
-static bool submit(job_t const* j) {
+// A PLAYER'S EDIT GOES TO THE FRONT. Measured on the badge,
+// 2026-09-28: a flower broken at t=173.0 did not leave the screen until
+// t=176.9 -- 3943 ms -- because its remesh queued behind forty-odd
+// speculative streaming jobs while `queue` sat at 49/48. The block was
+// gone from the world the instant it broke; what the player was looking
+// at was a mesh from before the swing. That is the whole of "stuff i
+// place isn't showing up visually".
+//
+// Everything else in this queue is work nobody is waiting on: a section
+// the streamer has not reached yet is behind fog or behind a coarser
+// level, and a save is invisible by definition. One job a person is
+// staring at beats all of it -- and a pickaxe swings a few times a
+// second at most, so the front of the queue cannot be flooded from
+// here.
+static bool submit(job_t const* j, queue_where_t where) {
     if (s_scratch == NULL) return false;
 
     if (s_sync) {
@@ -349,7 +378,8 @@ static bool submit(job_t const* j) {
         return true;
     }
 #ifndef SM_HOST
-    if (xQueueSend(s_jobs, j, 0) != pdTRUE) {
+    BaseType_t const sent = where == Q_FRONT ? xQueueSendToFront(s_jobs, j, 0) : xQueueSend(s_jobs, j, 0);
+    if (sent != pdTRUE) {
         s_refused_total++;
         return false;
     }
@@ -357,6 +387,7 @@ static bool submit(job_t const* j) {
     s_asked_total++;
     return true;
 #else
+    (void)where;
     return false;
 #endif
 }
@@ -365,7 +396,7 @@ bool chunk_worker_request_load(int32_t cx, int32_t cz) {
     chunk_t* c = chunk_claim(cx, cz);
     if (c == NULL) return false;  // the slot is busy; ask again next frame
     job_t const j = {.kind = JOB_LOAD, .cx = cx, .cz = cz};
-    if (!submit(&j)) {
+    if (!submit(&j, Q_NORMAL)) {
         c->cstate = CS_FREE;  // never leave a slot stuck in CS_LOADING
         return false;
     }
@@ -379,7 +410,12 @@ bool chunk_worker_request_mesh(int32_t cx, int32_t cz, int lod, int sect) {
 
     job_t const j = {
         .kind = JOB_MESH, .lod = (uint8_t)lod, .sect = (uint8_t)sect, .seq = c->edit_seq, .cx = cx, .cz = cz};
-    if (!submit(&j)) return false;
+    // Stale because somebody changed a block, rather than because this
+    // section has never been built? Then a player is looking at the old
+    // one (chunk.h, lod_urgent).
+    uint16_t const      bit   = CH_MESH_BIT(lod, sect);
+    queue_where_t const where = (c->lod_urgent & bit) != 0 ? Q_FRONT : Q_NORMAL;
+    if (!submit(&j, where)) return false;
     if (!s_sync) c->lod_inflight |= CH_MESH_BIT(lod, sect);
     return true;
 }
@@ -389,7 +425,7 @@ bool chunk_worker_request_save(int32_t cx, int32_t cz) {
     if (c == NULL) return false;
     job_t const j = {.kind = JOB_SAVE, .seq = c->edit_seq, .cx = cx, .cz = cz};
     if (!s_sync) c->cstate = CS_SAVING;
-    if (!submit(&j)) {
+    if (!submit(&j, Q_NORMAL)) {
         c->cstate = CS_READY;
         return false;
     }

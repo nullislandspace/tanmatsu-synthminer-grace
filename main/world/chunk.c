@@ -28,6 +28,7 @@ static void free_slot_meshes(chunk_t* c) {
     for (int i = 0; i < CH_MESH_N; i++) mesh_free(&c->lod[i]);
     c->lod_built    = 0;
     c->lod_stale    = 0;
+    c->lod_urgent   = 0;
     c->lod_inflight = 0;
 }
 
@@ -232,11 +233,17 @@ uint8_t world_state(int32_t x, int32_t y, int32_t z) {
 static void mark_stale(chunk_t* c, int y) {
     if (c == NULL) return;
     int const s = ch_sect_of(y);
+    uint16_t bits = 0;
     for (int l = 0; l < LOD_COUNT; l++) {
-        c->lod_stale |= CH_MESH_BIT(l, s);
-        if (y % CH_SECT == 0 && s > 0) c->lod_stale |= CH_MESH_BIT(l, s - 1);
-        if (y % CH_SECT == CH_SECT - 1 && s < CH_SECT_N - 1) c->lod_stale |= CH_MESH_BIT(l, s + 1);
+        bits |= CH_MESH_BIT(l, s);
+        if (y % CH_SECT == 0 && s > 0) bits |= CH_MESH_BIT(l, s - 1);
+        if (y % CH_SECT == CH_SECT - 1 && s < CH_SECT_N - 1) bits |= CH_MESH_BIT(l, s + 1);
     }
+    c->lod_stale |= bits;
+    // Stale because a block CHANGED -- just these bits, not whatever was
+    // already waiting. Only this path sets it; a chunk arriving from the
+    // card sets lod_stale directly and stays ordinary.
+    c->lod_urgent |= bits;
 }
 
 // Mark `c` stale around y AND move its edit_seq on. The second half is

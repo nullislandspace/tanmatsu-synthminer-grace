@@ -229,6 +229,7 @@ void chunk_render_stream(double wx, double wz) {
         for (int m = 0; m < CH_MESH_N; m++) mesh_free(&c->lod[m]);
         c->lod_built    = 0;
         c->lod_stale    = 0;
+        c->lod_urgent   = 0;
         c->lod_inflight = 0;
         c->cstate       = CS_FREE;
         s_evicted_total++;

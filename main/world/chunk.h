@@ -205,6 +205,16 @@ typedef struct {
     uint16_t lod_built;     // CH_MESH_BIT: has real geometry, drawable
     uint16_t lod_stale;     // CH_MESH_BIT: needs (re)building
     uint16_t lod_inflight;  // CH_MESH_BIT: queued to the worker
+    // CH_MESH_BIT: stale because a BLOCK CHANGED, as opposed to stale
+    // because the chunk has just arrived and has never been meshed.
+    //
+    // The difference is the player. A section the streamer has not got
+    // to yet is covered by fog or by the level of detail below it, and
+    // nobody can tell. A section somebody has just mined a block out of
+    // is being LOOKED AT, and until its mesh arrives the block is still
+    // there on screen. So this one jumps the worker's queue
+    // (chunk_worker.c); the other waits its turn.
+    uint16_t lod_urgent;
     uint32_t last_seen_frame;
 } chunk_t;
 
