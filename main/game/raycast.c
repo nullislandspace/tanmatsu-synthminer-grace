@@ -21,7 +21,7 @@ void ray_forward(float yaw, float pitch, float* dx, float* dy, float* dz) {
     *dz            = cosf(yaw) * cp;
 }
 
-bool ray_pick(double ox, double oy, double oz, float dx, float dy, float dz, float max, bool want_solid,
+bool ray_pick(double ox, double oy, double oz, float dx, float dy, float dz, float max, ray_mode_t mode,
               ray_hit_t* out) {
     if (out == NULL) return false;
     float const len = sqrtf(dx * dx + dy * dy + dz * dz);
@@ -57,8 +57,9 @@ bool ray_pick(double ox, double oy, double oz, float dx, float dy, float dz, flo
     // and offer to mine it. A ray that reaches one has run out of
     // world, so it stops without a hit.
 #define RAY_HITS(b)                                                                                                    \
-    ((b) != BLK_BARRIER &&                                                                                             \
-     (want_solid ? block_solid(b) : ((b) != BLK_AIR && (block_def(b)->flags & BF_LIQUID) == 0)))
+    ((b) != BLK_BARRIER && ((mode) == RAY_SOLID                                                                        \
+                                ? block_solid(b)                                                                       \
+                                : ((b) != BLK_AIR && ((mode) == RAY_FLUID || !block_liquid(b)))))
 
     // The starting cell counts: standing inside a block, the crosshair
     // is pointing at it.

@@ -250,6 +250,8 @@ item.iron_ingot = Járnstöng
 item.pickaxe_iron = Járnhaki
 item.axe_iron = Járnöxi
 item.shovel_iron = Járnskófla
+item.bucket = Fata
+item.bucket_water = Vatnsfata
 
 # --- chest ---
 chest.title = Kista

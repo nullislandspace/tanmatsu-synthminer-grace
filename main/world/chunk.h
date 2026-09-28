@@ -53,6 +53,9 @@
 #define CH_D     16
 #define CH_CELLS (CH_W * CH_H * CH_D)
 
+// The active-cell bitmap (chunk_t.act), one bit per cell.
+#define CH_ACT_BYTES (CH_CELLS / 8)
+
 #define CH_SEA_LEVEL 24
 #define CH_BEDROCK   0
 
@@ -181,6 +184,12 @@ typedef struct {
     uint8_t* id;  // CH_CELLS block ids -- the mesher's input, verbatim
     uint8_t* st;  // CH_CELLS state bytes
     uint8_t* lt;  // CH_CELLS light bytes: sky << 4 | block (light.h). Derived, never saved
+    // ONE BIT PER CELL: is this cell waiting for a physics update
+    // (world/blockupdate.h)? Set means it is in the queue. Derived and
+    // never saved, like the light -- the fluid LEVELS are in `st` and
+    // they are the truth, so the active set is rebuilt from the world
+    // when a chunk arrives.
+    uint8_t* act;  // CH_ACT_BYTES
 
     int32_t cx, cz;
     uint8_t cstate;    // chunk_state_t

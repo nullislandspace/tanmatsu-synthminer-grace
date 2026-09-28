@@ -250,6 +250,8 @@ item.iron_ingot = Barra iarainn
 item.pickaxe_iron = Piocóid iarainn
 item.axe_iron = Tua iarainn
 item.shovel_iron = Sluasaid iarainn
+item.bucket = Buicéad
+item.bucket_water = Buicéad uisce
 
 # --- chest ---
 chest.title = Cófra

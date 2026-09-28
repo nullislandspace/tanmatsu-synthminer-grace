@@ -125,6 +125,14 @@
           "target_file": "textures/item_axe_wood.png"
         },
         {
+          "source_file": "textures/item_bucket.png",
+          "target_file": "textures/item_bucket.png"
+        },
+        {
+          "source_file": "textures/item_bucket_water.png",
+          "target_file": "textures/item_bucket_water.png"
+        },
+        {
           "source_file": "textures/item_coal.png",
           "target_file": "textures/item_coal.png"
         },

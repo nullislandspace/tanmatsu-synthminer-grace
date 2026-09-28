@@ -242,6 +242,8 @@ item.iron_ingot = Eisenbarren
 item.pickaxe_iron = Eisenspitzhacke
 item.axe_iron = Eisenaxt
 item.shovel_iron = Eisenschaufel
+item.bucket = Eimer
+item.bucket_water = Wassereimer
 
 # --- chest ---
 chest.title = Truhe

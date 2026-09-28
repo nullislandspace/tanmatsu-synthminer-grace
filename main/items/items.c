@@ -27,7 +27,44 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     [ITEM_PICK_IRON - BLK_COUNT]   = {"pickaxe_iron", SM_STR_ITEM_PICKAXE_IRON, 1, TOOL_PICK, 3, 250, 0, 0xFFDEDEE4u},
     [ITEM_AXE_IRON - BLK_COUNT]    = {"axe_iron", SM_STR_ITEM_AXE_IRON, 1, TOOL_AXE, 3, 250, 0, 0xFFDEDEE4u},
     [ITEM_SHOVEL_IRON - BLK_COUNT] = {"shovel_iron", SM_STR_ITEM_SHOVEL_IRON, 1, TOOL_SHOVEL, 3, 250, 0, 0xFFDEDEE4u},
+
+    // BUCKETS DO NOT STACK, EMPTY OR FULL. Minecraft stacks empty ones
+    // sixteen deep and filled ones not at all, and that asymmetry is
+    // the whole difficulty: filling one out of a stack of sixteen has
+    // to find a SECOND slot for the full one, which may not exist --
+    // so a bucket dipped in a lake with a full inventory would either
+    // vanish or have to put the water back, and one of those is a bug
+    // report. At one apiece the stack is swapped in place and there is
+    // no failure to get wrong. Iron is cheap enough by then.
+    [ITEM_BUCKET - BLK_COUNT]       = {"bucket", SM_STR_ITEM_BUCKET, 1, TOOL_NONE, 0, 0, 0, 0xFFC0C4CCu},
+    [ITEM_BUCKET_WATER - BLK_COUNT] = {"bucket_water", SM_STR_ITEM_BUCKET_WATER, 1, TOOL_NONE, 0, 0, 0, 0xFF3A62C8u},
 };
+
+// A bucket and what is in it. Adding lava is this row plus a row in the
+// item table, the fluid table (world/fluid.c) and the block table --
+// and nothing in interact.c, which is the point of having the pair of
+// lookups below rather than a test against ITEM_BUCKET_WATER.
+static struct {
+    uint8_t  fluid;
+    uint16_t item;
+} const BUCKETS[] = {
+    {BLK_AIR, ITEM_BUCKET},
+    {BLK_WATER, ITEM_BUCKET_WATER},
+};
+
+uint8_t item_bucket_contents(uint16_t item) {
+    for (size_t i = 0; i < sizeof BUCKETS / sizeof BUCKETS[0]; i++) {
+        if (BUCKETS[i].item == item) return BUCKETS[i].fluid;
+    }
+    return BLK_AIR;
+}
+
+uint16_t item_bucket_filled_with(uint8_t fluid) {
+    for (size_t i = 0; i < sizeof BUCKETS / sizeof BUCKETS[0]; i++) {
+        if (BUCKETS[i].fluid == fluid) return BUCKETS[i].item;
+    }
+    return 0;
+}
 
 // A flat colour standing in for the block's texture in the inventory.
 // Approximately each block's average, which is what a 16x16 texture

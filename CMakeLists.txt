@@ -27,6 +27,8 @@ set(APP_SOURCES
     main/world/blocks.c
     main/world/chunk.c
     main/world/light.c
+    main/world/blockupdate.c
+    main/world/fluid.c
     main/world/worldgen.c
     main/world/farlands.c
     main/world/chunk_codec.c

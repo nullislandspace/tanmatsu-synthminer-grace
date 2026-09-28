@@ -250,6 +250,8 @@ item.iron_ingot = Rautaharkko
 item.pickaxe_iron = Rautahakku
 item.axe_iron = Rautakirves
 item.shovel_iron = Rautalapio
+item.bucket = Ämpäri
+item.bucket_water = Vesiämpäri
 
 # --- chest ---
 chest.title = Arkku

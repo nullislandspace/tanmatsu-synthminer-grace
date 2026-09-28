@@ -250,6 +250,8 @@ item.iron_ingot = Dzelzs lietnis
 item.pickaxe_iron = Dzelzs cērte
 item.axe_iron = Dzelzs cirvis
 item.shovel_iron = Dzelzs lāpsta
+item.bucket = Spainis
+item.bucket_water = Ūdens spainis
 
 # --- chest ---
 chest.title = Lāde

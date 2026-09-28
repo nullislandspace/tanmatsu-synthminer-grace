@@ -8,6 +8,7 @@
 #include "items/item_entity.h"
 #include "world/blockent.h"
 #include "world/chunk.h"
+#include "world/fluid.h"
 
 // Which tool the current fell is being done with. A parameter would
 // have to thread through the flood fill's whole frontier; the fell is
@@ -238,4 +239,60 @@ bool interact_place(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoi
 
     world_set(x, y, z, block, state);
     return true;
+}
+
+// --- Using what is in your hand (see interact.h) -----------------------
+
+use_result_t interact_use_item(double ex, double ey, double ez, float dx, float dy, float dz, uint16_t item) {
+    use_result_t r = {0};
+    r.sound        = SND_NONE;
+
+    uint8_t const carried = item_bucket_contents(item);
+    if (item != ITEM_BUCKET && carried == BLK_AIR) return r;  // not a bucket: nothing to do
+
+    ray_hit_t h;
+    if (!ray_pick(ex, ey, ez, dx, dy, dz, RAY_REACH, RAY_FLUID, &h)) return r;
+
+    if (carried != BLK_AIR) {
+        // POURING IT OUT. Into the struck cell if that cell is
+        // something water may occupy -- air, tall grass, a film of
+        // flowing water -- and otherwise against its face, which is
+        // the ordinary placement cell the ray already worked out.
+        //
+        // A source is the exception: emptying a bucket into water that
+        // is already a spring would swallow the bucketful and change
+        // nothing, so that case takes the face instead and the water
+        // lands where the player was clearly pointing.
+        bool const onto_source = h.block == carried && fluid_is_source(world_state(h.x, h.y, h.z));
+        bool const into        = block_replaceable(h.block) && !onto_source;
+        int32_t const tx = into ? h.x : h.px, ty = into ? h.y : h.py, tz = into ? h.z : h.pz;
+        if (!fluid_place_source(tx, ty, tz, carried)) return r;
+        r.acted   = true;
+        r.becomes = ITEM_BUCKET;
+        r.sound   = block_sound(carried);
+        r.block   = carried;
+        r.x = tx, r.y = ty, r.z = tz;
+        return r;
+    }
+
+    // FILLING IT. Only from a source -- scooping a flow would let a
+    // player carry a pond away one film at a time, and Minecraft says
+    // no for the same reason. A flow struck by the ray is simply not a
+    // thing the bucket can take, and the tap does nothing.
+    uint8_t const got = fluid_take_source(h.x, h.y, h.z);
+    if (got == BLK_AIR) return r;
+    uint16_t const full = item_bucket_filled_with(got);
+    if (full == 0) {
+        // A fluid no bucket carries. Put it back rather than destroy
+        // it: taking the source was the first half of a trade that
+        // cannot be completed.
+        fluid_place_source(h.x, h.y, h.z, got);
+        return r;
+    }
+    r.acted   = true;
+    r.becomes = full;
+    r.sound   = block_sound(got);
+    r.block   = got;
+    r.x = h.x, r.y = h.y, r.z = h.z;
+    return r;
 }

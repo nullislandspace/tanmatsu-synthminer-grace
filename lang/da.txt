@@ -250,6 +250,8 @@ item.iron_ingot = Jernbarre
 item.pickaxe_iron = Jernhakke
 item.axe_iron = Jernøkse
 item.shovel_iron = Jernskovl
+item.bucket = Spand
+item.bucket_water = Spand med vand
 
 # --- chest ---
 chest.title = Kiste

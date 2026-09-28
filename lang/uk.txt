@@ -250,6 +250,8 @@ item.iron_ingot = Залізний зливок
 item.pickaxe_iron = Залізна кирка
 item.axe_iron = Залізна сокира
 item.shovel_iron = Залізна лопата
+item.bucket = Відро
+item.bucket_water = Відро води
 
 # --- chest ---
 chest.title = Скриня

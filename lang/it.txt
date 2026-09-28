@@ -250,6 +250,8 @@ item.iron_ingot = Lingotto di ferro
 item.pickaxe_iron = Piccone di ferro
 item.axe_iron = Ascia di ferro
 item.shovel_iron = Pala di ferro
+item.bucket = Secchio
+item.bucket_water = Secchio d'acqua
 
 # --- chest ---
 chest.title = Cassa

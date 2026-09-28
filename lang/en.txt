@@ -257,6 +257,8 @@ item.iron_ingot = Iron ingot
 item.pickaxe_iron = Iron pickaxe
 item.axe_iron = Iron axe
 item.shovel_iron = Iron shovel
+item.bucket = Bucket
+item.bucket_water = Water bucket
 
 # --- The furnace ------------------------------------------------------------
 furnace.title = Furnace

@@ -242,6 +242,8 @@ item.iron_ingot = Желязно кюлче
 item.pickaxe_iron = Желязна кирка
 item.axe_iron = Желязна брадва
 item.shovel_iron = Желязна лопата
+item.bucket = Кофа
+item.bucket_water = Кофа с вода
 
 # --- chest ---
 chest.title = Сандък

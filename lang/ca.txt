@@ -250,6 +250,8 @@ item.iron_ingot = Lingot de ferro
 item.pickaxe_iron = Pic de ferro
 item.axe_iron = Destral de ferro
 item.shovel_iron = Pala de ferro
+item.bucket = Galleda
+item.bucket_water = Galleda d'aigua
 
 # --- chest ---
 chest.title = Cofre

@@ -241,6 +241,8 @@ item.iron_ingot = Ijzerstaaf
 item.pickaxe_iron = Ijzeren houweel
 item.axe_iron = Ijzeren bijl
 item.shovel_iron = Ijzeren schep
+item.bucket = Emmer
+item.bucket_water = Emmer water
 
 # --- chest ---
 chest.title = Kist

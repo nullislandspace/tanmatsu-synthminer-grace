@@ -257,7 +257,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     ray_forward(p->yaw, p->pitch, &dx, &dy, &dz);
     // Anything that can be pointed at, not only solids: torches, flowers
     // and tall grass have to be breakable too (F-56).
-    p->aim_valid = ray_pick(ex, ey, ez, dx, dy, dz, RAY_REACH, false, &p->aim);
+    p->aim_valid = ray_pick(ex, ey, ez, dx, dy, dz, RAY_REACH, RAY_PICKABLE, &p->aim);
 
     uint16_t const held = inv_held(&p->inv)->item;
 
@@ -323,15 +323,35 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     // A block that OPENS something wins over placing against it, or a
     // table with planks in hand could never be opened at all -- which
     // is Minecraft's rule too, and the reason sneaking exists there.
-    if (p->aim_valid && act_held(pressed, SM_USE)) {
-        if (block_usable(p->aim.block)) {
-            p->used_block = p->aim.block;
-        } else {
-            uint8_t const block = item_block(held);
-            if (block != BLK_AIR && interact_place(&p->aim, block, &p->body)) {
-                trace_edit('P', p->aim.px, p->aim.py, p->aim.pz, block_def(block)->name, 1);
-                inv_consume_held(&p->inv);
-                sfx_play_place(block);
+    if (act_held(pressed, SM_USE)) {
+        // THE HELD ITEM GETS FIRST REFUSAL, and it gets it before the
+        // crosshair is consulted at all -- a bucket casts its own ray,
+        // because the one that drew the highlight box looked straight
+        // through the water it is after (raycast.h, RAY_FLUID).
+        use_result_t const u = interact_use_item(ex, ey, ez, dx, dy, dz, held);
+        if (u.acted) {
+            // The stack is swapped IN PLACE: a bucket does not stack,
+            // empty or full (items.c), so there is exactly one of them
+            // here and no second slot to find.
+            inv_slot_t* s = inv_held(&p->inv);
+            if (u.becomes != 0) {
+                s->item  = u.becomes;
+                s->count = 1;
+                s->wear  = 0;
+                inv_mark_seen(&p->inv, u.becomes);
+            }
+            trace_edit('U', u.x, u.y, u.z, block_def(u.block)->name, 1);
+            if (u.sound != SND_NONE) sfx_play_place(u.block);
+        } else if (p->aim_valid) {
+            if (block_usable(p->aim.block)) {
+                p->used_block = p->aim.block;
+            } else {
+                uint8_t const block = item_block(held);
+                if (block != BLK_AIR && interact_place(&p->aim, block, &p->body)) {
+                    trace_edit('P', p->aim.px, p->aim.py, p->aim.pz, block_def(block)->name, 1);
+                    inv_consume_held(&p->inv);
+                    sfx_play_place(block);
+                }
             }
         }
     }

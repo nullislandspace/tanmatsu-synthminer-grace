@@ -250,6 +250,8 @@ item.iron_ingot = Sztabka żelaza
 item.pickaxe_iron = Żelazny kilof
 item.axe_iron = Żelazny topór
 item.shovel_iron = Żelazna łopata
+item.bucket = Wiadro
+item.bucket_water = Wiadro wody
 
 # --- chest ---
 chest.title = Skrzynia

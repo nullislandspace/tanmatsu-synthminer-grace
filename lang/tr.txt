@@ -250,6 +250,8 @@ item.iron_ingot = Demir külçe
 item.pickaxe_iron = Demir kazma
 item.axe_iron = Demir balta
 item.shovel_iron = Demir kürek
+item.bucket = Kova
+item.bucket_water = Su kovası
 
 # --- chest ---
 chest.title = Sandık

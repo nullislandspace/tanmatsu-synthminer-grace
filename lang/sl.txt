@@ -250,6 +250,8 @@ item.iron_ingot = Železna palica
 item.pickaxe_iron = Železni kramp
 item.axe_iron = Železna sekira
 item.shovel_iron = Železna lopata
+item.bucket = Vedro
+item.bucket_water = Vedro vode
 
 # --- chest ---
 chest.title = Skrinja

@@ -250,6 +250,8 @@ item.iron_ingot = Lingote de hierro
 item.pickaxe_iron = Pico de hierro
 item.axe_iron = Hacha de hierro
 item.shovel_iron = Pala de hierro
+item.bucket = Cubo
+item.bucket_water = Cubo de agua
 
 # --- chest ---
 chest.title = Cofre

@@ -242,6 +242,8 @@ item.iron_ingot = Lingot de fer
 item.pickaxe_iron = Pioche en fer
 item.axe_iron = Hache en fer
 item.shovel_iron = Pelle en fer
+item.bucket = Seau
+item.bucket_water = Seau d'eau
 
 # --- chest ---
 chest.title = Coffre

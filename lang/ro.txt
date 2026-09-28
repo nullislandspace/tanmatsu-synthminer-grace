@@ -250,6 +250,8 @@ item.iron_ingot = Lingou de fier
 item.pickaxe_iron = Târnăcop de fier
 item.axe_iron = Topor de fier
 item.shovel_iron = Lopată de fier
+item.bucket = Găleată
+item.bucket_water = Găleată cu apă
 
 # --- chest ---
 chest.title = Ladă

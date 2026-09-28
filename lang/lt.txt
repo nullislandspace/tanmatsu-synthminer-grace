@@ -250,6 +250,8 @@ item.iron_ingot = Geležies luitas
 item.pickaxe_iron = Geležinis kirtiklis
 item.axe_iron = Geležinis kirvis
 item.shovel_iron = Geležinis kastuvas
+item.bucket = Kibiras
+item.bucket_water = Kibiras vandens
 
 # --- chest ---
 chest.title = Skrynia

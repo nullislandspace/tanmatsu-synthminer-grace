@@ -7,6 +7,7 @@
 #include "world/blockent.h"
 #include <string.h>
 #include "common/psram.h"
+#include "world/blockupdate.h"
 #include "world/light.h"
 
 static chunk_t  s_slots[CH_SLOT_COUNT];
@@ -16,10 +17,11 @@ static mesh_t*  s_meshes;  // CH_SLOT_COUNT x CH_MESH_N, likewise
 
 // Two planes per slot, so a slot's bytes are contiguous and the whole
 // resident set is one allocation. Nothing here allocates again.
-// Three planes a slot: block ids, state, and light (light.h). Light is
-// derived -- never saved -- but lives here with the rest so a chunk's
-// cells are all in one place for the mesher.
-#define SLOT_BYTES ((size_t)CH_CELLS * 3u)
+// Three planes a slot: block ids, state, and light (light.h), plus the
+// one-bit-per-cell active map (blockupdate.h). Light and the active map
+// are derived -- never saved -- but live here with the rest so a
+// chunk's cells are all in one place for the mesher.
+#define SLOT_BYTES ((size_t)CH_CELLS * 3u + (size_t)CH_ACT_BYTES)
 
 // Free every mesh a slot holds. An empty section never allocated, so
 // most of these are no-ops.
@@ -57,6 +59,7 @@ bool chunk_store_init(void) {
         s_slots[i].id     = base;
         s_slots[i].st     = base + CH_CELLS;
         s_slots[i].lt     = base + 2u * CH_CELLS;
+        s_slots[i].act    = base + 3u * CH_CELLS;
         s_slots[i].lod    = s_meshes + (size_t)i * CH_MESH_N;
         s_slots[i].cstate = CS_FREE;
         for (int m = 0; m < CH_MESH_N; m++) mesh_init(&s_slots[i].lod[m]);
@@ -165,6 +168,11 @@ chunk_t* chunk_claim(int32_t cx, int32_t cz) {
     memset(c->id, BLK_AIR, CH_CELLS);
     memset(c->st, 0, CH_CELLS);
     memset(c->lt, 0, CH_CELLS);
+    // NOTHING IN THIS SLOT IS WAITING FOR PHYSICS ANY MORE. Entries for
+    // the chunk that has just left may still be in the queue; they find
+    // chunk_find() disagreeing about the coordinates and are dropped
+    // without touching this plane (blockupdate.c).
+    memset(c->act, 0, CH_ACT_BYTES);
     memset(c->top, 0, sizeof(c->top));
 
     c->cx     = cx;
@@ -313,6 +321,10 @@ void world_set(int32_t x, int32_t y, int32_t z, uint8_t block, uint8_t state) {
     world_mark_dirty(x, y, z);
     // Light follows the block: a torch placed, a wall that now shades.
     light_block_changed(x, y, z, was, block);
+    // And so does physics: water beside a wall that has gone, sand over
+    // a hole. The one funnel every write passes through, which is why
+    // neither of these can be forgotten by a caller (blockupdate.h).
+    blockupdate_block_changed(x, y, z, was, block);
 }
 
 int world_ground(int32_t x, int32_t z) {

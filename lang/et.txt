@@ -250,6 +250,8 @@ item.iron_ingot = Rauakang
 item.pickaxe_iron = Raudkirka
 item.axe_iron = Raudkirves
 item.shovel_iron = Raudlabidas
+item.bucket = Ämber
+item.bucket_water = Veeämber
 
 # --- chest ---
 chest.title = Kirst

@@ -250,6 +250,8 @@ item.iron_ingot = Vasrúd
 item.pickaxe_iron = Vas csákány
 item.axe_iron = Vas fejsze
 item.shovel_iron = Vas lapát
+item.bucket = Vödör
+item.bucket_water = Vizesvödör
 
 # --- chest ---
 chest.title = Láda

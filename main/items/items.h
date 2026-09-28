@@ -38,6 +38,23 @@ enum {
     ITEM_PICK_IRON,
     ITEM_AXE_IRON,
     ITEM_SHOVEL_IRON,
+    // THE BUCKET, AND WHAT IS IN IT. One id per content, not one id
+    // with a data field on the stack.
+    //
+    // The user asked for "metadata attached to it, to say if it is
+    // empty or holds some kinds of liquid", and this IS that metadata
+    // -- kept where every other fact about an item is kept. A data
+    // field on inv_slot_t would be a second kind of identity that only
+    // one item has, and every place that asks what a stack is -- the
+    // icon, the label, the recipe match, inv_count, inv_take, the save
+    // file -- would need to learn about it. A row each costs nothing
+    // and all of those keep working untouched.
+    //
+    // item_bucket_contents() / item_bucket_filled_with() are the pair
+    // that make them one family rather than four unrelated things, so
+    // lava and milk are a row here and a row in BUCKETS, and no logic.
+    ITEM_BUCKET,
+    ITEM_BUCKET_WATER,
     ITEM_COUNT
 };
 
@@ -85,6 +102,20 @@ static inline sm_str_t item_label(uint16_t id) {
 // none. What lets a refusal NAME what is needed ("Needs a stone
 // pickaxe") instead of saying only that it will not budge.
 uint16_t item_tool_for(uint8_t tool, uint8_t level);
+
+// --- Buckets ----------------------------------------------------------
+
+// What `item` is holding: BLK_WATER for a water bucket, BLK_AIR for an
+// empty one or for anything that is not a bucket.
+uint8_t item_bucket_contents(uint16_t item);
+
+// The bucket holding `fluid`, or 0 if no bucket carries it. BLK_AIR
+// gives the empty bucket, which is what emptying one returns.
+uint16_t item_bucket_filled_with(uint8_t fluid);
+
+static inline bool item_is_bucket(uint16_t item) {
+    return item == ITEM_BUCKET || item_bucket_contents(item) != BLK_AIR;
+}
 
 // How many ticks `block` takes to break while holding `tool_item`.
 //

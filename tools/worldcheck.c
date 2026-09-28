@@ -39,6 +39,8 @@
 #include "world/chunk_worker.h"
 #include "common/trace.h"
 #include "world/chunkmesh.h"
+#include "world/blockupdate.h"
+#include "world/fluid.h"
 #include "world/light.h"
 #include "world/worldstore.h"
 #include "se_nbt.h"
@@ -2589,6 +2591,260 @@ static void check_light(void) {
     chunk_store_clear();
 }
 
+// Fluids (world/fluid.h) and the scheduler under them
+// (world/blockupdate.h). Three things have to be true and only one of
+// them is about water:
+//
+//   * the RULE -- levels count down from a source, a fall is a column,
+//     two sources make a third, and a cut-off flow dries up;
+//   * the COST -- still water is not in the queue at all, which is the
+//     whole reason the scheduler exists;
+//   * the SEAM -- a flow interrupted by the edge of the loaded world
+//     carries on when the chunk it was heading for arrives. That one is
+//     the user's, 2026-09-28: "fluid physics can cross chunk and region
+//     boundaries."
+static int fl_lvl(int32_t x, int32_t y, int32_t z) {
+    return world_block(x, y, z) == BLK_WATER ? (int)fluid_level(world_state(x, y, z)) : -1;
+}
+
+static int fl_run(int n) {
+    int fired = 0;
+    for (int i = 0; i < n; i++) fired += blockupdate_tick();
+    return fired;
+}
+
+// How many cells of the resident set hold water. The cheapest way to
+// say "it all went away".
+static int fl_count(void) {
+    int n = 0;
+    for (int i = 0; i < CH_SLOT_COUNT; i++) {
+        chunk_t const* c = chunk_slot_at(i);
+        if (c == NULL || c->cstate != CS_READY) continue;
+        for (size_t k = 0; k < CH_CELLS; k++)
+            if (c->id[k] == BLK_WATER) n++;
+    }
+    return n;
+}
+
+// REAL TERRAIN, ARRIVING. Every check above builds its own world out
+// of flat stone, which proves the rules and proves nothing at all about
+// whether they can be switched on.
+//
+// The question this answers is the one that decides it: when a chunk of
+// GENERATED world becomes resident, how much of it wants to move? If
+// the answer is thousands of cells then every shoreline in the game
+// stalls the streamer on arrival and floods the queue, and the whole
+// thing has to be rethought. The reasoning said it should be zero --
+// worldgen floods every air cell below sea level and refuses to carve a
+// cave into the sea, so an ocean generates already settled -- but that
+// is an argument, and this is a measurement.
+static void check_fluid_worldgen(void) {
+    printf("fluids: real terrain on arrival\n");
+    // AT THE COAST, not at the origin. The first draft of this check
+    // sat on spawn at three seeds and reported 0 water cells three
+    // times, which is a pass that proves nothing -- the land round
+    // spawn is simply above sea level. Chunk (-25, -15) of GEN_SEED is
+    // about 1500 cells of sea with a shoreline through it, which is the
+    // case worth asking about.
+    static int32_t const AT_X = -25, AT_Z = -15;
+    static uint32_t const SEEDS[3] = {GEN_SEED, 0x5EEDu, 0xA11CEu};
+    for (int si = 0; si < 3; si++) {
+        chunk_store_clear();
+        blockupdate_clear();
+        blockupdate_stats_reset();
+
+        int wet = 0;
+        for (int32_t cz = AT_Z - 2; cz <= AT_Z + 2; cz++) {
+            for (int32_t cx = AT_X - 2; cx <= AT_X + 2; cx++) {
+                chunk_t* c = chunk_claim(cx, cz);
+                CHECK(c != NULL, "the ring would not take a generated chunk");
+                if (c == NULL) return;
+                worldgen_chunk(c, SEEDS[si], FARLANDS_X_DEFAULT);
+                c->cstate = CS_READY;
+                chunk_resummarise(c);
+            }
+        }
+        // Joined one at a time, in the order the streamer would, so the
+        // seam logic sees the same half-built neighbourhood it will on
+        // the badge.
+        for (int32_t cz = AT_Z - 2; cz <= AT_Z + 2; cz++)
+            for (int32_t cx = AT_X - 2; cx <= AT_X + 2; cx++) blockupdate_chunk_join(chunk_find(cx, cz));
+        wet = fl_count();
+
+        blockupdate_stats_t const on_arrival = blockupdate_stats();
+        int const                 moved      = fl_run(400);
+        int const                 after      = fl_count();
+        printf("  seed %08x: %d water cells, %d woken on arrival, %d step(s) run, %d cells after\n",
+               (unsigned)SEEDS[si], wet, on_arrival.pending, moved, after);
+
+        // A GENERATED WORLD DOES NOT MOVE. Not "settles quickly" -- does
+        // not move at all: every cell of it is a source with sources or
+        // rock around it, which is what makes fluids affordable to have.
+        CHECK(on_arrival.dropped == 0, "seed %08x overflowed the queue on arrival", (unsigned)SEEDS[si]);
+        CHECK(after == wet, "seed %08x: %d water cells became %d without anybody touching them",
+              (unsigned)SEEDS[si], wet, after);
+        CHECK(blockupdate_stats().pending == 0, "seed %08x: generated terrain never went quiet",
+              (unsigned)SEEDS[si]);
+    }
+    chunk_store_clear();
+    blockupdate_clear();
+}
+
+static void check_fluid(void) {
+    printf("fluids\n");
+    CHECK(blockupdate_init(), "blockupdate_init failed");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the fluid world would not become resident");
+
+    // --- A source on the floor spreads, and thins as it goes ---------
+    world_set(5, 20, 5, BLK_WATER, ST_PLACED);
+    fl_run(200);
+    printf("  a source on flat ground reached %d cells\n", fl_count());
+    CHECK(fl_lvl(5, 20, 5) == 0, "the source did not stay a source (level %d)", fl_lvl(5, 20, 5));
+    for (int d = 1; d <= 7; d++) {
+        CHECK(fl_lvl(5 + d, 20, 5) == d, "water %d east of the source is level %d, not %d", d,
+              fl_lvl(5 + d, 20, 5), d);
+    }
+    CHECK(fl_lvl(13, 20, 5) == -1, "water reached 8 blocks, past its reach of 7");
+    // Manhattan, not a square: the corner at (6, 6) is two steps away.
+    CHECK(fl_lvl(6, 20, 6) == 2, "water spread diagonally at the wrong level (%d)", fl_lvl(6, 20, 6));
+    CHECK(fl_lvl(5, 21, 5) == -1, "water climbed");
+
+    // --- AND IT COSTS NOTHING ONCE IT HAS SETTLED --------------------
+    //
+    // The claim the whole design rests on. If this ever fails, still
+    // water is being walked every tick and the queue is doing nothing
+    // but burn frames.
+    blockupdate_stats_t st = blockupdate_stats();
+    printf("  settled: %d cells waiting, %d dropped, peak %d\n", st.pending, st.dropped, st.peak);
+    CHECK(st.pending == 0, "settled water left %d cells in the queue", st.pending);
+    CHECK(st.dropped == 0, "the update queue overflowed (%d dropped)", st.dropped);
+    CHECK(fl_run(20) == 0, "a settled pool still had work to do");
+    CHECK(!blockupdate_active(6, 20, 5), "a settled cell is still marked active");
+
+    // --- Take the source away and it all drains ----------------------
+    world_set(5, 20, 5, BLK_AIR, 0);
+    fl_run(600);
+    CHECK(fl_count() == 0, "%d cells of water outlived their source", fl_count());
+    CHECK(blockupdate_stats().pending == 0, "draining left work behind");
+
+    // --- A fall is a column, and spreads only where it lands ---------
+    world_set(5, 30, 5, BLK_WATER, ST_PLACED);
+    fl_run(400);
+    CHECK(fl_lvl(5, 25, 5) == 0, "the falling column is not full at y=25");
+    CHECK(fl_lvl(6, 25, 5) == -1, "a fall sprayed sideways on the way down");
+    CHECK(fl_lvl(6, 20, 5) == 1, "the foot of the fall did not spread at level 1 (%d)", fl_lvl(6, 20, 5));
+    CHECK(fl_lvl(12, 20, 5) == 7, "the pool at the foot of the fall is too small");
+    world_set(5, 30, 5, BLK_AIR, 0);
+    fl_run(600);
+    CHECK(fl_count() == 0, "the waterfall did not drain (%d cells left)", fl_count());
+
+    // --- Two sources make a third (the 2x2 hole) ---------------------
+    for (int x = 4; x <= 5; x++)
+        for (int z = 4; z <= 5; z++) world_set(x, 19, z, BLK_AIR, 0);  // dig a 2x2 pit
+    world_set(4, 19, 4, BLK_WATER, ST_PLACED);
+    world_set(5, 19, 5, BLK_WATER, ST_PLACED);
+    fl_run(200);
+    CHECK(fl_lvl(4, 19, 5) == 0 && fl_lvl(5, 19, 4) == 0, "two sources in a 2x2 pit did not fill the other corners");
+    CHECK(fluid_is_source(world_state(4, 19, 5)), "the filled corner is a flow, not a source");
+    // ... and taking one out again leaves the spring standing, which is
+    // what makes it infinite rather than merely full.
+    CHECK(fluid_take_source(4, 19, 4) == BLK_WATER, "a bucket could not take one of the four sources");
+    fl_run(200);
+    CHECK(fl_lvl(4, 19, 4) == 0, "the 2x2 spring did not refill itself");
+    for (int x = 4; x <= 5; x++)
+        for (int z = 4; z <= 5; z++) world_set(x, 19, z, BLK_STONE, 0);
+    fl_run(400);
+
+    // --- A BUCKET TAKES SOURCES AND NOT FLOWS ------------------------
+    world_set(5, 20, 5, BLK_WATER, ST_PLACED);
+    fl_run(200);
+    CHECK(fluid_take_source(7, 20, 5) == BLK_AIR, "a bucket scooped a flowing cell");
+    CHECK(fluid_take_source(5, 20, 5) == BLK_WATER, "a bucket could not take a source");
+    CHECK(world_block(5, 20, 5) == BLK_AIR, "taking a source left something behind");
+    fl_run(600);
+    CHECK(fl_count() == 0, "the pool survived its source going into a bucket");
+    CHECK(item_bucket_filled_with(BLK_WATER) == ITEM_BUCKET_WATER, "the water bucket is not in the bucket table");
+    CHECK(item_bucket_contents(ITEM_BUCKET) == BLK_AIR, "an empty bucket is not empty");
+
+    // --- THE SEAM (the user, 2026-09-28) -----------------------------
+    //
+    // Water poured next to the edge of the loaded world stops at the
+    // edge, as it must -- a missing chunk reads as BLK_BARRIER and that
+    // is a wall. The test is what happens NEXT: the chunk arrives, and
+    // the flow has to pick up where it left off rather than stand there
+    // as a cliff of water for ever.
+    chunk_t* east = chunk_find(1, 0);
+    CHECK(east != NULL, "the east chunk is not resident");
+    east->cstate = CS_FREE;  // as if it had been streamed out
+    CHECK(world_block(16, 20, 5) == BLK_BARRIER, "an absent chunk does not read as barrier");
+
+    world_set(14, 20, 5, BLK_WATER, ST_PLACED);
+    fl_run(300);
+    CHECK(fl_lvl(15, 20, 5) == 1, "water did not reach the last cell of the loaded world");
+    CHECK(fl_count() > 0, "the water by the border vanished");
+    int const before = fl_count();
+
+    // It arrives. Nothing has changed in chunk 0, so ONLY the join can
+    // start this up again.
+    east->cstate = CS_READY;
+    memset(east->act, 0, CH_ACT_BYTES);
+    CHECK(blockupdate_stats().pending == 0, "the border flow was still busy before the chunk arrived");
+    blockupdate_chunk_join(east);
+    CHECK(blockupdate_stats().pending > 0, "a chunk arriving beside a flow woke nothing");
+    fl_run(400);
+    printf("  across the seam: %d cells before the chunk arrived, %d after\n", before, fl_count());
+    CHECK(fl_lvl(16, 20, 5) == 2, "water did not cross the chunk border (level %d)", fl_lvl(16, 20, 5));
+    CHECK(fl_lvl(21, 20, 5) == 7, "water stopped short of its reach across the border");
+    CHECK(fl_lvl(22, 20, 5) == -1, "water ran past its reach across the border");
+
+    // A NEIGHBOUR GOING AWAY MUST NOT DELETE THE FLOW. The missing
+    // chunk is an unknown, not a "nothing is feeding me" (fluid.c).
+    east->cstate = CS_FREE;
+    world_set(14, 21, 5, BLK_STONE, ST_PLACED);  // poke it: wake the border cells
+    world_set(14, 21, 5, BLK_AIR, 0);
+    fl_run(300);
+    CHECK(fl_lvl(15, 20, 5) == 1, "the flow at the border dried up when the next chunk left");
+    east->cstate = CS_READY;
+
+    world_set(14, 20, 5, BLK_AIR, 0);
+    fl_run(800);
+    CHECK(fl_count() == 0, "%d cells survived across the seam", fl_count());
+
+    // --- AN OCEAN ARRIVING PUTS NOTHING IN THE QUEUE -----------------
+    //
+    // The other half of the cost claim, and the one that decides
+    // whether this can be switched on at all: a chunk of generated sea
+    // is thousands of water cells, and if each of them wanted an update
+    // on arrival the queue would overflow on the first shoreline.
+    // ALL NINE CHUNKS, not one. A single flooded chunk in a dry world
+    // is a column of water with a cliff of air round it, and that
+    // genuinely does have somewhere to go -- the first draft of this
+    // check built exactly that and then complained the queue was not
+    // empty. An ocean is a thing with no shore in sight.
+    for (int32_t cz = -1; cz <= 1; cz++) {
+        for (int32_t cx = -1; cx <= 1; cx++) {
+            chunk_t* c = chunk_find(cx, cz);
+            for (int z = 0; z < CH_D; z++)
+                for (int x = 0; x < CH_W; x++)
+                    for (int y = 20; y <= CH_SEA_LEVEL; y++) c->id[CH_IDX(x, y, z)] = BLK_WATER;
+            chunk_resummarise(c);
+        }
+    }
+    chunk_t* sea = chunk_find(0, 0);
+    blockupdate_clear();
+    blockupdate_chunk_join(sea);
+    blockupdate_stats_t const ocean = blockupdate_stats();
+    printf("  a full sea chunk (%d water cells) woke %d of them\n", fl_count(), ocean.pending);
+    CHECK(ocean.pending == 0, "an ocean chunk put %d cells in the queue", ocean.pending);
+    CHECK(fl_run(40) == 0, "an ocean chunk had work to do");
+
+    blockupdate_stats_reset();
+    chunk_store_clear();
+    blockupdate_clear();
+}
+
 // A replay is a start and a stream of per-tick inputs; it has to come
 // back from the card exactly, gyro turns included, or it replays some
 // other walk.
@@ -2798,7 +3054,7 @@ static void check_raycast(void) {
     // The face reported must be the one the ray came in through, and
     // the placement cell must be the empty one in front of it.
     ray_hit_t h;
-    CHECK(ray_pick(8.5, 9.5, 8.5, 1.0f, 0.0f, 0.0f, RAY_REACH, true, &h), "a ray straight at a block missed it");
+    CHECK(ray_pick(8.5, 9.5, 8.5, 1.0f, 0.0f, 0.0f, RAY_REACH, RAY_SOLID, &h), "a ray straight at a block missed it");
     printf("  hit (%d,%d,%d) face %u, place at (%d,%d,%d), %.2f blocks away\n", h.x, h.y, h.z, h.face, h.px, h.py,
            h.pz, h.dist);
     CHECK(h.x == 10 && h.y == 9 && h.z == 8, "hit (%d,%d,%d), expected (10,9,8)", h.x, h.y, h.z);
@@ -2807,26 +3063,26 @@ static void check_raycast(void) {
     CHECK(!block_solid(world_block(h.px, h.py, h.pz)), "the placement cell is not empty");
 
     // Reach: the same ray from further away finds nothing.
-    CHECK(!ray_pick(0.5, 9.5, 8.5, 1.0f, 0.0f, 0.0f, RAY_REACH, true, &h), "a ray reached further than RAY_REACH");
+    CHECK(!ray_pick(0.5, 9.5, 8.5, 1.0f, 0.0f, 0.0f, RAY_REACH, RAY_SOLID, &h), "a ray reached further than RAY_REACH");
 
     // A placed torch can be pointed at (F-56): the crosshair ray is the
     // non-solid one, and it must stop at the torch -- while a solid-only
     // ray looks straight through it. Water is looked through by both.
     set_block(8, 9, 11, BLK_TORCH, ST_PLACED);
-    CHECK(ray_pick(8.5, 9.5, 8.5, 0.0f, 0.0f, 1.0f, RAY_REACH, false, &h) && h.block == BLK_TORCH && h.z == 11,
+    CHECK(ray_pick(8.5, 9.5, 8.5, 0.0f, 0.0f, 1.0f, RAY_REACH, RAY_PICKABLE, &h) && h.block == BLK_TORCH && h.z == 11,
           "the crosshair ray does not stop at a placed torch");
-    CHECK(!ray_pick(8.5, 9.5, 8.5, 0.0f, 0.0f, 1.0f, RAY_REACH, true, &h) || h.block != BLK_TORCH,
+    CHECK(!ray_pick(8.5, 9.5, 8.5, 0.0f, 0.0f, 1.0f, RAY_REACH, RAY_SOLID, &h) || h.block != BLK_TORCH,
           "a solid-only ray stopped at a torch");
     set_block(8, 9, 11, BLK_AIR, 0);
     set_block(8, 11, 8, BLK_WATER, 0);
     set_block(8, 10, 8, BLK_WATER, 0);
-    CHECK(ray_pick(8.5, 12.5, 8.5, 0.0f, -1.0f, 0.0f, RAY_REACH, false, &h) && h.y == 7,
+    CHECK(ray_pick(8.5, 12.5, 8.5, 0.0f, -1.0f, 0.0f, RAY_REACH, RAY_PICKABLE, &h) && h.y == 7,
           "water hid the floor from the crosshair (hit y %d)", h.y);
     set_block(8, 11, 8, BLK_AIR, 0);
     set_block(8, 10, 8, BLK_AIR, 0);
 
     // Straight down finds the floor.
-    CHECK(ray_pick(8.5, 12.0, 8.5, 0.0f, -1.0f, 0.0f, RAY_REACH, true, &h), "a ray straight down missed the floor");
+    CHECK(ray_pick(8.5, 12.0, 8.5, 0.0f, -1.0f, 0.0f, RAY_REACH, RAY_SOLID, &h), "a ray straight down missed the floor");
     CHECK(h.y == 7 && h.face == MESH_DIR_PY, "downward ray hit y %d face %u, expected y 7 face +y", h.y, h.face);
 
     // An unloaded chunk is solid to the BODY (D-14) and invisible to
@@ -2834,7 +3090,7 @@ static void check_raycast(void) {
     // of fog and offer to mine it.
     {
         ray_hit_t hb;
-        CHECK(!ray_pick(8.5, 9.5, 8.5, 0.0f, 0.0f, -1.0f, 200.0f, true, &hb),
+        CHECK(!ray_pick(8.5, 9.5, 8.5, 0.0f, 0.0f, -1.0f, 200.0f, RAY_SOLID, &hb),
               "a ray picked BLK_BARRIER: the edge of the loaded world is not a block");
         phys_body_t edge;
         phys_body_init(&edge, 8.5, 9.0, 8.5);
@@ -2854,7 +3110,7 @@ static void check_raycast(void) {
             double const ox = 8.37, oy = 9.61, oz = 8.23;  // deliberately not on a boundary
             int32_t      bx = 0, by = 0, bz = 0;
             bool const   want = brute_pick(ox, oy, oz, dx, dy, dz, RAY_REACH, &bx, &by, &bz);
-            bool const   got  = ray_pick(ox, oy, oz, dx, dy, dz, RAY_REACH, true, &h);
+            bool const   got  = ray_pick(ox, oy, oz, dx, dy, dz, RAY_REACH, RAY_SOLID, &h);
             checked++;
             CHECK(want == got, "yaw %g pitch %g: brute force says %d, the DDA says %d", (double)yaw, (double)pitch,
                   want, got);
@@ -5084,6 +5340,8 @@ int main(void) {
     check_iron();
     check_fold();
     check_light();
+    check_fluid();
+    check_fluid_worldgen();
     check_replay();
     check_drops();
     check_lang();

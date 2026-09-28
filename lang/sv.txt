@@ -250,6 +250,8 @@ item.iron_ingot = Järntacka
 item.pickaxe_iron = Järnhacka
 item.axe_iron = Järnyxa
 item.shovel_iron = Järnspade
+item.bucket = Hink
+item.bucket_water = Vattenhink
 
 # --- chest ---
 chest.title = Kista

@@ -250,6 +250,8 @@ item.iron_ingot = Železný ingot
 item.pickaxe_iron = Železný krompáč
 item.axe_iron = Železná sekera
 item.shovel_iron = Železná lopata
+item.bucket = Vedro
+item.bucket_water = Vedro vody
 
 # --- chest ---
 chest.title = Truhla

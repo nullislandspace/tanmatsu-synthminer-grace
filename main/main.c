@@ -72,6 +72,7 @@
 #include "world/chunk_render.h"
 #include "world/chunk_worker.h"
 #include "world/chunkmesh.h"
+#include "world/blockupdate.h"
 #include "world/light.h"
 #include "world/region.h"
 #include "testkit/screenshot.h"
@@ -705,6 +706,15 @@ static void frame_stats(void) {
         ESP_LOGI(TAG, "card/s: %d load at %.1f ms (worst %.1f) | %d save at %.1f ms (worst %.1f)", load_n,
                  load_avg / 1000.0, io.load_max / 1000.0, save_n, save_avg / 1000.0, io.save_max / 1000.0);
     }
+    // The physics queue, per second like the card numbers: the running
+    // totals are reset here so `fired` and `dropped` read as a rate and
+    // `peak` as the worst of the last second, not of the session.
+    blockupdate_stats_t const phys = blockupdate_stats();
+    blockupdate_stats_reset();
+    if (phys.dropped > 0) {
+        ESP_LOGW(TAG, "physics/s: %d update(s) REFUSED -- the queue is full (%d cells waiting)", phys.dropped,
+                 phys.pending);
+    }
     int const failed = io.save_failed - prev_io.save_failed;
     if (failed > 0) {
         ESP_LOGE(TAG, "card/s: %d chunk write(s) REFUSED BY THE CARD -- kept in memory and retried", failed);
@@ -765,6 +775,11 @@ static void frame_stats(void) {
             .compact_max_us = (int)io.compact_max,
             .save_failed    = failed,
             .paced_ms       = paced,
+            .phys_pending   = phys.pending,
+            .phys_peak      = phys.peak,
+            .phys_fired     = phys.fired,
+            .phys_dropped   = phys.dropped,
+            .phys_carried   = phys.carried,
         });
     }
 
@@ -845,6 +860,11 @@ static void on_init(void* user) {
     // Torchlight and daylight need their flood queues. Without them the
     // world is simply drawn fully lit.
     if (!light_init()) ESP_LOGW(TAG, "no light queues: the world will be fully lit");
+    // The physics queue. Without it nothing flows, which is a duller
+    // world but a working one -- exactly the shape of the light
+    // failure above, and for the same reason: neither is load-bearing
+    // for standing on the ground.
+    if (!blockupdate_init()) ESP_LOGW(TAG, "no physics queue: fluids will not flow");
     log_memory("world resident");
 
     // The half-size layer the scene draws into. It has to match the
@@ -1010,6 +1030,10 @@ static void drain_and_clear(void) {
     bool const was_async = !chunk_worker_synchronous();
     chunk_worker_set_synchronous(true);
     chunk_store_clear();
+    // Nothing from the old world is still flowing. The queue holds
+    // coordinates, and the same coordinates mean something else in the
+    // world about to open.
+    blockupdate_clear();
     if (was_async) chunk_worker_set_synchronous(false);
 }
 
@@ -1830,6 +1854,11 @@ static void on_update(float dt, void* user) {
                     replay_record_tick(mask, gy, gp);
                 }
             }
+            // THE WORLD'S OWN PHYSICS, before the player moves in it:
+            // water that has somewhere to go, and one day sand with
+            // nothing under it. Costs nothing at all when the queue is
+            // empty, which is almost always (world/blockupdate.h).
+            blockupdate_tick();
             player_tick(&s_player, mask, input_pressed());
             sm_audio_player_tick(&s_player);  // footsteps and landings, AFTER the tick
             // A block the player opened. The registry says WHICH blocks
@@ -1883,7 +1912,7 @@ static void on_update(float dt, void* user) {
             ray_forward(yaw, pitch, &fx, &fy, &fz);
             float     back = FRED_BACK;
             ray_hit_t h;
-            if (ray_pick(x, y, z, -fx, -fy, -fz, FRED_BACK, true, &h)) back = fmaxf(h.dist - 0.3f, 0.4f);
+            if (ray_pick(x, y, z, -fx, -fy, -fz, FRED_BACK, RAY_SOLID, &h)) back = fmaxf(h.dist - 0.3f, 0.4f);
             s_cam.wx = x - (double)(fx * back);
             s_cam.wy = (float)y - fy * back;
             s_cam.wz = z - (double)(fz * back);

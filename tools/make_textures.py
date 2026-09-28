@@ -817,6 +817,44 @@ def sm_item_coal():
     return img
 
 
+BUCKET_BODY = (196, 200, 210)
+BUCKET_DARK = (140, 146, 158)
+BUCKET_RIM = (228, 232, 240)
+
+
+def _bucket(fill=None):
+    """A pail: a tapering body under a wide rim, with a wire handle.
+
+    The shape has to read at 16 px with no outline, so the rim is drawn
+    ONE TEXEL WIDER than the body on each side. That overhang is the
+    whole silhouette -- without it a bucket and an ingot are the same
+    grey trapezium."""
+    img = _icon()
+    # The wire handle, arching over the mouth.
+    for x, y in ((4, 5), (5, 3), (6, 2), (7, 2), (8, 2), (9, 2), (10, 3), (11, 5)):
+        _dot(img, x, y, BUCKET_DARK)
+    # The body, lit from the left and darkening towards the bottom.
+    for i, y in enumerate(range(7, 15)):
+        x0, x1 = 4 + i // 3, 12 - i // 3
+        _rect(img, x0, y, x1, y + 1, _shade(BUCKET_BODY, -5 * i))
+        _dot(img, x0, y, _shade(BUCKET_RIM, -4 * i))
+        _dot(img, x1 - 1, y, _shade(BUCKET_DARK, -4 * i))
+    _rect(img, 3, 6, 13, 7, BUCKET_RIM)
+    # What is in it, seen through the mouth.
+    if fill is not None:
+        _rect(img, 4, 7, 12, 10, fill)
+        _rect(img, 4, 7, 12, 8, _shade(fill, 30))
+    return img
+
+
+def sm_item_bucket():
+    return _bucket()
+
+
+def sm_item_bucket_water():
+    return _bucket((56, 98, 200))
+
+
 def sm_item_stick():
     img = _icon()
     for i in range(11):
@@ -1278,6 +1316,8 @@ TEXTURES = {
     "item_axe_iron.png": lambda: sm_item_axe((222, 222, 228)),
     "item_shovel_iron.png": lambda: sm_item_shovel((222, 222, 228)),
     "item_stick.png": sm_item_stick,
+    "item_bucket.png": sm_item_bucket,
+    "item_bucket_water.png": sm_item_bucket_water,
     "item_pickaxe_wood.png": lambda: sm_item_pickaxe((176, 128, 64)),
     "item_pickaxe_stone.png": lambda: sm_item_pickaxe((144, 152, 160)),
     "item_axe_wood.png": lambda: sm_item_axe((192, 136, 72)),

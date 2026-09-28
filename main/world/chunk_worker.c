@@ -5,6 +5,7 @@
 #include "world/chunk_worker.h"
 
 #include "common/trace.h"
+#include "world/blockupdate.h"
 #include "world/light.h"
 #include <string.h>
 #include "common/psram.h"
@@ -329,6 +330,12 @@ static void apply(result_t* r) {
                 // own was worked out on the worker. On the main task,
                 // like every write to a resident chunk (light.h).
                 light_chunk_join(c);
+                // And the physics seam: this chunk's own unsettled
+                // fluid, and the water in the chunks already here that
+                // has been standing against the wall a missing chunk
+                // reads as (blockupdate.h, the boundary note). Same
+                // place, same task, same reason as the light.
+                blockupdate_chunk_join(c);
             }
         }
         return;

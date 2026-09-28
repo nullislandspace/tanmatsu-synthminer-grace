@@ -41,6 +41,7 @@
 #include "game/physics.h"
 #include "game/raycast.h"
 #include "items/inventory.h"
+#include "items/items.h"
 
 #define FELL_RADIUS 8   // blocks from the break, horizontally
 #define FELL_HEIGHT 24  // ... and upwards
@@ -80,3 +81,30 @@ bool interact_place(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoi
 // checked as a grown tree block. Returns how many blocks it took,
 // including the one at (x, y, z). Exposed for the host test.
 int interact_fell(int32_t x, int32_t y, int32_t z);
+
+// --- Using what is in your hand ---------------------------------------
+//
+// THE OTHER HALF OF THE USE KEY. Tapping Use with a block in hand puts
+// the block down; tapping it with a BUCKET in hand moves water, and
+// nothing about that is a placement -- there is no block to place, the
+// target may be a cell the crosshair cannot even see, and what the hand
+// ends up holding is not what it started with.
+//
+// It casts its OWN ray, in RAY_FLUID mode, because the crosshair looks
+// straight through water on purpose (raycast.h) and a bucket must not.
+//
+// The caller applies the result. That split is deliberate: the world
+// change and the inventory change have to agree, and the one place that
+// knows whether the hand can take what is coming back is the caller.
+typedef struct {
+    bool     acted;    // it did something; do NOT also try to place a block
+    uint16_t becomes;  // what the held stack turns into, 0 to leave it alone
+    uint8_t  sound;    // block_sound_t to play, SND_NONE for silence
+    // What moved and where, for the flight recorder (common/trace.h) --
+    // pouring a bucket out is an edit like any other and belongs in the
+    // trace beside the breaks and the placements.
+    uint8_t  block;
+    int32_t  x, y, z;
+} use_result_t;
+
+use_result_t interact_use_item(double ex, double ey, double ez, float dx, float dy, float dz, uint16_t item);

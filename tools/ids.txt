@@ -61,3 +61,5 @@ item iron_ingot
 item pickaxe_iron
 item axe_iron
 item shovel_iron
+item bucket
+item bucket_water

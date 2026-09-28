@@ -31,18 +31,29 @@ typedef struct {
     float   dist;        // along the ray, in blocks
 } ray_hit_t;
 
+// WHAT COUNTS AS A HIT. Three questions, three answers, and they are
+// genuinely different questions rather than one with a tolerance.
+typedef enum {
+    // Anything you can POINT AT: every block but air and liquids. The
+    // player's crosshair. A torch or a flower is not solid, and a ray
+    // that ignored them made a placed torch impossible to take back
+    // (F-56); water is looked through, so it never hides the riverbed.
+    RAY_PICKABLE = 0,
+    // Anything that STOPS THE PLAYER (BF_SOLID). What the chase camera
+    // asks, so it does not end up inside a wall.
+    RAY_SOLID,
+    // Pickable, PLUS liquids. The bucket, and only the bucket: it is
+    // the one thing whose whole purpose is the water the crosshair is
+    // deliberately blind to. Without it there is no way to aim at a
+    // pond at all, and a bucket that fills from whatever is behind the
+    // lake is worse than one that does not fill.
+    RAY_FLUID,
+} ray_mode_t;
+
 // Walk from (ox, oy, oz) along (dx, dy, dz) -- which need not be
 // normalised -- for at most `max` blocks. True when it strikes
-// something the picker should report.
-//
-// `want_solid` picks what counts as a hit: true stops at anything that
-// stops the player (BF_SOLID); false stops at anything you can POINT AT
-// -- every block but air and liquids -- which is what the player's
-// crosshair wants: a torch or a flower is not solid, and a ray that
-// ignored them made a placed torch impossible to take back (F-56).
-// Liquids are looked through either way, so water never hides the
-// riverbed from the pick.
-bool ray_pick(double ox, double oy, double oz, float dx, float dy, float dz, float max, bool want_solid,
+// something `mode` counts as a hit.
+bool ray_pick(double ox, double oy, double oz, float dx, float dy, float dz, float max, ray_mode_t mode,
               ray_hit_t* out);
 
 // The direction a yaw/pitch pair looks along, in the engine's

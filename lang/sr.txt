@@ -250,6 +250,8 @@ item.iron_ingot = Гвоздена полуга
 item.pickaxe_iron = Гвоздени пијук
 item.axe_iron = Гвоздена секира
 item.shovel_iron = Гвоздена лопата
+item.bucket = Кофа
+item.bucket_water = Кофа с водом
 
 # --- chest ---
 chest.title = Сандук

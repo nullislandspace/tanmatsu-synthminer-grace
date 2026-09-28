@@ -96,6 +96,14 @@ static recipe_t const RECIPES[] = {
      .n_in    = 2,
      .in      = {{ITEM_IRON_INGOT, 1}, {ITEM_STICK, 2}}},
 
+    // The bucket: three ingots, as asked, and Minecraft's cost. It is
+    // REVERSIBLE like every other iron thing -- the bench gets the
+    // metal back. Only the EMPTY one has a recipe; a full one is an
+    // empty one that has been somewhere (game/interact.h).
+    {.out     = ITEM_BUCKET, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 1,
+     .in      = {{ITEM_IRON_INGOT, 3}}},
+
     // --- In a furnace -----------------------------------------------
     //
     // One input, and the fuel is NOT an ingredient -- it has a slot of

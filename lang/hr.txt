@@ -250,6 +250,8 @@ item.iron_ingot = Željezna poluga
 item.pickaxe_iron = Željezni pijuk
 item.axe_iron = Željezna sjekira
 item.shovel_iron = Željezna lopata
+item.bucket = Kanta
+item.bucket_water = Kanta vode
 
 # --- chest ---
 chest.title = Škrinja

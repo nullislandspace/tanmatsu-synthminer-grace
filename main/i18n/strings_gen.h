@@ -180,6 +180,8 @@ typedef enum {
     SM_STR_ITEM_PICKAXE_IRON,           // item.pickaxe_iron
     SM_STR_ITEM_AXE_IRON,               // item.axe_iron
     SM_STR_ITEM_SHOVEL_IRON,            // item.shovel_iron
+    SM_STR_ITEM_BUCKET,                 // item.bucket
+    SM_STR_ITEM_BUCKET_WATER,           // item.bucket_water
     SM_STR_FURNACE_TITLE,               // furnace.title
     SM_STR_FURNACE_INPUT,               // furnace.input
     SM_STR_FURNACE_FUEL,                // furnace.fuel

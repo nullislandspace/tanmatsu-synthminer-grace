@@ -250,6 +250,8 @@ item.iron_ingot = Железный слиток
 item.pickaxe_iron = Железная кирка
 item.axe_iron = Железный топор
 item.shovel_iron = Железная лопата
+item.bucket = Ведро
+item.bucket_water = Ведро воды
 
 # --- chest ---
 chest.title = Сундук

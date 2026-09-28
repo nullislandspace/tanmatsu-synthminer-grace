@@ -250,6 +250,8 @@ item.iron_ingot = Ράβδος σιδήρου
 item.pickaxe_iron = Σιδερένια αξίνα
 item.axe_iron = Σιδερένιο τσεκούρι
 item.shovel_iron = Σιδερένιο φτυάρι
+item.bucket = Κουβάς
+item.bucket_water = Κουβάς με νερό
 
 # --- chest ---
 chest.title = Κιβώτιο
