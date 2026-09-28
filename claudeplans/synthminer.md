@@ -1431,7 +1431,8 @@ reason Minecraft chose the other rule.
 | 49 | **The floor of the world, and chunks that are never a photograph** | done | 2026-09-28, out of the user's question about bedrock. y=0 was BLK_STONE under a comment calling it unbreakable; `worldgen_force_floor()` now runs as the LAST step of generation, after both generators, on the user's instruction -- *"generators like caves can't accidentaly make holes"* -- and on every chunk arriving from the card, so old worlds repair themselves. No version bump: D-30 already says worlds upgrade as their chunks are written back. What makes that work is the user's own aside, which is the bigger change: **a chunk loaded from the card is marked dirty immediately**, because *"for animal movements, crops growing etc"* a chunk is not a photograph. It costs roughly two saves per load (F-114). |
 | 50 | **Region buckets, an open-file cache, and what the card costs** | done | 2026-09-28, the user: *"Add the region handle cache and subdirectories now. Maybe we should also have another directory level for a sort of mega-region? How big is each chunk file?"* Measured: 41-227 KiB a region, 128x128 blocks. Buckets of 16x16 regions -- at most 256 files in a bucket, one entry per 2048x2048 blocks in the parent -- and **no third level**, because filling the parent would take 84000 square kilometres of explored ground. Four cached handles, LRU, dropped before anything renames or removes underneath them. Two real bugs fell out, both caught by running worldcheck twice rather than by the badge: **deleting a world stopped working** (the delete walked one directory level, so every bucket survived and the rmdir failed) and `sm_remove` on a cached region left an unlinked file that writes still went to. Load and save are now timed separately from generation (F-114). |
 | 51 | **A cactus comes down as one** | done | 2026-09-28, the user, from a play session the recorder had already logged them doing the hard way -- six breaks in fourteen seconds. `BF2_STACKED` on the registry rather than a hard-coded id, so sugar cane arrives with it working. It is SUPPORT, not the felling rule: it ignores ST_PLACED, goes straight up one column, and stops at the first block that is not the same kind. A stand-in for block updates, and says so. |
-| 52 | **The main menu takes fifteen seconds** | **todo** | 2026-09-28, the user's observation, answered but not fixed: the title runs on a scratch world, so its 81 chunks are generated every time, at 186 ms each (F-115). Loading them off the card instead is 2.4-3.0 ms a chunk. The bench world of step 41 is the pattern and the title is a better fit for it -- fixed seed, fixed camera, nothing a player can change. |
+| 52 | **The main menu takes fifteen seconds** | **done** (F-117) | 2026-09-28, the user's observation, answered but not fixed: the title runs on a scratch world, so its 81 chunks are generated every time, at 186 ms each (F-115). Loading them off the card instead is 2.4-3.0 ms a chunk. The bench world of step 41 is the pattern and the title is a better fit for it -- fixed seed, fixed camera, nothing a player can change. |
+| 53 | **The SD card's write timeouts were ESP-Hosted** | done | 2026-09-28, out of the user's question *"does the filesystem handle this correctly, or do we silently corrupt the FAT file system?"* -- which turned out to be the right question asked of the wrong layer, twice over. fsck.fat said no corruption but **45 leaked clusters in six chains**, exactly the FatFs behaviour: a cluster allocated by create_chain() before a failed write stays marked in use while the directory entry that would reference it is never written, and sync_window() discards the second FAT copy's write result entirely. The cause was neither the card nor the filesystem: the ESP32-P4 has one SDMMC controller and it was shared with the WiFi co-processor (F-116). WiFi is gone from graceloader, the errors with it, and 42 KiB of internal heap came back. What remains in the tree for the next time: a retrying disk layer in graceloader (ESP-IDF's does not retry at all), region_recover_tmp() for a compaction interrupted between the remove and the rename, cache_drop() on every region failure path -- **one read error used to poison a cached FILE\* and stall the world for ever** -- and `cardfail=` in the flight recorder. |
 
 ---
 
@@ -2622,6 +2623,63 @@ reason Minecraft chose the other rule.
   been of the generator. Fixed by step 41: a persisted world, pre-generated
   once, streamed off the card (`0 missing`, `refused 0`, queue 0-6 of 48, and
   735 ms to load instead of eleven seconds to generate).
+- **F-116** 2026-09-28, **it was ESP-Hosted, and the badge settled it in
+  one run.** The SD card's write timeouts -- dozens a session of
+  `sdmmc_write_blocks failed (0x106)`, 45 leaked FAT clusters measured
+  with fsck.fat -- stopped completely when WiFi was removed from
+  graceloader. Not one read or write error in the session after, and the
+  retrying disk layer added for them never fired once: the failures did
+  not get caught and recovered, they stopped happening.
+
+  The chain of wrong answers is the useful part, because each was
+  refuted by looking rather than by arguing:
+
+  1. "The card is busy with an erase cycle, so pace the writes." Wrong.
+     The card answers CMD13 with 0x900 -- READY_FOR_DATA, state `tran` --
+     immediately after a failure.
+  2. "So the card is fine and had five seconds anyway." Also wrong, and
+     the user caught it: sd_host_wait_for_event() logs when IT times
+     out and that line is not in the log, so the five seconds never
+     elapsed. ESP_ERR_TIMEOUT was arriving from a hardware interrupt --
+     RTO, DTO or EBE, and the driver only says which at ESP_LOGD.
+  3. The answer was in graceloader's own source the whole time:
+     *"ESP-Hosted already owns the shared SDMMC host controller."* The
+     ESP32-P4 has ONE SDMMC controller and the card shares it with the
+     WiFi co-processor. A transaction disturbed by the other user of
+     the controller fails instantly and leaves the card healthy, which
+     is exactly the signature.
+
+  **And the memory was ten times what the size report predicted.**
+  `idf.py size` showed 3.7 KiB of DIRAM saved; the badge gave back
+  **42 KiB** of internal heap (free_int 242727 -> 285651), because
+  ESP-Hosted's SDIO task and its receive buffers are heap and never
+  appear in a static size report. 283 KiB of flash came with it.
+
+  What stays, and why: the retrying disk layer, because ESP-IDF's
+  ff_sdmmc_write does not retry at all and FatFs has no journal -- one
+  glitch from any cause still means a dead file handle and a leaked
+  cluster. It is insurance that now costs nothing, and its counters say
+  so.
+- **F-117** 2026-09-28, from the same run: **the title world made the
+  menu fifteen times faster.** 16114 ms of generating 81 chunks became
+  1057 ms of reading them off the card, and 1256 ms on the way back from
+  a world.
+
+      card/s: 81 load at 5.2 ms (worst 8.4)
+
+  F-115 predicted 2.4-3.0 ms a chunk against 186 ms to generate one, and
+  that is what it came out at. Step 52 is done.
+
+  Getting there cost four wrong builds, all of them the same shape: the
+  world reached the card in a state that was almost right and was marked
+  complete anyway. Wrong meta written into level.smw, then 49 of 81
+  chunks because a full save sweep overruns a 48-deep queue in silence,
+  then the half-written world surviving because a MARKED world is never
+  rebuilt. The version file (SM_TITLE_GEN) is what finally made that
+  last one recoverable, and it exists because the user asked for it
+  before any of this happened: *"add a sort of version file ... That way
+  we can decide later on if we want to recreate it for a future
+  update."*
 - **F-115** 2026-09-28, out of **the user**: *"Loading the main menu takes
   a long time (both from game start and also when quitting a world back to
   the main menu)."* **The title runs on a scratch world, so its 81 chunks
