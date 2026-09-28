@@ -1426,7 +1426,12 @@ reason Minecraft chose the other rule.
 | 44 | **Why the livestream stalls, and audio shipped off** | done (video), **audio parked** | 2026-09-27, out of the user's packet capture and then five rounds of instrumentation (F-102..F-108). **Nothing was wrong with the link or the game.** The capture exonerated the network -- clean continuity counters on all five PIDs, 0 bad sync bytes, `dgfail` 33/11688, constant arrival-minus-PTS skew -- and the badge's own counters exonerated everything else: PPA 14.5 ms, H.264 8.0 ms and mux 2 ms constant in and out of collapse, `pub` 9-10 offers/s throughout, `audn` 86.1 pushes/s at 24 us straight through. **STARVED was 0%**, so the task held the CPU and the `WORKER_PRIO` change I had been about to make could never have helped. Three theories died on facts already in hand (F-104: `chunk_worker.c` has no mutex at all; the job queue is `xQueueSend(..., 0)`; core 1 was not saturated). The accounting did not close until three untimed calls were timed (F-103), and `aud_us` turned out to be measuring the mixer's push rather than the encode, so the MP2 cost had never been measured on hardware at all. The answer is F-108: `allocate()` sweeping the encoder's 5.6 KB struct out of PSRAM, 1.3 ms -> 160 ms, a 125x swing. The fix is written and **unmeasured** -- it takes the codec to 22.5 KB of internal SRAM and chunk loading broke -- so the user's call was *"Fuck audio streaming for now."* `SM_STREAM_AUDIO` is 0 in every ordinary build (`make STREAM_AUDIO=1` for a measurement run, which prints a banner), the code all stays, and with it off `se_stream_audio_prepare()` is never called so no buffer, ring or PID exists. **Owed before anyone tries again: an internal-RAM budget for the whole app.** The instruments stay in the tree -- `tools/streamcap.py`, `tools/streamanalyse.py`, `tools/infoanalyse.py`, and `/sd/defuckinfo.txt` written by `se_stream_stop()` -- because the console is what the stream takes away, and every wrong turn in this round was reasoning where a timer would have answered. |
 | 45 | **App icons** | done | 2026-09-28, asked for by the user: the three icons `metadata.json` names were placeholder question marks. They are the game's iron pickaxe on the game's own stone darkened right down, generated like the textures -- `tools/make_icons.py` imports `sm_stone` from `make_textures.py` rather than copying it, so the backdrop cannot drift from the rock the player digs. One drawing on a 16-unit grid multiplied by 1, 2 and 4, so the three sizes stay one picture; `make icons` regenerates them byte-identically. Two shapes earned comments by being wrong first -- a flat bar with two teeth under it reads as a table with a stick leaning on it, and a shaft that passes the head makes the whole icon a figure 7 -- and the dark outline is skipped at 16, where it merges with the background instead of separating from it. |
 | 46 | **The app repository gets the whole game** | done, **publish not committed** | 2026-09-28, the user: *"Verify that metadata.json includes all required files... And make sure that `make apprepo` also copies the files correctly."* Both were broken, and F-109 is why neither could have been noticed here. `metadata.json`'s asset list is now generated from the same directories the install rules glob (`tools/make_metadata.py`, `make metadata`, `make metadatacheck`, and `metadata` is a dependency of `make check`); `apprepo` copies the textures and the music and then `tools/apprepocheck.py` walks what the file promises, reporting anything stale **without deleting it**, because `APP_REPO_PATH` points outside this checkout. The publish was run for real into `../tanmatsu-app-repository/at.cavac.synthminer` -- a first publish, the slug directory had never existed -- and verified four ways: the repository's own schema against all 64 apps (0 failing), 70 promised files present and 0 unexpected, the runtime layout traced from `install_basepath` to `texcache_init`, and all 61 texture names the code can ask for resolved. The comma left the description and the torch flame found its file (F-110). **The directory is untracked in that repository and left for the user**, since committing there is a pull request. |
-| 47 | **Blocks that did not appear, and leaves that felled trees** | felling **done**; render bug **NOT found** | 2026-09-28, both out of the user's play session. F-111 and F-112. The render bug was two faults: a dense canopy asks for 8540 textured triangles against a 4096 cap, **and** submission ran in slot order -- a wrapped coordinate hash -- so the overflow landed anywhere, including the chunk underfoot, and moved as the player walked. Now sorted near to far, so a full list loses its far edge into the fog, and the drop counter is on the position overlay instead of only in a console no player has. **The badge then refuted the capacity half** (see F-111's correction): the textured list is in PSRAM and peaks at 1340 of 4096 in real play, nothing is dropped, and the host figure was inflated six times over by counting underground sections and the whole 360 degrees. The sort stays as defensive work; **the missing blocks are still unexplained**, and the drop counter on the overlay is now the instrument that will say whether the lists are involved at all. Felling: Part F gave one flag two jobs, so `BF_FELLABLE` now means tree material (what a fell spreads through) and `BF2_TRUNK` what starts one; worldcheck covers both directions. |
+| 47 | **Blocks that did not appear, and leaves that felled trees** | felling **done**; render bug found later, in step 48 (F-113) | 2026-09-28, both out of the user's play session. F-111 and F-112. The render bug was two faults: a dense canopy asks for 8540 textured triangles against a 4096 cap, **and** submission ran in slot order -- a wrapped coordinate hash -- so the overflow landed anywhere, including the chunk underfoot, and moved as the player walked. Now sorted near to far, so a full list loses its far edge into the fog, and the drop counter is on the position overlay instead of only in a console no player has. **The badge then refuted the capacity half** (see F-111's correction): the textured list is in PSRAM and peaks at 1340 of 4096 in real play, nothing is dropped, and the host figure was inflated six times over by counting underground sections and the whole 360 degrees. The sort stays as defensive work; **the missing blocks are still unexplained**, and the drop counter on the overlay is now the instrument that will say whether the lists are involved at all. Felling: Part F gave one flag two jobs, so `BF_FELLABLE` now means tree material (what a fell spreads through) and `BF2_TRUNK` what starts one; worldcheck covers both directions. |
+| 48 | **The flight recorder** | done | 2026-09-28, the user: *"It might be worth actually saving the relevant numbers ... So if i encounter a bug, we can just look at the trace afterwards (without having to know that we need to debug beforehand)."* `/sd/synthminer/trace.txt`, always on, no setting: a header per run, a line a second (frame rate, position, both geometry lists, drops, streamer), a line per block placed or broken, and a line for the mesh that answers an edit **carrying the lag** -- the wait between changing a block and seeing it, which nothing else reports. `common/trace.c` is pure stdio and takes its clock and directory from the caller, so worldcheck exercises the formatting, the lag and the rotation on the host. One playthrough per file (the user's call), the previous kept as `trace.prev.txt`, and the size cap is a ceiling rather than a rotation -- rotating mid-run would throw away the start of the run being recorded. `tools/traceanalyse.py` leads with the two things that mean something went wrong. **It paid for itself within one session: F-113.** |
+| 49 | **The floor of the world, and chunks that are never a photograph** | done | 2026-09-28, out of the user's question about bedrock. y=0 was BLK_STONE under a comment calling it unbreakable; `worldgen_force_floor()` now runs as the LAST step of generation, after both generators, on the user's instruction -- *"generators like caves can't accidentaly make holes"* -- and on every chunk arriving from the card, so old worlds repair themselves. No version bump: D-30 already says worlds upgrade as their chunks are written back. What makes that work is the user's own aside, which is the bigger change: **a chunk loaded from the card is marked dirty immediately**, because *"for animal movements, crops growing etc"* a chunk is not a photograph. It costs roughly two saves per load (F-114). |
+| 50 | **Region buckets, an open-file cache, and what the card costs** | done | 2026-09-28, the user: *"Add the region handle cache and subdirectories now. Maybe we should also have another directory level for a sort of mega-region? How big is each chunk file?"* Measured: 41-227 KiB a region, 128x128 blocks. Buckets of 16x16 regions -- at most 256 files in a bucket, one entry per 2048x2048 blocks in the parent -- and **no third level**, because filling the parent would take 84000 square kilometres of explored ground. Four cached handles, LRU, dropped before anything renames or removes underneath them. Two real bugs fell out, both caught by running worldcheck twice rather than by the badge: **deleting a world stopped working** (the delete walked one directory level, so every bucket survived and the rmdir failed) and `sm_remove` on a cached region left an unlinked file that writes still went to. Load and save are now timed separately from generation (F-114). |
+| 51 | **A cactus comes down as one** | done | 2026-09-28, the user, from a play session the recorder had already logged them doing the hard way -- six breaks in fourteen seconds. `BF2_STACKED` on the registry rather than a hard-coded id, so sugar cane arrives with it working. It is SUPPORT, not the felling rule: it ignores ST_PLACED, goes straight up one column, and stops at the first block that is not the same kind. A stand-in for block updates, and says so. |
+| 52 | **The main menu takes fifteen seconds** | **todo** | 2026-09-28, the user's observation, answered but not fixed: the title runs on a scratch world, so its 81 chunks are generated every time, at 186 ms each (F-115). Loading them off the card instead is 2.4-3.0 ms a chunk. The bench world of step 41 is the pattern and the title is a better fit for it -- fixed seed, fixed camera, nothing a player can change. |
 
 ---
 
@@ -2617,6 +2622,85 @@ reason Minecraft chose the other rule.
   been of the generator. Fixed by step 41: a persisted world, pre-generated
   once, streamed off the card (`0 missing`, `refused 0`, queue 0-6 of 48, and
   735 ms to load instead of eleven seconds to generate).
+- **F-115** 2026-09-28, out of **the user**: *"Loading the main menu takes
+  a long time (both from game start and also when quitting a world back to
+  the main menu)."* **The title runs on a scratch world, so its 81 chunks
+  are GENERATED every single time.** From the boot log:
+
+      loaded (Loading): 81 chunks resident (0 missing) in 22 rounds, 15882 ms
+      generated: 81 ordinary chunks at 186.4 ms
+
+  `title_view()` has `load_radius 4`, which is (2*4+1)^2 = 81, and
+  `title_begin()` calls `worldstore_open_scratch()` -- a world with
+  nowhere to be saved, by design. So 81 x 186 ms, and it happens again
+  on every return to the menu.
+
+  The contrast is the whole finding: a chunk LOADED off the card measured
+  **2.4-3.0 ms** in the same sessions (F-114). Generating one is 186 ms.
+  **Sixty to seventy-five times slower**, and the title pays it for
+  scenery that is the same every time because the seed is fixed.
+
+  Step 41 already solved exactly this for the bench world -- generate
+  once, persist, stream it back -- and the title is a better fit for the
+  trick than the bench world was: fixed seed, fixed camera path, nothing
+  the player can change. Unfixed, and left as its own step.
+- **F-114** 2026-09-28, from four play sessions with the flight recorder,
+  the first hard numbers on what the card costs:
+
+      load      2.4-4.0 ms mean, 9.6-18.9 ms worst
+      save     12.5-15.9 ms mean, 138.9-236.6 ms worst
+      compact  2 rewrites in 160 s, worst 146 ms
+      region file 41-227 KiB (655-3625 B a chunk; the spread is terrain)
+
+  Saves outnumber loads roughly two to one, which is D-30 and the
+  write-back-everything rule showing their price. All of it is on the
+  worker, pinned to core 1, so it delays the STREAMER and not the frame
+  -- the first version of traceanalyse said the opposite and had to be
+  corrected.
+
+  **Two instrument bugs came out of reading this, both of the same kind:
+  a number that was too round to be true.** Compaction was counted by
+  elapsed time, which cannot tell a rewrite from a slow check, and
+  reported 316 compactions for 316 saves; counted on the return value it
+  is 2. And the trace file held every session appended, so a "worst since
+  boot" from an hour earlier was reported as the current run's -- which
+  is how 236.6 ms got quoted for a session that never saw it. One
+  playthrough per file now, and traceanalyse splits what it is given.
+- **F-113** 2026-09-28, **the flight recorder found the render bug three
+  days after it was reported, in a session nobody set up to catch it.**
+  F-111 had blamed the geometry caps and been refuted by the badge; this
+  is what it actually was.
+
+      B t=173.0 ... blk=flower_red ch=-103,6 s=2
+      T t=173.7  queue=25/48 miss=2
+      T t=174.7  queue=29/48 miss=7  save=7@14951us
+      T t=175.7  queue=34/48 miss=0
+      T t=176.8  queue=49/48 miss=7
+      M t=176.9  ch=-103,6 s=2 lod=0 lag=3943ms
+
+  A flower broken at t=173.0 stayed on screen until t=176.9. The block
+  left the WORLD the instant it broke; the MESH did not, because its
+  rebuild went into the same FIFO as forty-odd speculative streaming
+  jobs and waited its turn. Dense terrain means more streaming, a longer
+  queue, a longer wait -- which is exactly "especially in dense
+  forrests", and the geometry lists peaked at 43% and 50% in the same
+  session.
+
+  Fixed by `lod_urgent` (chunk.h) plus `xQueueSendToFront`: a remesh
+  caused by a BLOCK CHANGE jumps the queue, one caused by a chunk
+  arriving does not. Measured after: **median 89 ms, worst 322 ms over 13
+  edits**, against 3943 ms. Not a like-for-like comparison -- the queue
+  peaked at 25/48 in the good run against 49/48 in the bad one -- so the
+  honest claim is "clearly fixed", not "12x".
+
+  **The floor is one frame.** A remesh is not asked for when the block
+  breaks; it is asked for by `chunk_render_submit` on the next render
+  pass, so at 15 fps there is a 67 ms floor before the job is even
+  queued. The 89 ms median is one frame plus the job, which is as good
+  as this shape of code gets.
+
+  What this finding is really about: **every diagnostic before it had to
+  be armed before the bug.** This one was not, and that is why it worked.
 - **F-112** 2026-09-28, out of **the user** after a play session: *"when
   cutting trees, just remove leaves cuts down the tree, but the 'cut the
   whole tree up from this point' should only happen when cutting the
@@ -4304,6 +4388,14 @@ visible thing left that does not say what this is.
 - **Changed:** `CMakeLists.txt`, `Makefile`, `metadata/metadata.json`,
   `main/main.c`, `README.md`, and `main/testkit/profile.{c,h}` (`PROF_HUD`,
   F-46).
+- **The instruments.** `common/trace.{c,h}` is the flight recorder --
+  always on, one file per playthrough, pure stdio so the host checks
+  exercise it (step 48). `tools/traceanalyse.py` reads it.
+  `tools/{streamcap,streamanalyse,infoanalyse}.py` are the livestream's,
+  from step 44. The rule these exist to enforce: a diagnostic that has
+  to be switched on BEFORE the bug is a promise to reproduce the bug,
+  and the two that mattered most (F-111's render bug, F-113) were both
+  noticed while playing and never reproduced on demand.
 - **Written here, and generated rather than drawn or typed:**
   `tools/make_icons.py` (the launcher's three icons, from the game's own
   pickaxe and stone, step 45), `tools/make_metadata.py` (metadata.json's
