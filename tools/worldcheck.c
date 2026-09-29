@@ -3290,6 +3290,125 @@ static void check_shoving(void) {
 //  many animals a real ring of real terrain holds, whether the pool can
 //  take them, and what happens to one that gets its feet wet.
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+//  Caves that reach daylight (F-126)
+//
+//  The user, after days of walking: "I never saw a cave entrance on the
+//  surface." There were none. `cave_mouth` tested a field against 0.84
+//  and that field never exceeds 0.642, so it was false in every column
+//  of every world this game has ever generated.
+//
+//  THE OLD CHECK PRINTED A NUMBER AND BELIEVED IT. It counted columns
+//  whose surface cell is air -- which is nearly the definition of a
+//  surface cell -- and called them cave mouths. A measure that cannot
+//  distinguish a hillside from a hole cannot fail when the holes stop.
+//
+//  So this one floods the SKY INTO THE GROUND and asks how far it gets.
+//  That is the player's question: can I see a way in, and does it go
+//  anywhere. It fails if the answer is no, and it fails if the ground
+//  turns into a colander, because both are worlds nobody wants.
+static void check_cave_mouths(void) {
+    printf("caves: does the sky get into the ground\n");
+    uint32_t const seed = 20260929u;
+
+    chunk_t* c = (chunk_t*)malloc(sizeof(chunk_t));
+    CHECK(c != NULL, "no room for a scratch chunk");
+    if (c == NULL) return;
+    memset(c, 0, sizeof(*c));
+    c->id = (uint8_t*)malloc(CH_CELLS);
+    c->st = (uint8_t*)malloc(CH_CELLS);
+    CHECK(c->id != NULL && c->st != NULL, "no room for a scratch chunk's planes");
+    if (c->id == NULL || c->st == NULL) return;
+
+    static uint8_t seen[CH_W][CH_H][CH_D];
+    static int16_t stack[CH_W * CH_H * CH_D][3];
+
+    long columns = 0, carved = 0, deep3 = 0, deep6 = 0;
+    int  best = 0, chunks_with = 0, chunks = 0;
+
+    for (int32_t cz = -16; cz < 16; cz++) {
+        for (int32_t cx = -16; cx < 16; cx++) {
+            c->cx = cx;
+            c->cz = cz;
+            worldgen_chunk(c, seed, FARLANDS_NONE);
+            memset(seen, 0, sizeof(seen));
+            chunks++;
+
+            // Flood down from the top plane, through air only: water
+            // and stone both stop it, which is what a player can see
+            // into as well.
+            int sp = 0;
+            for (int lz = 0; lz < CH_D; lz++) {
+                for (int lx = 0; lx < CH_W; lx++) {
+                    if (c->id[CH_IDX(lx, CH_H - 1, lz)] != BLK_AIR) continue;
+                    seen[lx][CH_H - 1][lz] = 1;
+                    stack[sp][0] = (int16_t)lx;
+                    stack[sp][1] = (int16_t)(CH_H - 1);
+                    stack[sp][2] = (int16_t)lz;
+                    sp++;
+                }
+            }
+            while (sp > 0) {
+                sp--;
+                int const x = stack[sp][0], y = stack[sp][1], z = stack[sp][2];
+                int const dx[6] = {1, -1, 0, 0, 0, 0}, dy[6] = {0, 0, 1, -1, 0, 0}, dz[6] = {0, 0, 0, 0, 1, -1};
+                for (int k = 0; k < 6; k++) {
+                    int const nx = x + dx[k], ny = y + dy[k], nz = z + dz[k];
+                    if (nx < 0 || nx >= CH_W || nz < 0 || nz >= CH_D || ny < 0 || ny >= CH_H) continue;
+                    if (seen[nx][ny][nz] || c->id[CH_IDX(nx, ny, nz)] != BLK_AIR) continue;
+                    seen[nx][ny][nz] = 1;
+                    stack[sp][0] = (int16_t)nx;
+                    stack[sp][1] = (int16_t)ny;
+                    stack[sp][2] = (int16_t)nz;
+                    sp++;
+                }
+            }
+
+            bool here = false;
+            for (int lz = 0; lz < CH_D; lz++) {
+                for (int lx = 0; lx < CH_W; lx++) {
+                    columns++;
+                    int const h = worldgen_height(cx * CH_W + lx, cz * CH_D + lz, seed);
+                    if (h <= CH_SEA_LEVEL + 1 || h >= CH_H) continue;
+                    if (c->id[CH_IDX(lx, h, lz)] == BLK_AIR && seen[lx][h][lz]) carved++;
+                    int depth = 0;
+                    for (int y = h; y > CH_BEDROCK; y--) {
+                        if (!seen[lx][y][lz]) break;
+                        depth++;
+                    }
+                    if (depth >= 3) {
+                        deep3++;
+                        here = true;
+                    }
+                    if (depth >= 6) deep6++;
+                    if (depth > best) best = depth;
+                }
+            }
+            if (here) chunks_with++;
+        }
+    }
+
+    double const pct3 = 100.0 * (double)deep3 / (double)columns;
+    printf("  %ld columns in %d chunks: the sky gets 3 deep in %ld (%.3f%%), 6 deep in %ld; deepest %d blocks\n",
+           columns, chunks, deep3, pct3, deep6, best);
+    printf("  %d chunks in %d have a way in (one every %.1f)\n", chunks_with, chunks,
+           chunks_with > 0 ? (double)chunks / (double)chunks_with : 0.0);
+
+    // THE ONE THAT MATTERS: a world with no way into the ground is the
+    // one the user walked around for days.
+    CHECK(deep3 > 0, "the sky never gets three blocks into the ground: there are no cave entrances");
+    CHECK(best >= 8, "the deepest the sky gets is %d blocks: those are dimples, not entrances", best);
+    CHECK(chunks_with * 20 >= chunks, "only %d chunks in %d have a way in, which is a world without caves",
+          chunks_with, chunks);
+    // ... and not a colander. Both directions, because both are wrong.
+    CHECK(pct3 < 3.0, "%.2f%% of columns are open to the sky: the ground is a sieve", pct3);
+    CHECK(carved > 0, "no column anywhere has its surface block carved by a cave");
+
+    free(c->id);
+    free(c->st);
+    free(c);
+}
+
 static void check_population(void) {
     printf("population: what a ring of real terrain holds\n");
     uint32_t const seed = 20260929u;
@@ -5408,7 +5527,7 @@ static void check_ores(void) {
     uint32_t const seed = 0x0DEF17u;
     long stone = 0, coal = 0, iron = 0;
     long coal_touch = 0, iron_touch = 0;
-    long surface_air = 0, columns = 0;
+    long columns = 0;
 
     // A block of chunks, generated the way the game generates them.
     static uint8_t id[CH_CELLS];
@@ -5430,7 +5549,6 @@ static void check_ores(void) {
                 for (int lx = 0; lx < CH_W; lx++) {
                     columns++;
                     int const h = worldgen_height(cx * CH_W + lx, cz * CH_D + lz, seed);
-                    if (h > CH_SEA_LEVEL + 1 && h < CH_H && AT(&c, lx, h, lz) == BLK_AIR) surface_air++;
 
                     for (int y = 1; y < CH_H; y++) {
                         uint8_t const b = AT(&c, lx, y, lz);
@@ -5467,11 +5585,15 @@ static void check_ores(void) {
     double const iron_pct = stone > 0 ? 100.0 * (double)iron / (double)(stone + coal + iron) : 0.0;
     double const coal_nb  = coal > 0 ? (double)coal_touch / (double)coal : 0.0;
     double const iron_nb  = iron > 0 ? (double)iron_touch / (double)iron : 0.0;
-    double const mouths   = columns > 0 ? 100.0 * (double)surface_air / (double)columns : 0.0;
+    // (The cave-mouth number that used to be worked out here counted
+    //  columns whose surface cell is air, which is very nearly the
+    //  definition of a surface cell -- it could not tell a hillside
+    //  from a hole, and so could not fail when the holes stopped.
+    //  check_cave_mouths floods the sky into the ground instead: F-126.)
 
     printf("  coal %.2f%% of rock, %.2f ore neighbours each\n", coal_pct, coal_nb);
     printf("  iron %.2f%% of rock, %.2f ore neighbours each\n", iron_pct, iron_nb);
-    printf("  %.2f%% of land columns open to the sky\n", mouths);
+
 
     // ENOUGH TO FIND, NOT SO MUCH THAT IT IS EVERYWHERE.
     CHECK(coal_pct > 0.4 && coal_pct < 4.0, "coal is %.2f%% of rock, wanted 0.4..4", coal_pct);
@@ -5504,11 +5626,15 @@ static void check_ores(void) {
         }
     }
 
-    // CAVES REACH DAYLIGHT SOMEWHERE, and not everywhere: a world with
-    // no entrances is the bug this replaced, and one where every hill
-    // is a colander is the bug it could become.
-    CHECK(mouths > 0.4, "only %.2f%% of land opens to the sky -- the caves are sealed again", mouths);
-    CHECK(mouths < 5.0, "%.2f%% of the surface is a hole -- that is a colander", mouths);
+    // CAVES REACHING DAYLIGHT ARE CHECKED IN check_cave_mouths, by
+    // flooding the sky into the ground. They were checked here, with a
+    // range around a number that counted columns whose surface cell is
+    // air -- and both bounds passed happily for weeks while no world
+    // this game generated had a single cave entrance in it (F-126).
+    //
+    // The lesson is not "that number was wrong". It is that a check
+    // which asserts a RANGE on a quantity nobody has tied to the thing
+    // it names is a check that can only ever pass.
 }
 
 static void check_recipes(void) {
@@ -7183,6 +7309,7 @@ int main(void) {
     check_pens();
     check_shoving();
     check_breeding();
+    check_cave_mouths();
     check_population();
     check_swimming();
     check_fishing();

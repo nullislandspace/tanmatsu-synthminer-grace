@@ -245,14 +245,27 @@ int worldgen_height(int32_t x, int32_t z, uint32_t seed) {
 // through -- which is the reason cave_at used to refuse the top four
 // blocks outright, and so the reason there were no entrances at all.
 //
-// THE THRESHOLD IS STEEP AND IT WAS MEASURED, not chosen: this field
-// rarely goes above 0.85, so 0.78 opens 8.7% of the land (a colander),
-// 0.84 opens 1.7% (about one column in sixty, which reads as the
-// occasional hole in a hillside) and 0.88 opens none at all.
-// worldcheck's "ores" section prints the number and fails either way
-// off it.
+// THE THRESHOLD IS MEASURED AGAINST THIS FIELD, and that is the part
+// that went wrong (F-126). It was 0.84, a number that belongs to some
+// other field: two octaves of fbm2 at this scale **never exceed
+// 0.642**, measured over 16384 columns. So the test was false in every
+// column of every world this game has ever generated, and no cave has
+// ever broken the surface. The user found it by walking for days and
+// never seeing one.
+//
+// 0.56 leaves about 5% of the land ALLOWED to open, which is not the
+// same as open: the tunnel has to be there as well, and at the surface
+// it is at its narrowest (the width grows with depth). What comes out
+// the other end is what matters and it is measured on the finished
+// terrain: **one chunk in twelve has a way into the ground**, 1.1% of
+// columns are open to the sky, and the deepest the sky reaches is 35
+// blocks.
+//
+// tools/worldcheck.c floods the sky into the ground and fails if it
+// cannot get in -- the hole rather than the permission, which is the
+// mistake the old check made and the reason this survived so long.
 static bool cave_mouth(int32_t x, int32_t z, uint32_t seed) {
-    return sm_fbm2((float)x, (float)z, 160.0f, 2, seed ^ S_MOUTH) > 0.84f;
+    return sm_fbm2((float)x, (float)z, 160.0f, 2, seed ^ S_MOUTH) > 0.56f;
 }
 
 // Caves. The field is sampled at block resolution, which is exactly the
@@ -272,9 +285,15 @@ static bool cave_at(int32_t x, int y, int32_t z, int surface, uint32_t seed, boo
     // Wider with depth, so the deep world is more open than the shallow
     // -- and wider again at a mouth, because a one-block hole in a
     // hillside is a thing you fall down, not a thing you walk into.
+    //
+    // THE MOUTH'S SHARE OF THAT WIDTH IS WHAT MAKES AN ENTRANCE. At the
+    // surface `depth` is 0, so this is the narrowest the tunnel ever
+    // gets -- exactly where it has to be wide enough to notice. 0.035
+    // doubles the entrances a mouth actually yields against the 0.022
+    // it replaced, for 1.1% of columns open rather than 0.8%.
     float const depth = (float)(surface - y) / (float)CH_H;
     float       t     = 0.055f + depth * 0.045f;
-    if (mouth) t += 0.022f;
+    if (mouth) t += 0.035f;
     return da < t && db < t;
 }
 

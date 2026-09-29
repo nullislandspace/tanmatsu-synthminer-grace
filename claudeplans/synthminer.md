@@ -4168,6 +4168,64 @@ types the code:
   forty-eight wide, which the cow swam out of. A test world that could
   not exist is a test that cannot pass.
 
+- **F-126** 2026-09-29, the user, after days of play: *"there still
+  seems to be a bug in the terrain generation. Through all the walking
+  I did over the last few days, I never saw a cave entrance on the
+  surface."*
+
+  **There were none. Not one, in any world this game has ever
+  generated.** `cave_mouth` tested a two-octave `sm_fbm2` against
+  **0.84**, and that field **never exceeds 0.642** -- measured over
+  16384 columns. The test was false everywhere, always, so no tunnel
+  was ever allowed to take the surface block, so the ground was sealed.
+
+  The threshold came with a comment full of measurements (*"0.78 opens
+  8.7%, 0.84 opens 1.7%, 0.88 opens none"*) which are simply not this
+  field's numbers. They belong to something else -- a different scale,
+  a different octave count, a different function -- and were carried
+  over as if they had been checked.
+
+  **THE CHECK THAT WAS MEANT TO CATCH THIS PASSED EVERY TIME**, and
+  that is the finding. `check_ore` printed *"1.71% of land columns open
+  to the sky"* and asserted it was between 0.4 and 5.0. What it
+  actually counted was columns whose surface cell is air -- which is
+  very nearly the definition of a surface cell. The quantity had
+  nothing to do with cave mouths, so the bound could not fail when the
+  mouths stopped, and the number it printed looked plausible enough to
+  be believed for weeks.
+
+  A check that asserts a RANGE on a quantity nobody has tied to the
+  thing it names is a check that can only ever pass. Compare the crop
+  check, which grows a field and demands a harvest, or the pen check,
+  which walks a cow at a fence for 30000 ticks: those measure the
+  outcome. This one measured a coincidence.
+
+  The replacement floods the sky into the ground -- a 3D fill through
+  air from the top plane -- and asks how far down it gets. That is the
+  player's question: is there a way in, and does it go anywhere. It
+  fails if the sky never gets three blocks down, if the deepest reach
+  is a dimple rather than a shaft, if fewer than one chunk in twenty
+  has a way in, and if more than 3% of columns are open, because a
+  colander is the other way to be wrong.
+
+  Settled at a threshold of 0.56 with the mouth widening the tunnel by
+  0.035 (at the surface the tunnel is at its narrowest, since its width
+  grows with depth -- which is exactly where it has to be wide enough
+  to see). Measured on finished terrain: **one chunk in twelve has a
+  way into the ground**, 1.1% of columns open to the sky, deepest reach
+  35 blocks.
+
+  One more sampling lesson, for the third time today: the first attempt
+  measured 256 chunks and found entrances in 3 of them, which looked
+  like the fix had failed. The mouth field's wavelength is 160 blocks
+  and 256 chunks is 256 blocks across -- a sample barely wider than one
+  feature. Over 1024 chunks the same terrain gives one in twelve. A
+  measurement smaller than the thing it measures is not a measurement.
+
+  **Only newly generated chunks get entrances.** Terrain already on the
+  card was carved by the old rule and keeps its sealed ground; a walk
+  into fresh land is where the caves are.
+
 ### Decisions (D-n), each with date and who decided
 
 - **D-128** 2026-09-29, building step 12: **a cast is two taps, and the
