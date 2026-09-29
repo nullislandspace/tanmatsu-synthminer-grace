@@ -117,6 +117,7 @@ status.keys_reset = Allir lyklar eru aftur á sjálfgefnu
 loading.plain = Hleð
 loading.world = Hleð heiminum
 loading.creating = Bý til heiminn
+loading.saving = Vista heiminn
 
 hud.inventory = Birgðir
 hud.inventory_hint = örvarnar færa   F1-F6 setur í stikuna   Tab lokar
@@ -137,6 +138,11 @@ dir.s = suður
 dir.sw = suðvestur
 dir.w = vestur
 dir.nw = norðvestur
+
+dir.n.short = N
+dir.e.short = A
+dir.s.short = S
+dir.w.short = V
 
 shot.saved = Vistað: screenshots/shot%03d.png
 shot.failed = Skjámyndin mistókst

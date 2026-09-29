@@ -117,6 +117,7 @@ status.keys_reset = Все клавиши снова по умолчанию
 loading.plain = Загрузка
 loading.world = Загрузка мира
 loading.creating = Создание мира
+loading.saving = Сохранение мира
 
 hud.inventory = Инвентарь
 hud.inventory_hint = стрелки перемещают   F1-F6 кладёт на панель   Tab закрывает
@@ -137,6 +138,11 @@ dir.s = юг
 dir.sw = юго-запад
 dir.w = запад
 dir.nw = северо-запад
+
+dir.n.short = С
+dir.e.short = В
+dir.s.short = Ю
+dir.w.short = З
 
 shot.saved = Сохранено: screenshots/shot%03d.png
 shot.failed = Снимок не удался

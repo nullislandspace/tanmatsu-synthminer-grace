@@ -117,6 +117,7 @@ status.keys_reset = Όλα τα πλήκτρα είναι πάλι στις πρ
 loading.plain = Φόρτωση
 loading.world = Φόρτωση του κόσμου
 loading.creating = Δημιουργία του κόσμου
+loading.saving = Αποθήκευση του κόσμου
 
 hud.inventory = Αποθήκη
 hud.inventory_hint = τα βέλη μετακινούν   F1-F6 το βάζει στη μπάρα   Tab κλείνει
@@ -137,6 +138,11 @@ dir.s = νότο
 dir.sw = νοτιοδυτικά
 dir.w = δυτικά
 dir.nw = βορειοδυτικά
+
+dir.n.short = Β
+dir.e.short = Α
+dir.s.short = Ν
+dir.w.short = Δ
 
 shot.saved = Αποθηκεύτηκε: screenshots/shot%03d.png
 shot.failed = Η λήψη απέτυχε

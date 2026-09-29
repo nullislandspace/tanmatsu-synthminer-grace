@@ -117,6 +117,7 @@ status.keys_reset = Alle taster er tilbage på standard
 loading.plain = Indlæser
 loading.world = Indlæser verdenen
 loading.creating = Opretter verdenen
+loading.saving = Gemmer verdenen
 
 hud.inventory = Beholdning
 hud.inventory_hint = piletasterne flytter   F1-F6 lægger det i bjælken   Tab lukker
@@ -137,6 +138,11 @@ dir.s = syd
 dir.sw = sydvest
 dir.w = vest
 dir.nw = nordvest
+
+dir.n.short = N
+dir.e.short = Ø
+dir.s.short = S
+dir.w.short = V
 
 shot.saved = Gemt: screenshots/shot%03d.png
 shot.failed = Skærmbilledet mislykkedes

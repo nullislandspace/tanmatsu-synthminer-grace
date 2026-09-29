@@ -41,6 +41,18 @@ void hud_crosshair(pax_buf_t* fb);
 // quarter resolution are unreadable.
 void hud_player(pax_buf_t* fb, player_t const* p);
 
+// THE COMPASS: a strip across the top of the screen with a tick every
+// 15 degrees, the four points named where they fall, and HOME marked
+// in gold -- the bed if one has been slept in, the world's spawn
+// column otherwise.
+//
+// `yaw` is the heading in radians (0 is north, + turns east, the same
+// convention as everything else here). `home_dx`/`home_dz` are where
+// home is FROM the player, in blocks; if the bearing falls off the end
+// of the strip the mark is pinned to the edge it lies past, so it says
+// which way to turn rather than going away.
+void hud_compass(pax_buf_t* fb, float yaw, bool have_home, double home_dx, double home_dz);
+
 // The Tab screen, over everything. Nothing if it is not open.
 void hud_inventory(pax_buf_t* fb, player_t const* p);
 

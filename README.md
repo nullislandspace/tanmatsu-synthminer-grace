@@ -229,7 +229,7 @@ The camera is the player unless you press **F**. The defaults:
 | `Tab` | inventory — cursor keys move, `F1`–`F6` put a stack on the hotbar |
 | `F1`–`F6` | hotbar slot |
 | `Esc` | pause menu |
-| `Backspace` | show position, heading and time of day |
+| `Backspace` | show position, heading and time of day (the compass at the top is always there, with home marked in gold) |
 | `0` | screenshot, saved to `/sd/synthminer/screenshots/shotNNN.png` |
 | `F` | switch to the debug camera and back (not if you have bound F to something) |
 

@@ -117,6 +117,7 @@ status.keys_reset = Minden billentyű újra alapértelmezett
 loading.plain = Betöltés
 loading.world = A világ betöltése
 loading.creating = A világ létrehozása
+loading.saving = A világ mentése
 
 hud.inventory = Tárgyak
 hud.inventory_hint = a nyilak mozgatnak   F1-F6 a sávra teszi   a Tab bezár
@@ -137,6 +138,11 @@ dir.s = dél
 dir.sw = délnyugat
 dir.w = nyugat
 dir.nw = északnyugat
+
+dir.n.short = É
+dir.e.short = K
+dir.s.short = D
+dir.w.short = Ny
 
 shot.saved = Mentve: screenshots/shot%03d.png
 shot.failed = A képernyőkép nem sikerült

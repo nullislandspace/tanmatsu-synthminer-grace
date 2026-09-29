@@ -117,6 +117,7 @@ status.keys_reset = Alla tangenter är tillbaka på standard
 loading.plain = Läser in
 loading.world = Läser in världen
 loading.creating = Skapar världen
+loading.saving = Sparar världen
 
 hud.inventory = Förråd
 hud.inventory_hint = piltangenterna flyttar   F1-F6 lägger det i raden   Tab stänger
@@ -137,6 +138,11 @@ dir.s = söder
 dir.sw = sydväst
 dir.w = väster
 dir.nw = nordväst
+
+dir.n.short = N
+dir.e.short = Ö
+dir.s.short = S
+dir.w.short = V
 
 shot.saved = Sparad: screenshots/shot%03d.png
 shot.failed = Skärmbilden misslyckades

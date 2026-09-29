@@ -117,6 +117,7 @@ status.keys_reset = Усі клавіші знову типові
 loading.plain = Завантаження
 loading.world = Завантаження світу
 loading.creating = Створення світу
+loading.saving = Збереження світу
 
 hud.inventory = Інвентар
 hud.inventory_hint = стрілки переміщають   F1-F6 кладе на панель   Tab закриває
@@ -137,6 +138,11 @@ dir.s = південь
 dir.sw = південний захід
 dir.w = захід
 dir.nw = північний захід
+
+dir.n.short = Пн
+dir.e.short = Сх
+dir.s.short = Пд
+dir.w.short = Зх
 
 shot.saved = Збережено: screenshots/shot%03d.png
 shot.failed = Знімок не вдався

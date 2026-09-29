@@ -117,6 +117,7 @@ status.keys_reset = Tá gach eochair ar ais mar a bhí
 loading.plain = Á luchtú
 loading.world = An saol á luchtú
 loading.creating = An saol á chruthú
+loading.saving = An saol á shábháil
 
 hud.inventory = Fardal
 hud.inventory_hint = na saigheada a bhogann   F1-F6 a chuireann ar an mbarra   Tab a dhúnann
@@ -137,6 +138,11 @@ dir.s = ó dheas
 dir.sw = siar ó dheas
 dir.w = siar
 dir.nw = siar ó thuaidh
+
+dir.n.short = T
+dir.e.short = O
+dir.s.short = D
+dir.w.short = I
 
 shot.saved = Sábháilte: screenshots/shot%03d.png
 shot.failed = Theip ar an ngabháil

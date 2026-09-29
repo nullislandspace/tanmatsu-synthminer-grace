@@ -117,6 +117,7 @@ status.keys_reset = Kaikki näppäimet ovat taas oletuksissaan
 loading.plain = Ladataan
 loading.world = Ladataan maailmaa
 loading.creating = Luodaan maailmaa
+loading.saving = Tallennetaan maailmaa
 
 hud.inventory = Tavarat
 hud.inventory_hint = nuolet siirtävät   F1-F6 vie palkkiin   Tab sulkee
@@ -137,6 +138,11 @@ dir.s = etelä
 dir.sw = lounas
 dir.w = länsi
 dir.nw = luode
+
+dir.n.short = P
+dir.e.short = I
+dir.s.short = E
+dir.w.short = L
 
 shot.saved = Tallennettu: screenshots/shot%03d.png
 shot.failed = Kuvakaappaus epäonnistui

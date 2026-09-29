@@ -112,6 +112,7 @@ status.keys_reset = Alle Tasten stehen wieder auf Standard
 loading.plain = Lädt
 loading.world = Welt wird geladen
 loading.creating = Welt wird erstellt
+loading.saving = Welt wird gespeichert
 
 hud.inventory = Inventar
 hud.inventory_hint = Pfeiltasten bewegen   F1-F6 legt es auf die Leiste   Tab schließt
@@ -129,6 +130,11 @@ dir.s = Süden
 dir.sw = Südwesten
 dir.w = Westen
 dir.nw = Nordwesten
+
+dir.n.short = N
+dir.e.short = O
+dir.s.short = S
+dir.w.short = W
 
 shot.saved = Gespeichert: screenshots/shot%03d.png
 shot.failed = Screenshot fehlgeschlagen

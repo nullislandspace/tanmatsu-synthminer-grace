@@ -117,6 +117,7 @@ status.keys_reset = Todas las teclas vuelven a su valor por defecto
 loading.plain = Cargando
 loading.world = Cargando el mundo
 loading.creating = Creando el mundo
+loading.saving = Guardando el mundo
 
 hud.inventory = Inventario
 hud.inventory_hint = las flechas mueven   F1-F6 lo pone en la barra   Tab cierra
@@ -137,6 +138,11 @@ dir.s = sur
 dir.sw = suroeste
 dir.w = oeste
 dir.nw = noroeste
+
+dir.n.short = N
+dir.e.short = E
+dir.s.short = S
+dir.w.short = O
 
 shot.saved = Guardado: screenshots/shot%03d.png
 shot.failed = Falló la captura

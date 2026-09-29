@@ -103,6 +103,7 @@ typedef enum {
     SM_STR_LOADING_PLAIN,               // loading.plain
     SM_STR_LOADING_WORLD,               // loading.world
     SM_STR_LOADING_CREATING,            // loading.creating
+    SM_STR_LOADING_SAVING,              // loading.saving
     SM_STR_HUD_INVENTORY,               // hud.inventory
     SM_STR_HUD_INVENTORY_HINT,          // hud.inventory_hint
     SM_STR_INFO_POSITION,               // info.position
@@ -119,6 +120,10 @@ typedef enum {
     SM_STR_DIR_SW,                      // dir.sw
     SM_STR_DIR_W,                       // dir.w
     SM_STR_DIR_NW,                      // dir.nw
+    SM_STR_DIR_N_SHORT,                 // dir.n.short
+    SM_STR_DIR_E_SHORT,                 // dir.e.short
+    SM_STR_DIR_S_SHORT,                 // dir.s.short
+    SM_STR_DIR_W_SHORT,                 // dir.w.short
     SM_STR_SHOT_SAVED,                  // shot.saved
     SM_STR_SHOT_FAILED,                 // shot.failed
     SM_STR_SHOT_FULL,                   // shot.full

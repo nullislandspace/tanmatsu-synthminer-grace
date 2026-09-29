@@ -117,6 +117,7 @@ status.keys_reset = Të gjithë tastet janë përsëri të parazgjedhur
 loading.plain = Po ngarkohet
 loading.world = Po ngarkohet bota
 loading.creating = Po krijohet bota
+loading.saving = Po ruhet bota
 
 hud.inventory = Inventari
 hud.inventory_hint = shigjetat lëvizin   F1-F6 e vendos në shirit   Tab mbyll
@@ -137,6 +138,11 @@ dir.s = jug
 dir.sw = jugperëndim
 dir.w = perëndim
 dir.nw = veriperëndim
+
+dir.n.short = V
+dir.e.short = L
+dir.s.short = J
+dir.w.short = P
 
 shot.saved = U ruajt: screenshots/shot%03d.png
 shot.failed = Fotografimi dështoi

@@ -189,6 +189,7 @@ typedef enum {
     APP_TITLE = 0,  // "SynthMiner" in blocks over a generated meadow
     APP_PLAY,       // a real world, open and saving
     APP_LOADING,    // generating what the next state will look at, with a progress bar
+    APP_SAVING,     // writing the world out before leaving it, with the same
 } app_state_t;
 
 static app_state_t s_app = APP_TITLE;
@@ -1451,9 +1452,15 @@ static void save_world(char const* why) {
     save_world_ex(why, true);
 }
 
-static void save_world_ex(char const* why, bool wait) {
-    if (s_app != APP_PLAY) return;
-
+// WRITING A WORLD, IN THREE PIECES, because the quit path drives them a
+// frame apart and the ordinary save runs all three in a row. Splitting
+// it is the only way the screen in between can exist: the middle piece
+// is the slow one, and nothing is drawn while it runs.
+//
+// 1. what the player is, into s_saved -- microseconds
+// 2. the dirty chunks, through the worker and the card -- the slow one
+// 3. level.smw, and the line that says what happened
+static void save_world_state(void) {
     if (s_player_ready) {
         s_saved.x     = s_player.body.x;
         s_saved.y     = s_player.body.y;
@@ -1472,14 +1479,21 @@ static void save_world_ex(char const* why, bool wait) {
     s_saved.inv_selected = s_player.inv.selected;
     int64_t const now    = (int64_t)time(NULL);
     if (now > 0) s_meta.last_played = now;
+}
 
-    int const chunks = wait ? save_dirty_chunks() : request_dirty_chunks();
-
+static void save_world_level(char const* why, int chunks, bool waited) {
     s_items.n     = item_entity_copy(s_items.e, ITEM_ENTITY_MAX);
     bool const ok = worldstore_save(&s_meta, &s_saved, &s_items);
-    ESP_LOGI(TAG, "saved (%s): %d chunk(s)%s, level.smw %s", why, chunks, wait ? "" : " queued",
+    ESP_LOGI(TAG, "saved (%s): %d chunk(s)%s, level.smw %s", why, chunks, waited ? "" : " queued",
              ok ? "written" : "FAILED");
     menu_status(ok ? "Saved" : "SAVING FAILED");
+}
+
+static void save_world_ex(char const* why, bool wait) {
+    if (s_app != APP_PLAY) return;
+    save_world_state();
+    int const chunks = wait ? save_dirty_chunks() : request_dirty_chunks();
+    save_world_level(why, chunks, wait);
 }
 
 // --- Loading ---------------------------------------------------------------
@@ -1508,6 +1522,62 @@ static struct {
     float       progress;  // 0..1, for the bar
     load_gate_t gate;
 } s_load;
+
+// --- Saving, and leaving ---------------------------------------------------
+//
+// Writing a world is the slowest thing the game does on purpose, and
+// the user watched it: **"when the player selects save and quit to
+// title, show a saving screen so the player doesn't think the game
+// hangs if saving takes a bit longer"**. Done inside the menu's key
+// handler, the last frame left on the glass is the pause menu with a
+// highlighted button -- which is precisely what a hang looks like.
+//
+// So it is a STATE, like loading, for the same reason loading is one:
+// a frame can only be drawn between two pieces of work, never during
+// one. The words go up first and nothing blocks until they have; then
+// the chunks are written, a frame is drawn, then level.smw.
+//
+// The bar therefore moves ONCE, not smoothly -- the long pole is the
+// chunk sweep and the card underneath it, and that is one call. Saying
+// this out loud because a bar that jumps from a quarter to full looks
+// like a bug unless you know it is two pieces of work and not a
+// hundred.
+#define SAVE_BAR_CHUNKS 0.25f  // where the bar sits while the chunks go out
+static struct {
+    int   step;    // 0 nothing yet, 1 the chunks are written
+    int   chunks;  // ... and how many, for the line at the end
+    int   drawn;   // frames the screen has actually had
+    float progress;
+} s_save;
+
+static void start_saving(void) {
+    s_save = (typeof(s_save)){.step = 0, .chunks = 0, .drawn = 0, .progress = 0.0f};
+    menu_close();
+    s_app = APP_SAVING;
+}
+
+static void saving_step(void) {
+    // NOT UNTIL THE SCREEN HAS BEEN DRAWN. The whole point is that the
+    // words are on the glass before anything blocks, and only the
+    // render side knows that they are.
+    if (s_save.drawn == 0) return;
+    if (s_save.step == 0) {
+        save_world_state();
+        s_save.chunks   = save_dirty_chunks();
+        s_save.progress = SAVE_BAR_CHUNKS;
+        s_save.step     = 1;
+        return;
+    }
+    save_world_level("quitting to the title", s_save.chunks, true);
+    s_save.progress = 1.0f;
+    // On success this becomes APP_LOADING (enter_title -> start_loading).
+    // On failure it must not stay APP_SAVING, or the world is written
+    // again every frame for ever.
+    if (!enter_title()) {
+        ESP_LOGE(TAG, "the title world would not open; staying in the world that was just saved");
+        s_app = APP_PLAY;
+    }
+}
 
 // --- The bed ----------------------------------------------------------
 //
@@ -1699,6 +1769,26 @@ static void loading_step(void) {
     if (s_bench_scene) bench_ready();
 }
 
+// The saving screen: the same furniture as the loading one, because it
+// is the same promise -- something is happening, here is how far along.
+static void draw_saving(pax_buf_t* fb) {
+    pax_background(fb, 0xFF14181Eu);
+    float const       w   = (float)DISPLAY_LOG_W, h = (float)DISPLAY_LOG_H;
+    char const* const msg = T(SM_STR_LOADING_SAVING);
+    pax_vec2f const   sz  = rendertext_size(NULL, 30.0f, msg);
+    rendertext_draw(fb, 0xFFFFFFFFu, NULL, 30.0f, (w - sz.x) * 0.5f, h * 0.40f, msg);
+    if (s_meta.name[0] != '\0' && s_meta.name[0] != '(') {
+        pax_vec2f const nz = rendertext_size(NULL, 18.0f, s_meta.name);
+        rendertext_draw(fb, 0xFFA0A8B0u, NULL, 18.0f, (w - nz.x) * 0.5f, h * 0.40f + 42.0f, s_meta.name);
+    }
+    float const bw = 420.0f, bh = 14.0f, bx = (w - bw) * 0.5f, by = h * 0.62f;
+    pax_simple_rect(fb, 0xFF3A4048u, bx, by, bw, bh);
+    pax_simple_rect(fb, 0xFF6CC24Au, bx, by, bw * s_save.progress, bh);
+    // Counted HERE, not in the update, because "has the player seen it"
+    // is a question only the side that draws can answer.
+    if (s_save.drawn < 1000) s_save.drawn++;
+}
+
 // The loading screen: what is happening, and how far along it is.
 static void draw_loading(pax_buf_t* fb) {
     pax_background(fb, 0xFF14181Eu);
@@ -1776,6 +1866,12 @@ static void on_update(float dt, void* user) {
     // is here on the game thread and not in the mixer (music.h).
     sm_audio_frame(dt);
 
+    // Writing the world out before leaving it, a piece a frame.
+    if (s_app == APP_SAVING) {
+        saving_step();
+        return;
+    }
+
     // Generating what the next screen needs, a slice a frame.
     if (s_app == APP_LOADING) {
         loading_step();
@@ -1833,8 +1929,9 @@ static void on_update(float dt, void* user) {
             case MENU_CMD_SAVE_QUIT:
                 stop_recording();
                 replay_stop();
-                save_world("quitting to the title");
-                enter_title();
+                // NOT HERE. The screen goes up first and the writing
+                // happens under it (start_saving, APP_SAVING).
+                start_saving();
                 break;
             case MENU_CMD_LEAVE:
                 ESP_LOGI(TAG, "leaving for the launcher");
@@ -2318,6 +2415,13 @@ static void on_backdrop(pax_buf_t* fb, void* user) {
 // Per frame, after the engine has cleared the backdrop.
 static void on_render(pax_buf_t* fb, void* user) {
     (void)user;
+    if (s_app == APP_SAVING) {
+        draw_saving(fb);
+        se_stream_frame(fb);
+        devtest_after_render(fb, 0);
+        frame_stats();
+        return;
+    }
     if (s_app == APP_LOADING) {
         draw_loading(fb);
         // The loading screen is a screen like any other, and it is the
@@ -2506,6 +2610,17 @@ static void on_render(pax_buf_t* fb, void* user) {
         // the wrong thing: the block outline shows what he aims at.
         if (!third_person()) hud_crosshair(fb);
         hud_mine_progress(fb, player_mine_progress(&s_player));
+        // The compass, and HOME on it: the bed if one has been slept
+        // in, the column the world put them at otherwise. Both are the
+        // same answer to "where do I come back to", which is what the
+        // mark is for -- use_bed() moves it and this follows.
+        {
+            double const hx = (double)(s_saved.has_bed ? s_saved.bed_x : s_meta.spawn_x) + 0.5;
+            double const hz = (double)(s_saved.has_bed ? s_saved.bed_z : s_meta.spawn_z) + 0.5;
+            float        cyaw = s_player.yaw;
+            player_eye(&s_player, tick_alpha(&s_tick), NULL, NULL, NULL, &cyaw, NULL);
+            hud_compass(fb, cyaw, s_player_ready, hx - s_player.body.x, hz - s_player.body.z);
+        }
         hud_player(fb, &s_player);
         hud_inventory(fb, &s_player);
         if (craft_ui_active()) craft_ui_draw(fb, &s_player.inv);

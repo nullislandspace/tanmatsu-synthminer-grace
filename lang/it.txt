@@ -117,6 +117,7 @@ status.keys_reset = Tutti i tasti sono tornati ai valori predefiniti
 loading.plain = Caricamento
 loading.world = Caricamento del mondo
 loading.creating = Creazione del mondo
+loading.saving = Salvataggio del mondo
 
 hud.inventory = Inventario
 hud.inventory_hint = le frecce spostano   F1-F6 lo mette nella barra   Tab chiude
@@ -137,6 +138,11 @@ dir.s = sud
 dir.sw = sud-ovest
 dir.w = ovest
 dir.nw = nord-ovest
+
+dir.n.short = N
+dir.e.short = E
+dir.s.short = S
+dir.w.short = O
 
 shot.saved = Salvato: screenshots/shot%03d.png
 shot.failed = Cattura non riuscita

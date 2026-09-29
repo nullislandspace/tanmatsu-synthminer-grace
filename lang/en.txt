@@ -141,6 +141,9 @@ status.keys_reset = Every key is back to its default
 loading.plain = Loading
 loading.world = Loading world
 loading.creating = Creating world
+# Shown while a world is written out on the way back to the title. The save
+# blocks, so these words have to be on the screen BEFORE it starts.
+loading.saving = Saving world
 
 # --- The heads-up display ---------------------------------------------------
 hud.inventory = Inventory
@@ -170,6 +173,17 @@ dir.s = south
 dir.sw = south-west
 dir.w = west
 dir.nw = north-west
+
+# --- The compass ------------------------------------------------------------
+# The four points, as they are written ON a compass in this language: one or
+# two letters, no more, because they are drawn between tick marks 32 pixels
+# apart. They are NOT the first letter of the words above by rule -- Polish
+# has poludnie and polnoc, Estonian louna and laas -- so each language says
+# its own, which is also how Hungarian gets Ny and Ukrainian gets Sh.
+dir.n.short = N
+dir.e.short = E
+dir.s.short = S
+dir.w.short = W
 
 # --- Screenshots ------------------------------------------------------------
 # %03d is the number the file was given

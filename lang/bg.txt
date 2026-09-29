@@ -112,6 +112,7 @@ status.keys_reset = Всички клавиши са по подразбиран
 loading.plain = Зарежда
 loading.world = Зареждане на света
 loading.creating = Създаване на света
+loading.saving = Запазване на света
 
 hud.inventory = Инвентар
 hud.inventory_hint = стрелките местят   F1-F6 слага на лентата   Tab затваря
@@ -129,6 +130,11 @@ dir.s = юг
 dir.sw = югозапад
 dir.w = запад
 dir.nw = северозапад
+
+dir.n.short = С
+dir.e.short = И
+dir.s.short = Ю
+dir.w.short = З
 
 shot.saved = Запазено: screenshots/shot%03d.png
 shot.failed = Снимката не успя

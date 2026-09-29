@@ -117,6 +117,7 @@ status.keys_reset = Сви тастери су поново подразумев
 loading.plain = Учитавање
 loading.world = Учитавање света
 loading.creating = Прављење света
+loading.saving = Чување света
 
 hud.inventory = Инвентар
 hud.inventory_hint = стрелице премештају   F1-F6 ставља на траку   Tab затвара
@@ -137,6 +138,11 @@ dir.s = југ
 dir.sw = југозапад
 dir.w = запад
 dir.nw = северозапад
+
+dir.n.short = С
+dir.e.short = И
+dir.s.short = Ј
+dir.w.short = З
 
 shot.saved = Сачувано: screenshots/shot%03d.png
 shot.failed = Снимак није успео

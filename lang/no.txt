@@ -117,6 +117,7 @@ status.keys_reset = Alle tastene er tilbake på standard
 loading.plain = Laster
 loading.world = Laster verdenen
 loading.creating = Lager verdenen
+loading.saving = Lagrer verdenen
 
 hud.inventory = Beholdning
 hud.inventory_hint = piltastene flytter   F1-F6 legger det i linjen   Tab lukker
@@ -137,6 +138,11 @@ dir.s = sør
 dir.sw = sørvest
 dir.w = vest
 dir.nw = nordvest
+
+dir.n.short = N
+dir.e.short = Ø
+dir.s.short = S
+dir.w.short = V
 
 shot.saved = Lagret: screenshots/shot%03d.png
 shot.failed = Skjermbildet mislyktes

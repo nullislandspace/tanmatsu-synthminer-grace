@@ -6666,6 +6666,20 @@ static struct {
     {"amount.title", 22.0f, 640.0f - 44.0f},
     {"amount.hint", 14.0f, 640.0f - 44.0f},
 
+    // THE COMPASS (game/hud.c): one or two letters between ticks 32 px
+    // apart, so the room is what is between two ticks less a margin. A
+    // translator who writes the whole word here fails this.
+    {"dir.n.short", 13.0f, 30.0f},
+    {"dir.e.short", 13.0f, 30.0f},
+    {"dir.s.short", 13.0f, 30.0f},
+    {"dir.w.short", 13.0f, 30.0f},
+
+    // The loading and saving screens: one line, centred on the display.
+    {"loading.plain", 30.0f, 800.0f - 32.0f},
+    {"loading.world", 30.0f, 800.0f - 32.0f},
+    {"loading.creating", 30.0f, 800.0f - 32.0f},
+    {"loading.saving", 30.0f, 800.0f - 32.0f},
+
     // The line a block shows when it will not break, top left.
     {"hud.needs_tool", 16.0f, 800.0f - 32.0f},
 

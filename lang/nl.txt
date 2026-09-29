@@ -111,6 +111,7 @@ status.keys_reset = Alle toetsen staan weer op standaard
 loading.plain = Laden
 loading.world = Wereld laden
 loading.creating = Wereld aanmaken
+loading.saving = Wereld opslaan
 
 hud.inventory = Inventaris
 hud.inventory_hint = pijltjestoetsen verplaatsen   F1-F6 zet het op de balk   Tab sluit
@@ -128,6 +129,11 @@ dir.s = zuiden
 dir.sw = zuidwesten
 dir.w = westen
 dir.nw = noordwesten
+
+dir.n.short = N
+dir.e.short = O
+dir.s.short = Z
+dir.w.short = W
 
 shot.saved = Bewaard: screenshots/shot%03d.png
 shot.failed = Schermafbeelding mislukt

@@ -6115,6 +6115,64 @@ types the code:
   puts his boots through the floor. That is Minecraft's cheat too. His
   head rides it without tipping with it.
 
+- **D-131** 2026-09-29, **the user**: *"Add a small compass (just small
+  vertical lines with a legend for the major directions) at the top of
+  the screen. And mark the current spawn point of the player on it as
+  well, so they can find home easily."*
+
+  A strip 320 px wide showing **150 degrees of heading**, so a tick
+  every 15 degrees is 32 px apart and three or four of them carry a
+  letter. The span is the only number with any judgement in it: wider
+  and the ticks crowd, narrower and the strip sweeps faster than the
+  world does behind it, which reads as a bug rather than as a compass.
+
+  **HOME is the bed if one has been slept in and the world's spawn
+  column otherwise**, which is the same answer `use_bed` already gives
+  to "where do I wake up" -- so the mark follows the bed for free. It
+  is gold, it is not drawn when you are within two blocks of it (the
+  bearing to a point you are standing on swings right round as you walk
+  past, and a mark that spins is worse than none), and when it falls
+  off the end of the strip it is **pinned to the edge as an arrowhead**
+  rather than disappearing. That last part is the "find home easily":
+  the moment home is behind you is the moment the mark has something to
+  say.
+
+  **The letters needed four new strings, not a rule.** The first
+  thought was to take the first letter of `dir.n` and uppercase it,
+  which is wrong in five of the thirty-two languages: Polish has
+  *polnoc* and *poludnie*, Estonian *louna* and *laas*, Ukrainian
+  *pivnich* and *pivden*, Irish *o thuaidh* and *o dheas*. So
+  `dir.*.short` is a string like any other and each language says its
+  own -- which is also how German gets O for Osten, Hungarian Ny,
+  Ukrainian Pn/Pd and Greek its own alphabet. The text-fit check got
+  four new rows with 30 px of room, so a translator who writes the
+  whole word there fails the build.
+
+- **D-132** 2026-09-29, **the user**: *"When the player selects 'save
+  and quit to title', show a 'saving' screen so the player doesn't
+  think the game hangs if saving takes a bit longer."*
+
+  Writing a world is the slowest thing the game does on purpose, and
+  it was being done inside the menu's key handler -- so the last frame
+  left on the glass was the pause menu with a highlighted button, which
+  is exactly what a hang looks like.
+
+  Saving is now a STATE (`APP_SAVING`), for the same reason loading is
+  one: **a frame can only be drawn between two pieces of work, never
+  during one.** So `save_world_ex` was split into the three pieces it
+  always was -- the player's state, the dirty chunks, then level.smw --
+  and the quit path drives them a frame apart, with the screen up
+  before the first of them blocks. The update side refuses to start
+  until the RENDER side has counted a frame, because "has the player
+  seen it" is a question only the side that draws can answer.
+
+  The bar therefore **moves once**, not smoothly: the long pole is the
+  chunk sweep and the card under it, and that is one call. Said out
+  loud here because a bar that jumps from a quarter to full looks like
+  a bug unless you know it is two pieces of work and not a hundred.
+  Slicing the sweep itself would need the worker drain broken up, which
+  is a bigger change than the user asked for.
+
 - **D-121** 2026-09-29, **the user**: **animals are generated with the
   land.** A herd or two is placed when a chunk is first generated, in
   the biomes that suit it, and after that only breeding makes more.

@@ -117,6 +117,7 @@ status.keys_reset = Totes les tecles tornen al valor per defecte
 loading.plain = S'està carregant
 loading.world = S'està carregant el món
 loading.creating = S'està creant el món
+loading.saving = S'està desant el món
 
 hud.inventory = Inventari
 hud.inventory_hint = les fletxes mouen   F1-F6 ho posa a la barra   Tab tanca
@@ -137,6 +138,11 @@ dir.s = sud
 dir.sw = sud-oest
 dir.w = oest
 dir.nw = nord-oest
+
+dir.n.short = N
+dir.e.short = E
+dir.s.short = S
+dir.w.short = O
 
 shot.saved = Desat: screenshots/shot%03d.png
 shot.failed = La captura ha fallat

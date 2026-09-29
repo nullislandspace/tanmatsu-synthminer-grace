@@ -117,6 +117,7 @@ status.keys_reset = Sve su tipke opet na zadanom
 loading.plain = Učitavanje
 loading.world = Učitavanje svijeta
 loading.creating = Stvaranje svijeta
+loading.saving = Spremanje svijeta
 
 hud.inventory = Inventar
 hud.inventory_hint = strelice premještaju   F1-F6 stavlja na traku   Tab zatvara
@@ -137,6 +138,11 @@ dir.s = jug
 dir.sw = jugozapad
 dir.w = zapad
 dir.nw = sjeverozapad
+
+dir.n.short = S
+dir.e.short = I
+dir.s.short = J
+dir.w.short = Z
 
 shot.saved = Spremljeno: screenshots/shot%03d.png
 shot.failed = Snimka nije uspjela

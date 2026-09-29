@@ -117,6 +117,7 @@ status.keys_reset = Všechny klávesy jsou zase výchozí
 loading.plain = Načítání
 loading.world = Načítání světa
 loading.creating = Vytváření světa
+loading.saving = Ukládání světa
 
 hud.inventory = Inventář
 hud.inventory_hint = šipky přesouvají   F1-F6 dá na lištu   Tab zavírá
@@ -137,6 +138,11 @@ dir.s = jih
 dir.sw = jihozápad
 dir.w = západ
 dir.nw = severozápad
+
+dir.n.short = S
+dir.e.short = V
+dir.s.short = J
+dir.w.short = Z
 
 shot.saved = Uloženo: screenshots/shot%03d.png
 shot.failed = Snímek se nezdařil

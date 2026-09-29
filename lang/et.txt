@@ -117,6 +117,7 @@ status.keys_reset = Kõik klahvid on jälle vaikeväärtustel
 loading.plain = Laadin
 loading.world = Laadin maailma
 loading.creating = Loon maailma
+loading.saving = Salvestan maailma
 
 hud.inventory = Varustus
 hud.inventory_hint = nooled liigutavad   F1-F6 paneb ribale   Tab sulgeb
@@ -137,6 +138,11 @@ dir.s = lõuna
 dir.sw = edel
 dir.w = lääs
 dir.nw = loe
+
+dir.n.short = P
+dir.e.short = I
+dir.s.short = Lõ
+dir.w.short = Lä
 
 shot.saved = Salvestatud: screenshots/shot%03d.png
 shot.failed = Kuvatõmmis ebaõnnestus

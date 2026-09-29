@@ -463,6 +463,84 @@ void hud_player(pax_buf_t* fb, player_t const* p) {
     }
 }
 
+// --- The compass ----------------------------------------------------------
+//
+// 150 degrees of heading across 320 pixels, so a tick every 15 degrees
+// is 32 px apart and three or four of them are on screen with a letter
+// under them. Wider and the ticks crowd; narrower and the strip sweeps
+// faster than the world does behind it, which reads as a bug rather
+// than as a compass.
+#define CP_W    320
+#define CP_SPAN 150.0f
+#define CP_Y    6
+#define CP_H    28
+#define CP_GOLD 0xFFFFC840u
+
+static float wrap180(float d) {
+    while (d > 180.0f) d -= 360.0f;
+    while (d <= -180.0f) d += 360.0f;
+    return d;
+}
+
+void hud_compass(pax_buf_t* fb, float yaw, bool have_home, double home_dx, double home_dz) {
+    if (fb == NULL) return;
+    hud_begin(fb);
+
+    int const x0 = ((int)DISPLAY_LOG_W - CP_W) / 2;
+    int const cx = x0 + CP_W / 2;
+    box(fb, x0, CP_Y, CP_W, CP_H, 0xFF181820u);
+    frame(fb, x0, CP_Y, CP_W, CP_H, 1, 0xFF505058u);
+
+    // WHERE YOU ARE LOOKING is the middle of the strip, and it needs
+    // saying: a bar of ticks with nothing pointing at it is a ruler.
+    for (int i = 0; i < 5; i++) box(fb, cx - 4 + i, CP_Y - 5 + i, 9 - 2 * i, 1, 0xFFFFFFFFu);
+
+    float const deg = yaw * (180.0f / 3.14159265f);
+    float const ppd = (float)CP_W / CP_SPAN;
+    float const half = CP_SPAN * 0.5f;
+
+    static sm_str_t const POINT[4] = {SM_STR_DIR_N_SHORT, SM_STR_DIR_E_SHORT, SM_STR_DIR_S_SHORT,
+                                      SM_STR_DIR_W_SHORT};
+    for (int d = 0; d < 360; d += 15) {
+        float const off = wrap180((float)d - deg);
+        if (off < -half || off > half) continue;
+        int const  x     = cx + (int)lrintf(off * ppd);
+        bool const point = (d % 90) == 0;
+        box(fb, x, CP_Y + 2, 1, point ? 10 : (d % 45) == 0 ? 7 : 5, point ? 0xFFFFFFFFu : 0xFF707888u);
+        if (!point) continue;
+        // The letter the players of THIS language expect on a compass
+        // (lang/*.txt, dir.*.short): O for Osten, C for север, Pn for
+        // polnoc. One or two of them, centred under the tick.
+        char const* const name = T(POINT[d / 90]);
+        if (name == NULL || name[0] == 0) continue;
+        pax_vec2f const sz = rendertext_size(NULL, 13.0f, name);
+        float const     tx = (float)x - sz.x * 0.5f;
+        rendertext_draw(fb, 0xFF000000u, NULL, 13.0f, tx + 1.0f, (float)(CP_Y + 14), name);
+        rendertext_draw(fb, 0xFFFFFFFFu, NULL, 13.0f, tx, (float)(CP_Y + 13), name);
+    }
+
+    // HOME. Not drawn when you are standing on it -- the bearing to a
+    // point two blocks away swings right round as you walk past it, and
+    // a mark that spins is worse than no mark.
+    if (!have_home) return;
+    if (home_dx * home_dx + home_dz * home_dz < 4.0) return;
+
+    float const to   = atan2f((float)home_dx, (float)home_dz) * (180.0f / 3.14159265f);
+    float const hoff = wrap180(to - deg);
+    if (hoff >= -half && hoff <= half) {
+        int const x = cx + (int)lrintf(hoff * ppd);
+        box(fb, x - 1, CP_Y + 2, 3, 10, CP_GOLD);
+    } else {
+        // Behind you: pinned to the end it lies past, as an arrowhead,
+        // because "home is not on this strip" is the one moment the
+        // mark has something to say.
+        bool const right = hoff > 0.0f;
+        int const  edge  = right ? x0 + CP_W - 3 : x0 + 2;
+        int const  mid   = CP_Y + 7;
+        for (int i = 0; i < 5; i++) box(fb, right ? edge - i : edge + i, mid - i, 1, 2 * i + 1, CP_GOLD);
+    }
+}
+
 // The Tab screen: the same slots the hotbar draws, in the grid they
 // actually live in, with the hotbar as its bottom row -- so "move this
 // up to where I can reach it" is a direction rather than a rule to
