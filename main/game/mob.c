@@ -317,6 +317,23 @@ static bool wants(mob_t const* m, uint16_t item) {
     return item == d->feed[0] || item == d->feed[1];
 }
 
+// The nearest OTHER adult of the same kind that has also been fed, or
+// NULL. What an animal in the mood walks towards.
+static mob_t* partner_for(mob_t const* m) {
+    mob_t* best = NULL;
+    double best_d = (double)MOB_SEEK_RANGE * (double)MOB_SEEK_RANGE;
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_t* o = &s_pool[i];
+        if (o == m || !o->alive || o->kind != m->kind || o->baby || o->love == 0 || o->breed_cd > 0) continue;
+        double const dx = o->body.x - m->body.x, dz = o->body.z - m->body.z;
+        double const d2 = dx * dx + dz * dz;
+        if (d2 >= best_d) continue;
+        best_d = d2;
+        best   = o;
+    }
+    return best;
+}
+
 static void breed_pass(mob_t* m, uint32_t now) {
     if (m->baby || m->love == 0) return;
     for (int i = 0; i < MOB_MAX; i++) {
@@ -369,12 +386,29 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         // --- What it wants ------------------------------------------
         double const dx = you.x - m->body.x, dz = you.z - m->body.z;
         double const to_you = sqrt(dx * dx + dz * dz);
-        bool const   lured  = wants(m, you.held) && to_you < (double)MOB_FOLLOW_RANGE;
+        // LURED BY FOOD -- unless it has had some. An animal that is
+        // already looking for a partner, or resting after breeding, is
+        // not interested in the player waving another potato (the
+        // user's rule): it has somewhere else to be, and following the
+        // player is what kept dragging a fed pig away from the other
+        // one. A calf has no mood and is always lured.
+        bool const   busy   = !m->baby && (m->love > 0 || m->breed_cd > 0);
+        bool const   lured  = !busy && wants(m, you.held) && to_you < (double)MOB_FOLLOW_RANGE;
         bool const   heel   = m->tame && !m->sitting && to_you > 4.0;
 
         if (m->intent == MOB_FLEE && m->intent_for == 0) m->intent = MOB_STAND;
+        // IN THE MOOD BEATS EVERYTHING BUT FEAR. Two fed animals walk
+        // to each other rather than waiting to be herded together,
+        // which is what made feeding a pen of pigs look like it did
+        // nothing at all (F-124): the mood lasts thirty seconds and
+        // they have to be within two and a half blocks of each other
+        // while it lasts.
+        mob_t const* mate = (!m->baby && m->love > 0 && m->breed_cd == 0) ? partner_for(m) : NULL;
         if (m->sitting) {
             m->intent = MOB_STAND;
+        } else if (m->intent != MOB_FLEE && mate != NULL) {
+            m->intent = MOB_SEEK;
+            m->yaw    = (float)atan2(mate->body.x - m->body.x, mate->body.z - m->body.z);
         } else if (m->intent != MOB_FLEE && (lured || heel)) {
             m->intent = MOB_FOLLOW;
             m->yaw    = (float)atan2(dx, dz);
@@ -402,6 +436,7 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         switch (m->intent) {
             case MOB_WANDER: speed = d->speed; break;
             case MOB_FOLLOW: speed = d->speed * 1.4f; break;
+            case MOB_SEEK: speed = d->speed * 1.4f; break;
             case MOB_FLEE:
                 speed = d->speed * 2.0f;
                 yaw   = (float)atan2(m->flee_x, m->flee_z);
@@ -485,11 +520,20 @@ int mob_pick(double ex, double ey, double ez, float dx, float dy, float dz, floa
     for (int i = 0; i < MOB_MAX; i++) {
         mob_t const* m = &s_pool[i];
         if (!m->alive) continue;
-        // The slab test, against the creature's own box. Half a dozen
-        // compares per creature and no square roots.
-        double const hw = (double)m->body.w * 0.5;
-        double const lo[3] = {m->body.x - hw, m->body.y, m->body.z - hw};
-        double const hi[3] = {m->body.x + hw, m->body.y + (double)m->body.h, m->body.z + hw};
+        // The slab test, against the creature's own box -- GROWN A
+        // LITTLE for the pointing, which is not the same question as
+        // the colliding.
+        //
+        // A pig is 0.9 blocks tall and the player's eye is at 1.62, so
+        // at two paces the crosshair passes clean over its back unless
+        // you look twenty degrees down. That is what made feeding pigs
+        // feel broken while cows (1.4 tall) worked (F-124). The margin
+        // is what a hand on a d-pad needs; it is not enough to let you
+        // hit something you are not looking at.
+        double const grow = (double)MOB_AIM_MARGIN;
+        double const hw   = (double)m->body.w * 0.5 + grow;
+        double const lo[3] = {m->body.x - hw, m->body.y - grow, m->body.z - hw};
+        double const hi[3] = {m->body.x + hw, m->body.y + (double)m->body.h + grow, m->body.z + hw};
         double const o[3]  = {ex, ey, ez};
         double const v[3]  = {(double)dx, (double)dy, (double)dz};
         double       t0 = 0.0, t1 = (double)reach;
@@ -596,11 +640,17 @@ mob_use_result_t mob_use(int i, uint16_t item) {
     // that would otherwise be eaten).
     if (wants(m, item)) {
         if (m->baby) {
+            // A young one eats to GROW, and has neither a mood nor a
+            // cooldown to be busy with.
             m->age += MOB_BABY_TICKS / 10u;
-        } else if (m->breed_cd == 0) {
-            m->love = (uint16_t)MOB_LOVE_TICKS;
+        } else if (m->love > 0 || m->breed_cd > 0) {
+            // ALREADY FED, OR RESTING AFTER BREEDING (the user's rule).
+            // It eats nothing and the food stays in your hand, which is
+            // what makes a stack of potatoes last as long as it should.
+            r.what = MOB_USE_BUSY;
+            return r;
         } else {
-            return r;  // too soon: it eats nothing and the food stays
+            m->love = (uint16_t)MOB_LOVE_TICKS;
         }
         m->say    = MOB_SAY_IDLE;
         r.what    = MOB_USE_FED;

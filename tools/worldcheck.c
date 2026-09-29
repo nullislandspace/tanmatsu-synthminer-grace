@@ -3014,6 +3014,137 @@ static double flat_dist(phys_body_t const* a, phys_body_t const* b) {
     return sqrt(dx * dx + dz * dz);
 }
 
+// ---------------------------------------------------------------------
+//  Breeding, from across a field (F-124)
+//
+//  The user bred cows and then fed "a load of potatoes" to pigs with
+//  nothing to show for it. The mechanism was never broken -- two fed
+//  pigs standing together make a piglet, and the check said so. What
+//  was broken is everything around it:
+//
+//    * two fed animals had to WANDER within two and a half blocks of
+//      each other before the mood wore off in thirty seconds, which is
+//      a coincidence, not a mechanic. They now walk to each other;
+//    * a fed animal and an unfed one looked exactly the same, so
+//      feeding the same pig twice was indistinguishable from feeding
+//      two of them. The crosshair says which;
+//    * and a pig is 0.9 blocks tall against a cow's 1.4, with the eye
+//      at 1.62 -- so the crosshair passes over a pig's back at two
+//      paces unless you look twenty degrees down.
+// ---------------------------------------------------------------------
+static void check_breeding(void) {
+    printf("breeding: two fed animals find each other (F-124)\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the breeding world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+
+    phys_body_t watcher;
+    phys_body_init(&watcher, 14.0, 20.0, 14.0);  // nobody anywhere near them
+    uint32_t clk = 4000;
+
+    // --- ACROSS A FIELD, not standing together --------------------------
+    for (int kind = MOB_PIG; kind <= MOB_COW; kind++) {
+        mob_reset();
+        int const a = mob_spawn((uint8_t)kind, 3.5, 20.0, 6.5, false);
+        int const b = mob_spawn((uint8_t)kind, 11.5, 20.0, 6.5, false);
+        CHECK(a >= 0 && b >= 0, "the pool would not take two of %s", mob_def((uint8_t)kind)->name);
+        uint16_t const food = mob_def((uint8_t)kind)->feed[0];
+        CHECK(mob_use(a, food).what == MOB_USE_FED, "%s would not take %s", mob_def((uint8_t)kind)->name,
+              item_def(food).name);
+        CHECK(mob_use(b, food).what == MOB_USE_FED, "the second %s would not be fed", mob_def((uint8_t)kind)->name);
+
+        int born = 0;
+        for (int t = 0; t < (int)MOB_LOVE_TICKS && born == 0; t++) {
+            mob_tick(clk++, &watcher, 0);
+            int n = 0;
+            for (int i = 0; i < MOB_MAX; i++) n += mob_at(i)->alive ? 1 : 0;
+            if (n > 2) born = t;
+        }
+        printf("  two %ss eight blocks apart, both fed: %s\n", mob_def((uint8_t)kind)->name,
+               born ? "bred" : "NEVER MET");
+        CHECK(born > 0, "two fed %ss eight blocks apart never found each other in %u ticks",
+              mob_def((uint8_t)kind)->name, MOB_LOVE_TICKS);
+    }
+
+    // --- A pig eats a potato; a cow does not ----------------------------
+    mob_reset();
+    int const pig = mob_spawn(MOB_PIG, 6.5, 20.0, 6.5, false);
+    int const pig_b = mob_spawn(MOB_PIG, 7.5, 20.0, 6.5, false);  // a pig of its own: one feed each
+    int const cow = mob_spawn(MOB_COW, 8.5, 20.0, 6.5, false);
+    CHECK(mob_use(pig, ITEM_POTATO).what == MOB_USE_FED, "a pig would not eat a potato");
+    CHECK(mob_use(pig_b, ITEM_BEANS).what == MOB_USE_FED, "a pig would not eat beans");
+    CHECK(mob_use(cow, ITEM_POTATO).what == MOB_USE_NOTHING, "a cow ate a potato");
+    CHECK(mob_use(cow, ITEM_WHEAT).what == MOB_USE_FED, "a cow would not eat wheat");
+
+    // FEEDING THE SAME ONE TWICE IS NOT FEEDING TWO. It is the mistake
+    // the crosshair line exists to make visible, so it had better be a
+    // mistake the code agrees about.
+    mob_reset();
+    int const p1 = mob_spawn(MOB_PIG, 6.5, 20.0, 6.5, false);
+    int const p2 = mob_spawn(MOB_PIG, 7.5, 20.0, 6.5, false);
+    int       eaten = 0;
+    for (int i = 0; i < 8; i++) {
+        mob_use_result_t const f = mob_use(p1, ITEM_POTATO);
+        if (f.consume) eaten++;
+    }
+    // ONLY THE FIRST ONE IS EATEN. Seven potatoes offered to a pig that
+    // is already looking for a partner stay in the player's hand, which
+    // is the user's rule and the thing that made a whole stack vanish.
+    CHECK(eaten == 1, "eight potatoes offered to one pig, %d eaten", eaten);
+    for (int t = 0; t < 200; t++) mob_tick(clk++, &watcher, 0);
+    int n = 0;
+    for (int i = 0; i < MOB_MAX; i++) n += mob_at(i)->alive ? 1 : 0;
+    CHECK(n == 2, "eight potatoes into one pig made %d pigs", n);
+    CHECK(mob_at(p1)->love > 0 && mob_at(p2)->love == 0, "the wrong pig is in the mood");
+
+    // A RESTING ONE IS NOT INTERESTED EITHER, and neither of them comes
+    // running when the player waves more food about.
+    mob_reset();
+    int const r1 = mob_spawn(MOB_PIG, 6.5, 20.0, 6.5, false);
+    mob_at_mut(r1)->breed_cd = 500;
+    CHECK(mob_use(r1, ITEM_POTATO).what == MOB_USE_BUSY, "a resting pig ate a potato");
+    CHECK(!mob_use(r1, ITEM_POTATO).consume, "a resting pig took the potato anyway");
+    {
+        phys_body_t near_by;
+        phys_body_init(&near_by, 9.5, 20.0, 6.5);  // three blocks off, holding potatoes
+        double const was = mob_at(r1)->body.x;
+        for (int t = 0; t < 100; t++) mob_tick(clk++, &near_by, ITEM_POTATO);
+        // It may still amble -- what it must not do is come running.
+        printf("  a resting pig drifted %.2f blocks while a player waved potatoes three away\n",
+               mob_at(r1)->body.x - was);
+        CHECK(mob_at(r1)->intent != MOB_FOLLOW, "a resting pig followed the food");
+        CHECK(fabs(mob_at(r1)->body.x - was) < 2.5, "a resting pig went to the player anyway");
+    }
+
+    // --- How far down you have to look at a pig -------------------------
+    //
+    // Reported rather than asserted at a number: what matters is that
+    // it is a shallow glance and not a stare at your own boots.
+    mob_reset();
+    int const target = mob_spawn(MOB_PIG, 8.5, 20.0, 6.5, false);
+    CHECK(target >= 0, "the pool would not take the pig");
+    int    first = 99;
+    for (int deg = 0; deg <= 40 && first == 99; deg += 2) {
+        float dx, dy, dz;
+        ray_forward(1.5708f, (float)deg * 3.14159f / 180.0f, &dx, &dy, &dz);
+        if (mob_pick(6.5, 20.0 + (double)PHYS_PLAYER_EYE, 6.5, dx, dy, dz, RAY_REACH, NULL) >= 0) first = deg;
+    }
+    printf("  a pig two blocks off is under the crosshair from %d degrees down (a cow: ", first);
+    mob_reset();
+    mob_spawn(MOB_COW, 8.5, 20.0, 6.5, false);
+    int cow_first = 99;
+    for (int deg = 0; deg <= 40 && cow_first == 99; deg += 2) {
+        float dx, dy, dz;
+        ray_forward(1.5708f, (float)deg * 3.14159f / 180.0f, &dx, &dy, &dz);
+        if (mob_pick(6.5, 20.0 + (double)PHYS_PLAYER_EYE, 6.5, dx, dy, dz, RAY_REACH, NULL) >= 0) cow_first = deg;
+    }
+    printf("%d)\n", cow_first);
+    CHECK(first <= 16, "a pig needs %d degrees of looking down to point at", first);
+    mob_reset();
+}
+
 static void check_shoving(void) {
     printf("shoving: two bodies do not share a space (F-123)\n");
     chunk_store_clear();
@@ -3273,7 +3404,10 @@ static void check_animals(void) {
     CHECK(mob_count_kind(MOB_COW) == 2, "one fed cow bred on its own");
     int const cow2 = mob_spawn(MOB_COW, 7.0, 20.0, 6.5, false);
     CHECK(cow2 >= 0, "the pool would not take a third cow");
-    CHECK(mob_use(cow, ITEM_WHEAT).what == MOB_USE_FED, "the cow would not be fed again");
+    // AN ANIMAL ALREADY IN THE MOOD EATS NOTHING (the user's rule): the
+    // first cow is still looking for a partner from the feed above.
+    CHECK(mob_use(cow, ITEM_WHEAT).what == MOB_USE_BUSY, "a cow already in the mood ate again");
+    CHECK(!mob_use(cow, ITEM_WHEAT).consume, "a refused feed still took the wheat");
     CHECK(mob_use(cow2, ITEM_WHEAT).what == MOB_USE_FED, "the second cow would not be fed");
     mob_run(&clock, 3, 60.0, 60.0, 0);
     CHECK(mob_count_kind(MOB_COW) == 4, "two fed cows made %d cows, not four", mob_count_kind(MOB_COW));
@@ -6570,6 +6704,7 @@ int main(void) {
     check_texture_budget();
     check_pens();
     check_shoving();
+    check_breeding();
     check_animals();
     check_makers();
     check_replay();

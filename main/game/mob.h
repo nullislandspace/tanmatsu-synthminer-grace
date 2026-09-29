@@ -65,6 +65,7 @@ typedef enum {
     MOB_WANDER,  // ambling in a direction it picked
     MOB_FLEE,    // just been hit, running from where the blow came
     MOB_FOLLOW,  // after a player: the food they are holding, or its owner
+    MOB_SEEK,    // fed, and walking to the nearest other fed one of its kind
 } mob_intent_t;
 
 // What it wants to say, drained once a tick by the caller. Never played
@@ -144,6 +145,18 @@ typedef struct {
 #define MOB_DOG_TELEPORT 18.0f
 #define MOB_HURT_TICKS  10u
 
+// HOW MUCH BIGGER A CREATURE IS TO AIM AT THAN TO WALK INTO. Pointing
+// and colliding are different questions: a pig is 0.9 blocks tall and
+// an eye is at 1.62, so without this you have to look twenty degrees
+// down to touch one at two paces (F-124).
+#define MOB_AIM_MARGIN 0.25f
+
+// HOW FAR AN ANIMAL IN THE MOOD WILL WALK TO FIND A PARTNER. Without
+// this, breeding depends on two fed animals happening to stand within
+// MOB_BREED_RANGE of each other before the mood wears off, which is
+// what made it look like feeding pigs did nothing at all.
+#define MOB_SEEK_RANGE 16.0f
+
 // WHAT A SWING IS WORTH against a creature, by what is in the hand.
 // Arithmetic over `tool` and `tool_level` rather than a column in
 // items.c: the day a weapon exists it becomes a column with something
@@ -199,6 +212,16 @@ typedef enum {
     MOB_USE_TAMED,
     MOB_USE_SIT,
     MOB_USE_STAND,
+    // IT WANTS THIS FOOD BUT NOT NOW: it has already been fed and is
+    // looking for a partner, or it is resting after breeding. The
+    // user's rule (2026-09-29), and it is what stops a handful of
+    // potatoes disappearing into one pig that was already fed.
+    //
+    // It counts as HANDLED even though nothing changed -- otherwise the
+    // use falls through to the world and a potato offered to a pig
+    // answers "plant this in tilled soil", which is a worse lie than
+    // saying nothing.
+    MOB_USE_BUSY,
 } mob_use_t;
 
 typedef struct {

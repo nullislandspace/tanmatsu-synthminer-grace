@@ -269,9 +269,13 @@ typedef enum {
     SM_STR_MOB_PIG,                     // mob.pig
     SM_STR_MOB_COW,                     // mob.cow
     SM_STR_MOB_DOG,                     // mob.dog
+    SM_STR_MOB_READY,                   // mob.ready
+    SM_STR_MOB_YOUNG,                   // mob.young
+    SM_STR_MOB_RESTING,                 // mob.resting
     SM_STR_ANIMAL_MILKED,               // animal.milked
     SM_STR_ANIMAL_FED,                  // animal.fed
     SM_STR_ANIMAL_TAMED,                // animal.tamed
+    SM_STR_ANIMAL_BUSY,                 // animal.busy
     SM_STR_ANIMAL_SITS,                 // animal.sits
     SM_STR_ANIMAL_STANDS,               // animal.stands
     SM_STR_MAKER_CHEESE_TITLE,          // maker.cheese_title

@@ -2473,6 +2473,7 @@ static void on_render(pax_buf_t* fb, void* user) {
                 case MOB_USE_TAMED: key = SM_STR_ANIMAL_TAMED; break;
                 case MOB_USE_SIT: key = SM_STR_ANIMAL_SITS; break;
                 case MOB_USE_STAND: key = SM_STR_ANIMAL_STANDS; break;
+                case MOB_USE_BUSY: key = SM_STR_ANIMAL_BUSY; break;
                 default: break;
             }
             char const* const line = T(key);
@@ -2484,8 +2485,23 @@ static void on_render(pax_buf_t* fb, void* user) {
             // that follows.
             mob_t const* const m = mob_at(s_player.hit_mob);
             if (m != NULL) {
-                char const* const line = T(mob_def(m->kind)->label);
-                hud_text_lines(fb, &line, 1);
+                // AND WHAT STATE IT IS IN, which is the half that was
+                // missing (F-124): "fed" and "not fed" looked exactly
+                // the same, so feeding the same animal twice was
+                // indistinguishable from feeding two. A young one says
+                // so too -- feeding it only grows it up.
+                static char line[96];
+                char const* p = line;
+                if (m->baby) {
+                    i18n_fmt(line, sizeof(line), SM_STR_MOB_YOUNG, T(mob_def(m->kind)->label));
+                } else if (m->love > 0) {
+                    i18n_fmt(line, sizeof(line), SM_STR_MOB_READY, T(mob_def(m->kind)->label));
+                } else if (m->breed_cd > 0) {
+                    i18n_fmt(line, sizeof(line), SM_STR_MOB_RESTING, T(mob_def(m->kind)->label));
+                } else {
+                    p = T(mob_def(m->kind)->label);
+                }
+                hud_text_lines(fb, &p, 1);
             }
         } else if (s_info || replay_recording()) {
             draw_info(fb);

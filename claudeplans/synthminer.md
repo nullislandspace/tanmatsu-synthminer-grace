@@ -4011,6 +4011,50 @@ types the code:
   hash of the two ids, not a constant, or every such pair would part
   the same way for ever.
 
+- **F-124** 2026-09-29, the user: *"I successfully bred cows, but i feed
+  a load of potatoes to pigs with no effect (except that the potatoes
+  get eaten)."* **The mechanism was never broken** -- the check written
+  that morning fed two pigs standing together and got a piglet, and it
+  still does. Everything AROUND it was broken, in three ways, and none
+  of them was visible from inside the code.
+
+  * **Two fed animals had to find each other by accident.** The mood
+    lasts thirty seconds and they have to be within two and a half
+    blocks of each other while it does. Nothing made them walk
+    together, so breeding worked when the animals happened to be
+    standing close and looked broken when they were not. They now
+    **seek the nearest other fed one of their kind** within 16 blocks,
+    which is Minecraft's behaviour and the missing half of the feature.
+  * **A fed animal looked exactly like an unfed one**, so feeding the
+    same pig twice was indistinguishable from feeding two -- and the
+    nearest animal is the one the crosshair finds, so a stack of
+    potatoes goes into whichever pig is in front. The crosshair line
+    now says which: *Pig*, *Pig - ready to breed*, *Pig - resting*,
+    *Pig - young*.
+  * **A pig is 0.9 blocks tall and an eye is at 1.62.** Measured: at two
+    paces you had to look **twenty degrees down** before the crosshair
+    touched a pig, against **zero** for a cow -- which is exactly the
+    difference between the animal the user bred and the one they could
+    not. Pointing and colliding are now different questions: the pick
+    box is grown by `MOB_AIM_MARGIN`, and a pig is under the crosshair
+    from ten degrees.
+
+  **And two rules the user added on being told all this** (2026-09-29):
+  an animal **does not eat again while it is already looking for a
+  partner or resting after breeding**, and while either is true it is
+  **not lured by a player holding its food**. Both are better than what
+  they replace. The first is what stops a stack of potatoes vanishing
+  into one pig -- the food stays in your hand and the refusal says so.
+  The second is subtler and matters more: a fed animal that still runs
+  after the player is a fed animal being dragged AWAY from the partner
+  it is supposed to be walking towards, which was the mechanism quietly
+  undoing the seek behaviour before it could finish.
+
+  A refusal counts as HANDLED rather than as nothing happening
+  (`MOB_USE_BUSY`), or the use falls through to the world and a potato
+  offered to a pig answers *"plant this in tilled soil"* -- a worse lie
+  than saying nothing at all.
+
 ### Decisions (D-n), each with date and who decided
 
 - **D-81** 2026-09-23, **the user**: **the UI is translated, English by
@@ -5656,6 +5700,13 @@ types the code:
   Cows take wheat, pigs take potatoes or beans, and a dog is fed raw
   beef. Feeding an adult puts it in the mood to breed; feeding a calf
   grows it up faster.
+
+  **Extended the same day** (F-124), by the user: an animal **will not
+  eat again** while it is already looking for a partner or resting
+  after breeding, and while either is true it is **not lured** by
+  somebody holding its food. The second is the one that makes breeding
+  work at all -- a fed animal that still runs after the player is being
+  dragged away from the partner it is walking towards.
 
   The alternative on the table was "any crop feeds anything", which is
   one rule instead of three. This is the better one for a farm with five

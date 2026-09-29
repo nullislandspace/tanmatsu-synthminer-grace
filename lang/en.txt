@@ -384,12 +384,22 @@ farm.already_ripe = It is ripe already
 mob.pig = Pig
 mob.cow = Cow
 mob.dog = Dog
+# Under the crosshair, when an animal has been fed and is looking for a
+# partner. %s is the animal's name
+mob.ready = %s - ready to breed
+# ... and when it is too young to breed at all
+mob.young = %s - young
+# ... and when it has bred recently and wants nothing
+mob.resting = %s - resting
 # Said when a bucket is used on a cow
 animal.milked = Milked
 # ... when an animal is given the food it likes
 animal.fed = It eats out of your hand
 # ... when a bone tames a wild dog
 animal.tamed = It follows you now
+# Said when an animal is offered food it likes but has already been fed,
+# or is resting after breeding
+animal.busy = It has had enough for now
 animal.sits = It sits down
 animal.stands = It gets up
 
