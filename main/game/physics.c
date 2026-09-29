@@ -4,6 +4,8 @@
 
 #include "game/physics.h"
 
+#include <math.h>
+
 #include "world/chunk.h"
 
 // floor() for a double, without libm: (int) truncates towards zero,
@@ -54,6 +56,48 @@ static bool solid_in(double x0, double y0, double z0, double x1, double y1, doub
             float const   top = block_collide_top(b);
             if (top <= 1.0f || !block_solid(b)) continue;
             if ((double)(iy0 - 1) + (double)top > y0 + PHYS_SKIN) return true;
+        }
+    }
+    return false;
+}
+
+// IS WHAT STOPPED THE BODY A FENCE -- something that reaches past its
+// own cell?
+//
+// This exists because of how a cow got out of a pen (F-122). The
+// step-up is a WHOLE BLOCK here (PHYS_STEP, and deliberately: this is a
+// handheld, and tapping jump at every clod of terrain is tiring). A
+// fence is a block and a half. So a body standing on ANYTHING one block
+// high beside one -- a tuft of dirt, a crop's soil, a chest -- is
+// lifted to 1.0 above its feet, which is ABOVE the fence's 1.5 top
+// measured from the fence's own floor, and the sideways move that
+// follows carries it clean over. Not onto: over, and down the far side,
+// in one step it never had to earn.
+//
+// The fix is to refuse the LIFT, not to inspect where it landed: by the
+// time it has landed it is already outside the pen. Jumping onto a
+// fence still works and falling onto one still works. What is gone is
+// the free block of lift, which is the only reason a block and a half
+// was ever climbable.
+static bool blocked_by_tall(phys_body_t const* b, double dx, double dz) {
+    double const hw = (double)b->w * 0.5;
+    // The cells just beyond the body on the axes that stopped it, from
+    // one below the feet (a fence beside a body standing on a block is
+    // in the cell BELOW it) to head height.
+    struct {
+        double x, z;
+    } const probes[2] = {
+        {b->hit_x ? (dx < 0.0 ? -(hw + 0.1) : hw + 0.1) : 0.0, 0.0},
+        {0.0, b->hit_z ? (dz < 0.0 ? -(hw + 0.1) : hw + 0.1) : 0.0},
+    };
+    int32_t const iy = fl(b->y + PHYS_SKIN);
+    for (int p = 0; p < 2; p++) {
+        if (probes[p].x == 0.0 && probes[p].z == 0.0) continue;
+        int32_t const x = fl(b->x + probes[p].x);
+        int32_t const z = fl(b->z + probes[p].z);
+        for (int32_t y = iy - 1; y <= iy + 1; y++) {
+            uint8_t const blk = world_block(x, y, z);
+            if (block_solid(blk) && block_collide_top(blk) > 1.0f) return true;
         }
     }
     return false;
@@ -151,6 +195,10 @@ void phys_move(phys_body_t* b, double dx, double dy, double dz) {
     // climbing it would let the player walk up sheer cliffs.
     double const blocked_x = b->x, blocked_y = b->y, blocked_z = b->z;
     bool const   blocked_hit_x = b->hit_x, blocked_hit_z = b->hit_z;
+
+    // A FENCE IS NOT A STEP (blocked_by_tall, F-122). Everything else
+    // one block high is.
+    if (blocked_by_tall(b, dx, dz)) return;
 
     b->x = ox;
     b->y = oy;

@@ -2939,6 +2939,100 @@ static void check_texture_budget(void) {
            TEX_BY_NAME - want);
 }
 
+// A 6 x 6 pen of fence, with whatever `extra` puts inside it, and a cow
+// left in it for `ticks`. Returns true if it was still in there.
+//
+// THIS IS THE CHECK THE FIRST ROUND NEEDED AND DID NOT HAVE. It ran a
+// PIG round a bare pen for two minutes, which is the one case that
+// always worked; the user built a pen with something in it and the cows
+// walked out over the fence (F-122). Every shape below is a shape
+// somebody's farm actually has.
+typedef enum { PEN_BARE = 0, PEN_BLOCK, PEN_GATE_SHUT, PEN_GATE_OPEN, PEN_STAIRS } pen_kind_t;
+
+static bool pen_holds(pen_kind_t kind, int ticks, double* high_out) {
+    chunk_store_clear();
+    blockupdate_clear();
+    flat_world(20);
+    mob_reset();
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    for (int i = 4; i <= 9; i++) {
+        set_block(i, 20, 4, BLK_FENCE, ST_PLACED);
+        set_block(i, 20, 9, BLK_FENCE, ST_PLACED);
+        set_block(4, 20, i, BLK_FENCE, ST_PLACED);
+        set_block(9, 20, i, BLK_FENCE, ST_PLACED);
+    }
+    // A BLOCK TO STAND ON, which is what a real pen has -- a tuft of
+    // terrain, a plot of soil, a chest -- and what let the cows out.
+    if (kind == PEN_BLOCK) set_block(6, 20, 5, BLK_DIRT, ST_PLACED);
+    if (kind == PEN_STAIRS) {
+        set_block(6, 20, 5, BLK_DIRT, ST_PLACED);
+        set_block(6, 21, 5, BLK_DIRT, ST_PLACED);  // deliberately a way out
+    }
+    if (kind == PEN_GATE_SHUT) set_block(6, 20, 4, BLK_FENCE_GATE, ST_PLACED);
+    if (kind == PEN_GATE_OPEN) set_block(6, 20, 4, BLK_FENCE_GATE_OPEN, ST_PLACED);
+
+    int const c = mob_spawn(MOB_COW, 6.5, 20.0, 6.5, false);
+    if (c < 0) return false;
+    uint32_t clk  = 1000;
+    double   high = 0.0;
+    bool     out  = false;
+    for (int t = 0; t < ticks && !out; t++) {
+        mob_tick(clk++, 60.0, 20.0, 60.0, 0);
+        mob_t const* m = mob_at(c);
+        if (m->body.y > high) high = m->body.y;
+        out = m->body.x < 4.0 || m->body.x > 10.0 || m->body.z < 4.0 || m->body.z > 10.0;
+    }
+    if (high_out != NULL) *high_out = high;
+    return !out;
+}
+
+static void check_pens(void) {
+    printf("pens: what actually keeps a cow in (F-122)\n");
+    double high = 0.0;
+
+    // 30000 ticks is about twenty-five minutes of play, and an animal
+    // that wanders for that long has tried every corner of a 6 x 6 pen
+    // many times over.
+    CHECK(pen_holds(PEN_BARE, 30000, &high), "a cow got out of a bare pen");
+    printf("  bare pen: it never got above y %.2f (the fence tops out at %.2f)\n", high, 20.0 + BLOCK_FENCE_TOP);
+    CHECK(high < 20.0 + (double)BLOCK_FENCE_TOP, "a cow in a bare pen reached the top of the fence");
+
+    // THE USER'S PEN. One block inside is all it took: the step-up is a
+    // whole block here, so from 21.0 the lift reaches 22.0 -- over a
+    // fence that tops out at 21.5 -- and the sideways move that follows
+    // carried the cow clean out the far side.
+    CHECK(pen_holds(PEN_BLOCK, 30000, &high), "a cow got out of a pen with a block to stand on");
+    printf("  with a block inside: it never got above y %.2f\n", high);
+
+    // A SHUT GATE IS FENCE. An open one is a hole, and has to be.
+    CHECK(pen_holds(PEN_GATE_SHUT, 30000, NULL), "a cow walked through a shut gate");
+    CHECK(!pen_holds(PEN_GATE_OPEN, 30000, NULL), "an open gate did not let a cow out");
+
+    // AND WHAT IS STILL ALLOWED: two blocks stacked inside is a
+    // staircase, and a creature standing 2.0 up is simply above a fence
+    // that reaches 1.5. That is the player's doing and it stays
+    // possible -- the rule is "a fence is not a step", not "a fence is
+    // a forcefield".
+    bool const stairs = pen_holds(PEN_STAIRS, 30000, &high);
+    printf("  with a two-block stack inside: %s (high %.2f) -- allowed either way\n", stairs ? "held" : "walked out",
+           high);
+
+    // THE PLAYER IS THE SAME BODY. Standing on a block against the
+    // fence, walking at it must not lift them over either.
+    chunk_store_clear();
+    flat_world(20);
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    for (int i = 4; i <= 9; i++) set_block(i, 20, 4, BLK_FENCE, ST_PLACED);
+    set_block(6, 20, 5, BLK_DIRT, ST_PLACED);
+    phys_body_t p;
+    phys_body_init(&p, 6.5, 21.0, 5.5);  // standing on the block, facing the fence
+    for (int t = 0; t < 60; t++) phys_move(&p, 0.0, -0.08, -0.08);
+    CHECK(p.z > 5.0, "the player stepped over a fence from a block beside it (z %.2f, y %.2f)", p.z, p.y);
+    printf("  a player on a block beside the fence stayed at z %.2f\n", p.z);
+}
+
 static void check_animals(void) {
     printf("animals: fences, feeding, milking, taming, and what a save keeps\n");
     chunk_store_clear();
@@ -3013,13 +3107,31 @@ static void check_animals(void) {
         set_block(4, 20, i, BLK_FENCE, ST_PLACED);
         set_block(9, 20, i, BLK_FENCE, ST_PLACED);
     }
-    int const pig = mob_spawn(MOB_PIG, 6.5, 20.0, 6.5, false);
-    CHECK(pig >= 0, "the pool would not take a pig");
-    mob_run(&clock, 2400, 60.0, 60.0, 0);
-    mob_t const* p = mob_at(pig);
-    CHECK(p->alive && p->body.x > 4.0 && p->body.x < 10.0 && p->body.z > 4.0 && p->body.z < 10.0,
-          "the pig got out of the pen (at %.2f, %.2f, %.2f)", p->body.x, p->body.y, p->body.z);
-    CHECK(p->body.y >= 19.9 && p->body.y <= 20.2, "the pig did not stay on the ground (y %.2f)", p->body.y);
+    // ONE OF EACH, because they are not the same body: a cow is 1.4
+    // blocks tall and a pig 0.9, and it was a COW that got out when the
+    // user built a pen (F-122). Long enough to be a real afternoon:
+    // 20000 ticks is about sixteen minutes of play.
+    int const pen[3] = {mob_spawn(MOB_PIG, 6.5, 20.0, 6.5, false), mob_spawn(MOB_COW, 7.5, 20.0, 6.5, false),
+                        mob_spawn(MOB_COW, 6.5, 20.0, 7.5, false)};
+    CHECK(pen[0] >= 0 && pen[1] >= 0 && pen[2] >= 0, "the pool would not take the pen's animals");
+    double high = 0.0;
+    for (int t = 0; t < 20000; t++) {
+        mob_tick(clock++, 60.0, 20.0, 60.0, 0);
+        for (int i = 0; i < 3; i++) {
+            mob_t const* m = mob_at(pen[i]);
+            if (m->body.y > high) high = m->body.y;
+        }
+    }
+    printf("  16 minutes in a 6 x 6 pen: the highest anything got was y %.2f (the fence tops out at %.2f)\n", high,
+           20.0 + (double)BLOCK_FENCE_TOP);
+    for (int i = 0; i < 3; i++) {
+        mob_t const* m = mob_at(pen[i]);
+        CHECK(m->alive && m->body.x > 4.0 && m->body.x < 10.0 && m->body.z > 4.0 && m->body.z < 10.0,
+              "a %s got out of the pen (at %.2f, %.2f, %.2f)", mob_def(m->kind)->name, m->body.x, m->body.y,
+              m->body.z);
+        CHECK(m->body.y >= 19.9 && m->body.y <= 20.2, "a %s did not stay on the ground (y %.2f)",
+              mob_def(m->kind)->name, m->body.y);
+    }
 
     // --- Milking, feeding, taming --------------------------------------
     mob_reset();
@@ -6338,6 +6450,7 @@ int main(void) {
     check_composter();
     check_wild_crops();
     check_texture_budget();
+    check_pens();
     check_animals();
     check_makers();
     check_replay();

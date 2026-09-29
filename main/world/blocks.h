@@ -396,7 +396,13 @@ static inline bool block_waterlogged(uint8_t id) {
 // column, with the rows that earn it.
 #define BLOCK_FENCE_TOP 1.5f
 static inline float block_collide_top(uint8_t id) {
-    return block_kind(id) == K_FENCE ? BLOCK_FENCE_TOP : 1.0f;
+    // A SHUT GATE IS FENCE. It was not, for an afternoon: this keyed on
+    // K_FENCE alone and a gate is K_GATE, so a gate stood one block
+    // high to the collider while looking like part of the fence -- and
+    // a cow hopped over it (F-122, the second half). An open gate is
+    // not solid, so the collider never asks.
+    block_kind_t const k = (block_kind_t)block_kind(id);
+    return (k == K_FENCE || k == K_GATE) ? BLOCK_FENCE_TOP : 1.0f;
 }
 
 // WHICH WAY A GATE LIES, in its state byte: along x, or along z. The

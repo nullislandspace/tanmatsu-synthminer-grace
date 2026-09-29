@@ -179,6 +179,50 @@ static bool in_water(mob_t const* m) {
                                     (int32_t)floor(m->body.z)));
 }
 
+// IS THE THING IN FRONT A FENCE? A creature hops over a one-block step
+// so it can follow the player across broken ground, and that same hop
+// at a fence is what a pen is for -- so the fence is the one thing it
+// will not try (F-122, the user: "I put two cows into an enclosure of
+// fences. They where able to jump up the fence and escape").
+//
+// The alternative was to make a fence taller than anything can jump,
+// which is not a height: a creature standing on a block beside a
+// two-block fence would want a three-block one. A rule about what a
+// fence IS settles it at any height.
+static bool is_fence(uint8_t b) {
+    block_kind_t const k = block_kind(b);
+    return k == K_FENCE || (k == K_GATE && block_solid(b));
+}
+
+static bool fence_ahead(mob_t const* m) {
+    // THE AXES THAT ACTUALLY BLOCKED IT, not the way it is facing. In a
+    // corner a creature is stopped on x while walking mostly along z,
+    // and a probe along the yaw looks straight past the fence that
+    // stopped it -- which is how the first version of this let a cow
+    // jump in a corner.
+    double const hw = (double)m->body.w * 0.5 + 0.1;
+    struct {
+        double x, z;
+    } const probes[2] = {
+        {m->body.hit_x ? (m->body.vx < 0.0f ? -hw : hw) : 0.0, 0.0},
+        {0.0, m->body.hit_z ? (m->body.vz < 0.0f ? -hw : hw) : 0.0},
+    };
+    // FROM ONE CELL BELOW THE FEET. A fence is a block and a half, so a
+    // creature standing on anything beside one meets it at the cell
+    // BELOW its feet -- and that is exactly the case that let a cow out
+    // of the user's pen.
+    for (int p = 0; p < 2; p++) {
+        if (probes[p].x == 0.0 && probes[p].z == 0.0) continue;
+        int32_t const x = (int32_t)floor(m->body.x + probes[p].x);
+        int32_t const z = (int32_t)floor(m->body.z + probes[p].z);
+        int32_t const y = (int32_t)floor(m->body.y + 0.1);
+        for (int d = -1; d <= 1; d++) {
+            if (is_fence(world_block(x, y + d, z))) return true;
+        }
+    }
+    return false;
+}
+
 // Is the cell ahead a drop the creature should not walk off? Two below
 // and still nothing is a cliff; one is a step.
 static bool cliff_ahead(mob_t const* m, float dx, float dz) {
@@ -336,9 +380,11 @@ void mob_tick(uint32_t now, double px, double py, double pz, uint16_t held) {
         phys_move(&m->body, (double)m->body.vx, (double)m->body.vy, (double)m->body.vz);
         // WALLS ARE STEPPED OVER, NOT CLIMBED: a body that is blocked
         // and on the ground hops, which is how an animal gets up a
-        // one-block rise and how it fails at a fence (a fence is a
-        // block and a half, blocks.h).
-        if ((m->body.hit_x || m->body.hit_z) && m->body.on_ground && speed > 0.0f) m->body.vy = MOB_JUMP;
+        // one-block rise -- AND NEVER AT A FENCE, which is the whole of
+        // what a pen is (fence_ahead, F-122).
+        if ((m->body.hit_x || m->body.hit_z) && m->body.on_ground && speed > 0.0f && !fence_ahead(m)) {
+            m->body.vy = MOB_JUMP;
+        }
         if (wet) {
             m->body.vy += MOB_SWIM_UP;  // it floats rather than drowns
             if (m->body.vy > 0.12f) m->body.vy = 0.12f;

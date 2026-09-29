@@ -189,7 +189,10 @@ static void emit_fence(mesh_t* m, int X, int Y, int Z, uint8_t mat, bool nx, boo
 // gate LIES along, so you walk through it across that axis.
 static void emit_gate(mesh_t* m, int X, int Y, int Z, uint8_t mat, unsigned axis, bool open) {
     float const cx = (float)X + 0.5f, cz = (float)Z + 0.5f, y = (float)Y;
-    float const r = FENCE_POST_R, h = 1.3f;  // a gate is shorter than the fence, as gates are
+    // AS TALL AS THE FENCE IT STANDS IN, because that is what the
+    // collider says it is (blocks.h, block_collide_top). A gate drawn
+    // shorter than it blocks is a gate people try to jump.
+    float const r = FENCE_POST_R, h = BLOCK_FENCE_TOP;
     // Along the gate's axis: the two posts sit at its ends.
     float const ax = axis == GATE_AXIS_X ? 1.0f : 0.0f, az = axis == GATE_AXIS_X ? 0.0f : 1.0f;
     for (int s = -1; s <= 1; s += 2) {

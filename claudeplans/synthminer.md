@@ -3920,6 +3920,61 @@ types the code:
   the game asks for finds the things it asks for and should not, which
   a check that only tests the limit never would.
 
+- **F-122** 2026-09-29, the user, on the first pen they built: *"I put
+  two cows into an enclosure of fences. They where able to jump up the
+  fence and escape."* **Two bugs, and the test that should have caught
+  them had tested the one case that always worked.**
+
+  The pen check written the same morning put a PIG in a BARE pen for
+  two minutes. A pig is 0.9 blocks tall, a bare pen has nothing in it,
+  and two minutes is not an afternoon. Every one of those choices made
+  the test easier than the thing it was standing in for.
+
+  **The first bug is the step-up, and it is ours rather than
+  Minecraft's.** `PHYS_STEP` is a WHOLE BLOCK here -- a deliberate
+  departure (player.h: this is a handheld, and tapping jump at every
+  clod of terrain is tiring). A fence is a block and a half. So a body
+  standing on **anything one block high beside a fence** -- a tuft of
+  terrain, a plot of soil, a chest -- is lifted a whole block by the
+  step-up, to 1.0 above its feet, which is **higher than the fence's
+  top measured from the fence's own floor**, and the sideways move that
+  follows carries it clean over and down the far side. Measured: a cow
+  in a pen with one dirt block in it was out in seconds, and reached
+  y 22.00 over a fence that tops out at 21.50.
+
+  Fixed by refusing the LIFT rather than inspecting where it landed --
+  by the time it has landed it is already outside the pen. A fence is
+  not a step; everything else one block high still is, and the
+  staircase and 1-block-step checks are untouched. Jumping onto a fence
+  and falling onto one both still work: what is gone is the free block
+  of lift.
+
+  **The second bug was in the block table**, and only the broader test
+  found it: `block_collide_top` keyed on `K_FENCE`, and **a gate is
+  `K_GATE`** -- so a shut gate stood ONE block high to the collider
+  while looking like part of the fence, and a cow hopped over it. The
+  picture was in on it too: the gate was drawn 1.3 blocks tall against
+  the fence's 1.5, which is a gate people would have tried to jump. Both
+  are the fence's height now.
+
+  A third change is about animals rather than geometry: **a creature
+  does not jump at a fence.** It hops at an ordinary one-block step, so
+  it can still follow you over broken ground, and it stops dead at a
+  fence. The alternative was a taller fence, which is not a height -- a
+  creature standing on a block beside a two-block fence wants a
+  three-block one. A rule about what a fence IS settles it at any
+  height. (The first version of that rule probed along the creature's
+  yaw and missed both the corner case and the case that mattered: a
+  fence beside a body standing on a block is in the cell BELOW its
+  feet.)
+
+  What replaced the test is five pens -- bare, with a block inside, with
+  a shut gate, with an open one, and with a deliberate staircase -- a
+  cow rather than a pig, and 30000 ticks rather than 2400. The
+  staircase one is checked and **allowed**: two blocks stacked inside is
+  the player's doing, and the rule is "a fence is not a step", not "a
+  fence is a forcefield".
+
 ### Decisions (D-n), each with date and who decided
 
 - **D-81** 2026-09-23, **the user**: **the UI is translated, English by
@@ -5616,6 +5671,13 @@ types the code:
   jump reaches 1.33 blocks and an animal's step-up is one. That half
   block is the whole feature -- at one block it is a decoration and the
   gate is pointless.
+
+  **AMENDED THE SAME DAY BY F-122**, which is where the rest of the
+  rule turned out to live: a block and a half is not enough on its own,
+  because a whole-block step-up from anything standing beside it goes
+  straight over the top. A fence is not a step, a creature does not
+  jump at one, and a shut gate is the same height as the fence it
+  stands in.
 
   It cost one rule in the collider (a second pass over the cell BELOW
   the body, for blocks that stick up out of their own) and a new mesh
