@@ -1475,7 +1475,7 @@ as a guess at lava and milk; it is the milk half being cashed in.
 |---|---|---|---|---|---|
 | Kitchen stove | 3 iron + 6 stone | **yes** | an adjacent chest, plus a recipe selector | 1 slot | 1 in-game minute |
 | Cheese maker | 7 wooden planks | no | 1 bucket of milk (**the bucket comes straight back**) | cheese | 1 in-game day |
-| Sausage maker | *"9 iron ore"* | not stated | 1 pork + 1 flower of any colour, or 2 beans | 1 sausage | 1 in-game minute |
+| Sausage maker | 9 iron ingots | not stated | 1 pork + 1 flower of any colour, or 2 beans | 1 sausage | 1 in-game minute |
 | Composter | 7 wooden planks | no | up to a stack of compostables | compost + 0-2 worms | 1 in-game day per unit |
 
 The cheese maker *"looks like an open barrel (quadratic, not round)"*
@@ -1548,8 +1548,8 @@ Cooked on the stove, one in-game minute each:
 | dish | ingredients | hunger | saturation |
 |---|---|---|---|
 | Baked potato | 1 potato | 1 | 1 |
-| Grilled tomatoes | tomatoes (count not given) | 2 | 0 |
-| Baked beans | beans (count not given) | 2 | 0 |
+| Grilled tomatoes | 1 tomato | 2 | 0 |
+| Baked beans | 1 bean | 2 | 0 |
 | Bread | 3 wheat | 2 | 1 |
 | Rice patty | 2 rice | 3 | 1 |
 | Smoked salmon | 1 salmon | 2 | 4 |
@@ -1558,6 +1558,15 @@ Cooked on the stove, one in-game minute each:
 | Pork and beans | 1 pork + 1 beans | 5 | 2 |
 | Steak and potatoes | 1 beef + 1 potato | 5 | 2 |
 | **Pizza** | 2 wheat + 1 sausage + 1 cheese + 2 shrimp | **10** | **8** |
+
+**Grilled tomatoes and baked beans are 1:1** (the user), one fruit in,
+one dish out. This file guessed two and guessed wrong, on the reasoning
+that a raw tomato at 1 hunger would be pointless beside a grilled one at
+2 for the same tomato. That reasoning was backwards: doubling what a
+tomato is worth **is what cooking is for**, and the raw option is the
+one you eat with no stove and no fuel -- which is exactly the relation
+Minecraft's raw and cooked meat have. Beans have no raw form at all, so
+one bean for 2 hunger is the floor the rest of the table stands on.
 
 Pizza is *"the superfood of this game"* and is priced like one: it needs
 a crop, a fished animal, a cow and a pig, so it needs all four systems
@@ -1598,13 +1607,6 @@ stays a table row.
 Written down so they are decided on purpose rather than by whoever
 types the code:
 
-- **Grilled tomatoes and baked beans take how many?** Not given. Two
-  each is proposed: one tomato grilled for 2 hunger would make the raw
-  tomato pointless.
-- **"9 iron ore"** for the sausage maker is what the user wrote, and
-  every other recipe in the game takes ingots. Ore would mean the
-  machine can be built without ever lighting a furnace. Kept verbatim
-  until they say.
 - **Which chest** the stove uses when more than one touches it.
   Proposed: a fixed order (+X, -X, +Z, -Z), with the screen naming the
   one it found.
@@ -4962,10 +4964,19 @@ types the code:
   bucket early on, buckets do not stack (D-100), and a day is a very
   long time to be without the only thing that carries water.
 
-  Both are the furnace's record with a different timer, so neither needs
-  machinery that does not exist. Three appearances of the cheese maker
-  -- milk, cheese, empty -- are a texture set chosen from its contents,
-  **not three block ids**.
+  Three appearances of the cheese maker -- milk, cheese, empty -- are a
+  texture set chosen from its contents, **not three block ids**.
+
+  Both are the furnace's record with a different timer, and the prices
+  say which end of the game each belongs to. **The sausage maker is 9
+  iron ingots** -- the user's correction of their own first message,
+  which said ore -- which is **three times the dearest thing in the game
+  today**: nothing shipped costs more than 3 ingots (a pickaxe, an axe, a
+  bucket), and the stove itself is 3 iron and 6 stone. That is the right way
+  round: a sausage is an input to the pizza, so the machine that makes
+  them should sit behind a furnace, a mine and a full day of smelting,
+  while the cheese maker at 7 planks can be built the afternoon someone
+  first milks a cow.
 
 - **D-109** 2026-09-29, **the user**: **fishing is built before mobs.**
 
