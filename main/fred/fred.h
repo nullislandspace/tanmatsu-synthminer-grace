@@ -30,6 +30,8 @@ typedef enum {
     FRED_HOLD_ITEM,   // a small cube in the item's colour: coal, a stick
     FRED_HOLD_BUCKET, // a pail, with `argb` for whatever is in it
     FRED_HOLD_ROD,    // the fishing rod: a long taper with a line off the end
+    FRED_HOLD_BONE,   // a bone, knobs and all
+    FRED_HOLD_BED,    // a bed under one arm, rather than the red cube a block gets
 } fred_hold_kind_t;
 
 typedef struct {

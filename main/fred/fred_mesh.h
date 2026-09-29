@@ -39,6 +39,11 @@ typedef enum {
     // bucket. Its colour is set per draw from the item, so lava and
     // milk need nothing here (fred.c, FRED_HOLD_BUCKET).
     FM_FLUID,
+    // BONE, LINEN, A PILLOW: the pale off-white of things that are
+    // neither skin nor metal. One material serves the bone in his fist
+    // and the pillow on the bed he is carrying, which is the only
+    // reason it is worth a row of its own.
+    FM_PALE,
     FM_COUNT
 } fred_mat_t;
 
@@ -77,3 +82,13 @@ void fred_build_hoe(mesh_t* m);
 // player looks at for minutes at a time while waiting for a bite, so
 // it is worth more than a cube in the fist.
 void fred_build_rod(mesh_t* m);
+
+// THE BONE, which is a shape and not a lump: a shaft with two knobs at
+// each end, set ACROSS it. Without the knobs it is a stick, and a stick
+// is what a dog would think of it too.
+void fred_build_bone(mesh_t* m);
+
+// THE BED, carried under one arm: a frame, a quilt and a pillow. It is
+// a block, so the hand would otherwise show the small textured cube
+// every block gets -- which for a bed is a red dice.
+void fred_build_bed(mesh_t* m);

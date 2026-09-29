@@ -18,8 +18,8 @@
 #include "world/chunk_render.h"
 
 static bool       s_ready;
-static mesh_t     s_head, s_body, s_arm, s_fp_arm, s_leg, s_pick, s_axe, s_shovel, s_hoe, s_bucket, s_rod, s_cube,
-    s_sprite, s_torch;
+static mesh_t     s_head, s_body, s_arm, s_fp_arm, s_leg, s_pick, s_axe, s_shovel, s_hoe, s_bucket, s_rod, s_bone,
+    s_bed, s_cube, s_sprite, s_torch;
 static mesh_mat_t s_mats[FM_COUNT];
 
 // The head of a tool, by level.
@@ -39,6 +39,7 @@ void fred_init(void) {
     s_mats[FM_IRON]     = (mesh_mat_t){NULL, 0xFF9AA0A8u, 0};
     // Overwritten per draw with whatever is being carried.
     s_mats[FM_FLUID]    = (mesh_mat_t){NULL, 0xFF3A3E46u, 0};
+    s_mats[FM_PALE]     = (mesh_mat_t){NULL, 0xFFE8E4D8u, 0};
     fred_build_head(&s_head);
     fred_build_body(&s_body);
     fred_build_arm(&s_arm);
@@ -50,6 +51,8 @@ void fred_init(void) {
     fred_build_hoe(&s_hoe);
     fred_build_bucket(&s_bucket);
     fred_build_rod(&s_rod);
+    fred_build_bone(&s_bone);
+    fred_build_bed(&s_bed);
     // A block in the hand: a small one, in the block's textures.
     mesh_init(&s_cube);
     s_cube.name = "fred_block";
@@ -107,6 +110,8 @@ void fred_shutdown(void) {
     mesh_free(&s_hoe);
     mesh_free(&s_bucket);
     mesh_free(&s_rod);
+    mesh_free(&s_bone);
+    mesh_free(&s_bed);
     mesh_free(&s_cube);
     mesh_free(&s_sprite);
     mesh_free(&s_torch);
@@ -118,6 +123,13 @@ fred_hold_t fred_hold_for(uint16_t item) {
     if (item == 0) return h;
     if (item_is_block(item)) {
         h.block             = item_block(item);
+        // A BED IS A BLOCK AND IS NOT A CUBE. Left to the block path it
+        // is a small red dice in the fist, which is what every block
+        // gets and what only a cube deserves.
+        if (h.block == BLK_BED_FOOT) {
+            h.kind = FRED_HOLD_BED;
+            return h;
+        }
         block_kind_t const k = block_kind(h.block);
         h.kind              = k == K_TORCH ? FRED_HOLD_TORCH : k == K_PLANT ? FRED_HOLD_SPRITE : FRED_HOLD_BLOCK;
         return h;
@@ -143,6 +155,10 @@ fred_hold_t fred_hold_for(uint16_t item) {
     // fishing is minutes of holding it still (game/fishing.h).
     if (item == ITEM_ROD) {
         h.kind = FRED_HOLD_ROD;
+        return h;
+    }
+    if (item == ITEM_BONE) {
+        h.kind = FRED_HOLD_BONE;
         return h;
     }
 
@@ -216,6 +232,16 @@ static void submit_held(xform_t const* arm, fred_hold_t const* hold, mesh_mat_t 
         for (int i = 0; i < FM_COUNT; i++) m[i] = mats[i];
         m[FM_FLUID].argb = 0xFFE8E4D8u;  // the line, not a fluid: pale and thin
         mesh_submit(&s_rod, &at, m, FM_COUNT);
+    } else if (hold->kind == FRED_HOLD_BONE) {
+        // Along the fist like a tool's handle, and turned a little so
+        // both pairs of knobs show.
+        xform_t const at = joint(arm, v3(0.0f, FRED_FIST_Y, 0.06f), mat3_rot_y(0.4f));
+        mesh_submit(&s_bone, &at, mats, FM_COUNT);
+    } else if (hold->kind == FRED_HOLD_BED) {
+        // Carried flat and tipped up at the front, the way anybody
+        // carries something awkward: quilt towards the eye.
+        xform_t const at = joint(arm, v3(0.0f, FRED_FIST_Y + 0.04f, 0.10f), mat3_rot_x(-0.25f));
+        mesh_submit(&s_bed, &at, mats, FM_COUNT);
     } else if (hold->kind == FRED_HOLD_BLOCK || hold->kind == FRED_HOLD_ITEM) {
         xform_t const at = joint(arm, v3(0.0f, FRED_FIST_Y, 0.16f), mat3_rot_y(0.5f));
         mesh_mat_t    m[3];

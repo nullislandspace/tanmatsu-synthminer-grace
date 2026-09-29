@@ -102,6 +102,42 @@ void fred_build_rod(mesh_t* m) {
     mesh_box(m, v3(-0.004f, -0.30f, 0.82f), v3(0.004f, -0.008f, 0.826f), FM_FLUID, 1.0f);
 }
 
+void fred_build_bone(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_bone";
+    // The shaft along +z, which is the axis everything in the fist is
+    // held along (the tools' handles run this way too).
+    mesh_box(m, v3(-0.022f, -0.022f, 0.04f), v3(0.022f, 0.022f, 0.30f), FM_PALE, 1.0f);
+    // Four knobs, in pairs, ACROSS the shaft at each end: that is what
+    // makes it a bone rather than a peg.
+    float const ends[2] = {0.03f, 0.29f};
+    for (int e = 0; e < 2; e++) {
+        for (int s = -1; s <= 1; s += 2) {
+            float const x = (float)s * 0.045f;
+            mesh_box(m, v3(x - 0.038f, -0.038f, ends[e] - 0.035f), v3(x + 0.038f, 0.038f, ends[e] + 0.035f), FM_PALE,
+                     1.0f);
+        }
+    }
+}
+
+void fred_build_bed(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_bed";
+    // Carried flat, long axis along +z: a frame with a quilt on it and
+    // a pillow at the far end, at about a fifth of life size.
+    mesh_box(m, v3(-0.13f, -0.05f, 0.00f), v3(0.13f, 0.00f, 0.46f), FM_WOOD, 1.0f);
+    mesh_box(m, v3(-0.12f, 0.00f, 0.02f), v3(0.12f, 0.05f, 0.44f), FM_SHIRT, 1.0f);
+    mesh_box(m, v3(-0.10f, 0.05f, 0.30f), v3(0.10f, 0.10f, 0.42f), FM_PALE, 1.0f);
+    // Four short legs, so it does not read as a plank.
+    for (int sx = -1; sx <= 1; sx += 2) {
+        for (int sz = 0; sz <= 1; sz++) {
+            float const z = sz ? 0.40f : 0.04f;
+            mesh_box(m, v3((float)sx * 0.105f - 0.022f, -0.10f, z - 0.022f),
+                     v3((float)sx * 0.105f + 0.022f, -0.05f, z + 0.022f), FM_WOOD, 1.0f);
+        }
+    }
+}
+
 void fred_build_bucket(mesh_t* m) {
     mesh_init(m);
     m->name = "fred_bucket";

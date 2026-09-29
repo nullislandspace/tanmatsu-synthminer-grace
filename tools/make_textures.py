@@ -1856,16 +1856,34 @@ def sm_item_sausage_veg():
 
 
 def sm_item_bone():
-    """A bone: a shaft with two knuckles at each end, which is the only
-    way this shape reads at 16 px."""
+    """A bone, and the KNUCKLES are the whole picture: a shaft with two
+    lobes at each end, the lobes set across the shaft so they read as
+    knobs rather than as more shaft.
+
+    The first version drew the lobes along the same diagonal as the
+    shaft, so they merged into it and the icon was a plain stick."""
     img = _icon()
-    white = (236, 232, 218)
-    for i in range(7):
+    white = (238, 234, 222)
+    dark = _shade(white, -46)
+    mid = _shade(white, -20)
+
+    # The shaft, two texels thick along the diagonal.
+    for i in range(6):
         _dot(img, 5 + i, 10 - i, white)
-        _dot(img, 6 + i, 10 - i, _shade(white, -28))
-    for cx, cy in ((4, 11), (12, 3)):
-        for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1), (-1, 1), (2, 0)):
-            _dot(img, cx + dx, cy + dy, white if (dx + dy) % 2 == 0 else _shade(white, -22))
+        _dot(img, 6 + i, 10 - i, mid)
+        _dot(img, 6 + i, 11 - i, dark)     # its shaded underside
+
+    # Four lobes, in pairs, set ACROSS the shaft at each end. Each is a
+    # 2 x 2 knob with one bright texel and one dark one, which is the
+    # least that reads as round at this size.
+    for cx, cy in ((3, 9), (5, 12), (10, 2), (12, 5)):
+        _dot(img, cx, cy, white)
+        _dot(img, cx + 1, cy, mid)
+        _dot(img, cx, cy + 1, mid)
+        _dot(img, cx + 1, cy + 1, dark)
+    # ... joined to the shaft, so the knobs are not floating.
+    for x, y in ((4, 10), (5, 11), (11, 3), (11, 4)):
+        _dot(img, x, y, mid)
     return img
 
 
@@ -1982,15 +2000,35 @@ def sm_item_shrimp():
 
 
 def sm_item_bed():
-    """A bed from the side: a red mattress on a wooden frame with a
-    white pillow at one end."""
+    """A bed from the side, and what makes it read as one is the
+    LAYERS: a dark frame, a red mattress with a lit top edge, a white
+    pillow standing proud at the head, and legs with daylight between
+    them.
+
+    The first version filled the tile edge to edge in one dark tone
+    with a white corner -- a slab with a stain on it."""
     img = _icon()
-    _rect(img, 2, 11, 14, 14, (140, 104, 60))      # the frame
-    _rect(img, 2, 7, 14, 11, (188, 56, 52))        # the mattress
-    _rect(img, 2, 7, 14, 8, (214, 78, 72))         # ... lit along the top
-    _rect(img, 3, 6, 7, 9, (238, 236, 228))        # the pillow
-    _rect(img, 2, 14, 4, 16, (110, 80, 46))        # two legs
-    _rect(img, 12, 14, 14, 16, (110, 80, 46))
+    frame = (128, 92, 52)
+    quilt = (190, 58, 54)
+    pillow = (240, 238, 230)
+
+    # Legs first, so the frame sits on them. Daylight between the pair
+    # is most of what says "furniture" rather than "block".
+    _rect(img, 3, 12, 5, 15, _shade(frame, -30))
+    _rect(img, 11, 12, 13, 15, _shade(frame, -30))
+    # The frame rail, with a dark lip under it.
+    _rect(img, 2, 10, 14, 12, frame)
+    _rect(img, 2, 11, 14, 12, _shade(frame, -34))
+    # The quilt on top of it, lit along its upper edge and creased once
+    # so it is cloth rather than a painted band.
+    _rect(img, 2, 7, 14, 10, quilt)
+    _rect(img, 2, 7, 14, 8, _shade(quilt, 26))
+    for y in range(7, 10):
+        _dot(img, 9, y, _shade(quilt, -30))
+    # The pillow at the head, standing above the quilt line.
+    _rect(img, 3, 5, 8, 8, pillow)
+    _rect(img, 3, 5, 8, 6, _shade(pillow, 12))
+    _rect(img, 3, 7, 8, 8, _shade(pillow, -34))
     return img
 
 
