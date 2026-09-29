@@ -24,10 +24,10 @@
 #include "audio/music.h"
 #include "common/trace.h"
 
-// Set by CMake; the same one the test kit reports.
-#ifndef APP_GIT_HASH
-#define APP_GIT_HASH "unknown"
-#endif
+// Which build this is, the same one the test kit reports. Through
+// common/build_id.h, because a local fallback here without the include
+// is exactly how every trace file came to say "unknown" (F-129).
+#include "common/build_id.h"
 #include "audio/sfx.h"
 #include "bsp/device.h"
 #include "common/texcache.h"
@@ -1105,8 +1105,14 @@ static bool enter_world(int slot, bool create, char const* name, uint32_t seed) 
     // while playing, not while preparing to debug (common/trace.h).
     s_world_t0_us = esp_timer_get_time();
     trace_open(SM_DATA_DIR, APP_GIT_HASH, se_version_string(), s_meta.seed, s_meta.name);
-    trace_note("H view=%d textures=%s half=%s slot=%d", view_setting(), settings_textured() ? "on" : "off",
-               settings_half_res() ? "on" : "off", slot + 1);
+    // EVERY graphics setting that changes what is drawn, recorded as
+    // STATE and not only as a change. `water` was a trace_event fired by
+    // the toggle key, so a session that never touched the key -- which
+    // is every ordinary session -- said nothing about the newest thing
+    // in the renderer (F-129).
+    trace_note("H view=%d textures=%s half=%s water=%s slot=%d", view_setting(),
+               settings_textured() ? "on" : "off", settings_half_res() ? "on" : "off",
+               settings_water_blend() ? "blended" : "cutout", slot + 1);
 
     chunk_worker_set_world(s_meta.seed, s_meta.farlands_x);
     // The player's own view distance: the title's is generous because

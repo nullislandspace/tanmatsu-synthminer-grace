@@ -7,17 +7,7 @@
 // The build id, if the app generates one (see README): it is what lets
 // the host refuse to believe results from a stale build on the badge.
 // Without it the records still come, saying "unknown".
-#if defined(__has_include)
-#if __has_include("app_version.h")
-#include "app_version.h"
-#endif
-#endif
-#ifndef APP_GIT_HASH
-#define APP_GIT_HASH "unknown"
-#endif
-#ifndef APP_BUILD_TIME
-#define APP_BUILD_TIME "unknown"
-#endif
+#include "common/build_id.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"

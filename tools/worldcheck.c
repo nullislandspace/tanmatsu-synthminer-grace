@@ -2487,6 +2487,172 @@ static void check_streaming(void) {
     chunk_store_shutdown();
 }
 
+
+// --- Every face that should be there, is there ------------------------
+//
+// WHY THIS EXISTS AND THE AREA TEST DID NOT DO IT. The mesher's own
+// harness (tools/meshcheck_assets.h) asserts that the surface area of a
+// mesh equals the number of exposed faces -- a TOTAL, over six-cell
+// grids built by hand, and only for a lump floating in open air. A
+// total cannot tell a face missing here from a face drawn twice there,
+// and a hand-built lump is not terrain: it has no water, no light
+// boundaries to split a merge on, no section seams and no chunk
+// borders. Every one of those is a place a face could go missing, and
+// none of them was covered.
+//
+// The user's report was "some sides of blocks not rendering" (F-129),
+// and the flight recorder said nothing had been dropped -- the geometry
+// lists peaked a fifth full. So the question "is the face in the mesh
+// at all" had to be asked directly, of real generated terrain, through
+// the same chunkmesh_build() the badge runs.
+//
+// THE RULE, RESTATED. Deliberately not voxel_mesh.c's own face_shows():
+// a test that calls the code under test agrees with it by construction.
+// This is the rule as blocks.h states it in prose.
+// `fancy` is the near mesh; the far one draws leaves and glass as solid
+// cubes, so they hide their neighbours there and do not here.
+static bool face_should_show(uint8_t b, uint8_t n, bool fancy) {
+    switch (block_kind(n)) {
+        case K_CUBE: return false;   // a full cube hides what is behind it
+        case K_SEE:  return fancy && (n != b || (block_def(b)->flags & BF_SEE_SELF) != 0);
+        case K_LIQUID: return true;  // a lake is a lid over ground you can see
+        default: return true;        // air, a plant, a torch, a fence, a bed
+    }
+}
+
+// Is `p` inside the triangle, seen down `axis`? The two coordinates
+// that are not the axis, and a sign-consistent cross product. The
+// tolerance lets a point sitting exactly on the diagonal between a
+// quad's two triangles count for both, which a cell centre under a
+// merged rectangle can easily do.
+static bool tri_covers(vec3_t a, vec3_t b, vec3_t c, int axis, float pu, float pv) {
+    int const   iu = (axis + 1) % 3, iv = (axis + 2) % 3;
+    float const au = (&a.x)[iu], av = (&a.x)[iv];
+    float const bu = (&b.x)[iu], bv = (&b.x)[iv];
+    float const cu = (&c.x)[iu], cv = (&c.x)[iv];
+    float const d0 = (bu - au) * (pv - av) - (bv - av) * (pu - au);
+    float const d1 = (cu - bu) * (pv - bv) - (cv - bv) * (pu - bu);
+    float const d2 = (au - cu) * (pv - cv) - (av - cv) * (pu - cu);
+    float const e  = 1e-4f;
+    return (d0 >= -e && d1 >= -e && d2 >= -e) || (d0 <= e && d1 <= e && d2 <= e);
+}
+
+// One chunk, every section, at one level of detail: each face the rule
+// says is visible must be covered by a triangle facing that way, on
+// that plane. LOD_COARSE is left out on purpose -- it meshes a
+// half-resolution grid with skirts, so "the face of this cell" is not
+// the question to ask of it.
+static int faces_of_chunk(int32_t cx, int32_t cz, int lod, uint8_t* scratch, char const* what) {
+    bool const fancy = lod == LOD_FANCY;
+    int expected = 0, missing = 0, reported = 0;
+    for (int sect = 0; sect < CH_SECT_N; sect++) {
+        mesh_t m;
+        if (!chunkmesh_build(cx, cz, lod, sect, scratch, &m)) {
+            CHECK(false, "%s: chunk (%d,%d) section %d would not mesh", what, cx, cz, sect);
+            return 0;
+        }
+        int const y0 = sect * CH_SECT, y1 = y0 + CH_SECT;
+        for (int z = 0; z < CH_D; z++) {
+            for (int x = 0; x < CH_W; x++) {
+                for (int y = y0; y < y1; y++) {
+                    int32_t const       wx = cx * CH_W + x, wz = cz * CH_D + z;
+                    uint8_t const       b = world_block(wx, y, wz);
+                    block_kind_t const  k = block_kind(b);
+                    if (k != K_CUBE && k != K_SEE) continue;
+                    static int const NB[6][3] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+                    for (int f = 0; f < 6; f++) {
+                        uint8_t const n = world_block(wx + NB[f][0], y + NB[f][1], wz + NB[f][2]);
+                        if (!face_should_show(b, n, fancy)) continue;
+                        expected++;
+                        int const   axis  = f / 2;
+                        bool const  plus  = (f % 2) == 0;
+                        uint8_t const dir = (uint8_t)(axis * 2 + (plus ? 0 : 1));
+                        // Chunk-local, which is what the mesh is in.
+                        float const cell[3] = {(float)x, (float)y, (float)z};
+                        float const plane   = cell[axis] + (plus ? 1.0f : 0.0f);
+                        float const pu      = cell[(axis + 1) % 3] + 0.5f;
+                        float const pv      = cell[(axis + 2) % 3] + 0.5f;
+                        bool covered = false;
+                        for (int i = 0; i < m.tn && !covered; i++) {
+                            if (m.t[i].dir != dir) continue;
+                            vec3_t const va = m.v[m.t[i].a];
+                            if (fabsf((&va.x)[axis] - plane) > 1e-3f) continue;
+                            covered = tri_covers(va, m.v[m.t[i].b], m.v[m.t[i].c], axis, pu, pv);
+                        }
+                        if (covered) continue;
+                        missing++;
+                        if (reported < 8) {
+                            reported++;
+                            CHECK(false, "%s lod %d: the %c%c face of %s at (%d,%d,%d) against %s is in no triangle",
+                                  what, lod, "xyz"[axis], plus ? '+' : '-', block_def(b)->name, wx, y, wz,
+                                  block_def(n)->name);
+                        }
+                    }
+                }
+            }
+        }
+        mesh_free(&m);
+    }
+    CHECK(missing == 0, "%s lod %d: %d of %d visible face(s) in chunk (%d,%d) are in no triangle", what, lod, missing,
+          expected, cx, cz);
+    return expected;
+}
+
+// Two seeds: the one the checks already use, and the one out of the
+// trace the user sent when they reported the glitch, so the exact
+// terrain they were standing in is meshed here as well.
+static void check_faces(void) {
+    printf("faces\n");
+    CHECK(chunk_store_init(), "chunk_store_init failed");
+    uint8_t* scratch = malloc(chunkmesh_scratch_bytes());
+    CHECK(scratch != NULL, "no scratch for the mesher");
+    if (scratch == NULL) return;
+
+    // The seed out of the trace the user sent with F-129, and the chunks
+    // they were actually standing in: (-35.6, 27, -0.3) and
+    // (-10.7, 25, 5.4), which are chunks (-3,-1) and (-1,0). Terrain
+    // nobody chose is the point -- a hand-built fixture has no water, no
+    // light boundary and no chunk seam to get wrong.
+    static const struct {
+        uint32_t    seed;
+        int32_t     cx, cz;
+        char const* what;
+    } CASES[3] = {
+        {4242u, 0, 0, "seed 4242 at the origin"},
+        {1187696032u, -3, -1, "the reported world, where they stood first"},
+        {1187696032u, -1, 0, "the reported world, where they stood looking"},
+    };
+
+    for (int i = 0; i < (int)(sizeof(CASES) / sizeof(CASES[0])); i++) {
+        world_meta_t   meta;
+        player_state_t player;
+        char           name[32];
+        snprintf(name, sizeof(name), "faces %d", i);
+        CHECK(worldstore_init(STORE_BASE), "worldstore_init failed");
+        if (!worldstore_create(name, CASES[i].seed, &meta, &player)) {
+            CHECK(false, "could not create the face-check world for %s", CASES[i].what);
+            continue;
+        }
+        CHECK(chunk_worker_start(meta.seed), "chunk_worker_start failed");
+        // The ring around the ring: a border chunk that is not resident
+        // reads as solid, and would hide the very faces this looks for.
+        for (int32_t dz = -2; dz <= 2; dz++)
+            for (int32_t dx = -2; dx <= 2; dx++) chunk_worker_request_load(CASES[i].cx + dx, CASES[i].cz + dz);
+        int faces = 0;
+        for (int32_t dz = -1; dz <= 1; dz++) {
+            for (int32_t dx = -1; dx <= 1; dx++) {
+                faces += faces_of_chunk(CASES[i].cx + dx, CASES[i].cz + dz, LOD_FANCY, scratch, CASES[i].what);
+                faces += faces_of_chunk(CASES[i].cx + dx, CASES[i].cz + dz, LOD_FAST, scratch, CASES[i].what);
+            }
+        }
+        printf("  %s: 9 chunks, both near levels, %d visible faces, all in the mesh\n", CASES[i].what, faces);
+        chunk_worker_stop();
+        chunk_store_clear();
+    }
+    free(scratch);
+    chunk_store_shutdown();
+}
+
 // --- The player ------------------------------------------------------
 //
 // Physics, picking and the felling rule are pure, so all three are
@@ -7424,6 +7590,7 @@ int main(void) {
     check_datadir();
     check_rename();
     check_streaming();
+    check_faces();
     check_trace();
     check_world_floor();
     if (!chunk_store_init()) {

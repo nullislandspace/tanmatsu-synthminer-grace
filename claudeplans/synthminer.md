@@ -4305,6 +4305,82 @@ types the code:
   the flame, Fred's face) are named in non-pure code that worldcheck
   cannot reach, so they are still counted and not opened.
 
+- **F-129** 2026-09-29, **the user, playing**: *"i got visual glitches
+  with some sides of blocks not rendering."* **Open.** Parked by the
+  user until it happens again -- what follows is what was ruled out, so
+  the next sitting does not start from nothing.
+
+  The trace was pulled from the card (`make pulltrace`). The session:
+  world "World 2", seed 1187696032, slot 2, 178 seconds, standing nearly
+  still at (-10.7, 25.0, 5.4) and turning.
+
+      no geometry was dropped: the lists never filled
+      flat peak 1180/6144 (19%)   textured peak 435/4096 (10%)
+      0 edit(s)                   miss=0 after the first second
+
+  That rules out **both** earlier causes of "my blocks did not appear".
+  F-111 was the geometry lists overflowing; they peaked a fifth full.
+  F-113 was a block leaving the world before its mesh left the screen;
+  there were no edits at all. Streaming was not behind either.
+
+  **TWO THINGS IN THE FLIGHT RECORDER WERE BROKEN, and both are the
+  reason the trace could not finish the sentence.**
+
+  * **Every trace ever written said `build=unknown`.** CMake does
+    compute the hash and `configure_file` does bake it into
+    `app_version.h` -- `debugcon.c` has reported the real one all
+    along. `main.c` carried the *fallback* `#define APP_GIT_HASH
+    "unknown"` **without the include**, so the one field whose whole job
+    is "which build produced this" never once worked. Fixed at the rule:
+    `common/build_id.h` holds the include and the fallback once, and
+    both reporters use it -- there is no second copy left to forget.
+  * **The trace could not say whether transparent water was on.** The
+    `H` line recorded view, textures, half-res and slot; water mode was
+    written only by `trace_event` when the toggle key was pressed, so an
+    ordinary session that never touched the key said nothing about the
+    newest thing in the renderer. F-119 recorded the *change* and called
+    it done; it never recorded the *state*. `H` now carries `water=`.
+
+  **The mesher is not where the faces go.** The existing proof that the
+  mesher emits the right faces was an *aggregate*: surface area equals
+  the count of exposed faces, over six-cell grids built by hand, and
+  only for a lump floating in open air (`tools/meshcheck_assets.h`). A
+  total cannot tell a face missing here from a face drawn twice there,
+  and a hand-built lump has no water, no light boundary to split a merge
+  on, no section seam and no chunk border. `check_faces` in
+  tools/worldcheck.c now asks the question directly and per face: for
+  every cell that owns faces, which of its six the visibility rule says
+  should be drawn, and then whether a triangle facing that way, on that
+  plane, covers the middle of that square. It restates the rule instead
+  of calling `face_shows()` -- a test that calls the code under test
+  agrees with it by construction -- and it meshes through
+  `chunkmesh_build()`, the same function the badge runs, at both near
+  levels of detail (the far one draws leaves and glass solid, so the
+  rule differs there and the check knows it). Run on seed 4242 and on
+  **the user's own seed at the two chunks the trace has them standing
+  in**: 27 chunks, 35,767 visible faces, none missing. About 10 seconds
+  of `make check`.
+
+  So the face is in the mesh, and it is lost between there and the
+  screen: the direction cull in `mesh_submit_world`, the per-section
+  frustum cull, or the rasteriser. Also read and cleared on the way:
+  the neighbour-hiding rule in `face_shows` (K_FENCE, K_GATE, K_BED and
+  K_BARREL all fall to `default: return true`, so none of them hides a
+  neighbour), the band optimisation, the texture cache (192 entries,
+  130 used, and a miss draws flat rather than nothing), and the depth
+  encoding (near clip 0.1, so 1/z tops out well inside uint16).
+
+  One dead line found and left for the next visit: `emit_box` and
+  `emit_box_mats` set `mesh_set_dir(m, MESH_DIR_NONE)` with the comment
+  *"not a greedy face; cull it the general way"*, and `emit_f`
+  overwrites it on its first line. Every box face gets the axis-plane
+  cull instead, which is correct for an axis-aligned box -- so the
+  comment is false rather than the code.
+
+  **What would settle it**, and was not available: which blocks
+  glitched. Ordinary terrain cubes and the fences and the bed are
+  different suspects.
+
 ### Decisions (D-n), each with date and who decided
 
 - **D-128** 2026-09-29, building step 12: **a cast is two taps, and the
