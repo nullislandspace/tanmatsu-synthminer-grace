@@ -193,8 +193,8 @@
           "target_file": "textures/item_beans.png"
         },
         {
-          "source_file": "textures/item_bed.png",
-          "target_file": "textures/item_bed.png"
+          "source_file": "textures/item_bed_foot.png",
+          "target_file": "textures/item_bed_foot.png"
         },
         {
           "source_file": "textures/item_beef.png",
@@ -257,8 +257,16 @@
           "target_file": "textures/item_iron_ingot.png"
         },
         {
+          "source_file": "textures/item_kebab.png",
+          "target_file": "textures/item_kebab.png"
+        },
+        {
           "source_file": "textures/item_mutton.png",
           "target_file": "textures/item_mutton.png"
+        },
+        {
+          "source_file": "textures/item_mutton_mash.png",
+          "target_file": "textures/item_mutton_mash.png"
         },
         {
           "source_file": "textures/item_pickaxe_iron.png",

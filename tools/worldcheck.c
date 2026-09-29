@@ -2942,6 +2942,46 @@ static void check_texture_budget(void) {
     // that finally uses it up.
     printf("  TEX_BY_NAME allows %d, so %d to spare before the assert has to move\n", TEX_BY_NAME,
            TEX_BY_NAME - want);
+
+    // AND DOES EACH ONE EXIST?
+    //
+    // Counting them was never the question. The bed shipped with a
+    // BLACK SQUARE in the inventory for a week (F-128): it carries
+    // BF2_ITEM_ICON, so hud.c asked for `item_bed_foot.png` after the
+    // block's own name, and the file drawn for it was called
+    // `item_bed.png`. Nothing said so -- a texture that will not load
+    // falls back to the flat colour, and the flat colour for a block
+    // with no row in BLOCK_ARGB is zero, which is black.
+    //
+    // So the rule is checked instead of counted: every file the game
+    // WILL ask for is opened here, from the same two facts hud.c uses
+    // (item_def(id).name and block_has_item_icon). This runs in the
+    // repo, where the PNGs are, so it costs one fopen each.
+    int missing = 0;
+    for (uint16_t id = 1; id < ITEM_COUNT; id++) {
+        if (id < BLK_COUNT && !block_has_item_icon((uint8_t)id)) continue;  // drawn as its own side
+        if (id == BLK_BARRIER) continue;                                    // never carried
+        char path[128];
+        snprintf(path, sizeof(path), "textures/item_%s.png", item_def(id).name);
+        FILE* f = fopen(path, "rb");
+        if (f != NULL) {
+            fclose(f);
+            continue;
+        }
+        missing++;
+        CHECK(false, "%s asks for %s, which does not exist", item_def(id).name, path);
+    }
+    printf("  %d icon file(s) asked for by name, %d missing\n", icons + block_icons, missing);
+
+    // ... and the colour under it, which is what shows when a texture
+    // will not load. Zero is not a colour: it is the hole the bed fell
+    // through.
+    for (uint16_t id = 1; id < BLK_COUNT; id++) {
+        if (id == BLK_AIR || id == BLK_BARRIER) continue;
+        if (block_def((uint8_t)id)->name[0] == '\0') continue;  // an id with no block on it yet
+        CHECK((item_def(id).argb >> 24) != 0, "block %s has no fallback colour: it draws as black",
+              block_def((uint8_t)id)->name);
+    }
 }
 
 // A 6 x 6 pen of fence, with whatever `extra` puts inside it, and a cow

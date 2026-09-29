@@ -196,6 +196,13 @@ static uint32_t const BLOCK_ARGB[BLK_COUNT] = {
     [BLK_POTATO_CROP] = 0xFF6A9E48u,    [BLK_TOMATO_CROP] = 0xFFB4462Eu,
     [BLK_BEAN_CROP] = 0xFF86A24Eu,      [BLK_RICE_CROP] = 0xFFC2BE6Au,
     [BLK_RICE_TOP] = 0xFFD2C878u,
+    // The animals' round, which shipped without these and so drew as
+    // BLACK wherever a texture would not load (F-128). Zero is not a
+    // colour, and worldcheck says so now.
+    [BLK_CHEESE_MAKER] = 0xFF9C7E52u,   [BLK_SAUSAGE_MAKER] = 0xFF8E9096u,
+    [BLK_FENCE] = 0xFF9A7848u,          [BLK_FENCE_GATE] = 0xFF9A7848u,
+    [BLK_FENCE_GATE_OPEN] = 0xFF9A7848u,
+    [BLK_BED_FOOT] = 0xFFBE3A36u,       [BLK_BED_HEAD] = 0xFFBE3A36u,
 };
 
 // What each block is CALLED on screen, beside the colour above. A

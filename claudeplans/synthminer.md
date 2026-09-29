@@ -4261,6 +4261,50 @@ types the code:
   new material, `FM_PALE`, serves both the bone and the pillow, which
   is the only reason it earned a row.
 
+- **F-128** 2026-09-29, the user, playing the build that was supposed
+  to have fixed F-127: *"The bed still has a black icon in inventory."*
+
+  It did, and the reason is a rule that was never checked -- only
+  counted. A block carrying `BF2_ITEM_ICON` is drawn from
+  `item_<BLOCK NAME>.png` (hud.c, `icon_file`). The block is called
+  **`bed_foot`**. The file I drew for it is called **`item_bed.png`**.
+  So the game asked for `item_bed_foot.png`, the cache said no, and
+  `slot_icon_sized` fell back to the flat colour -- which for a block
+  with no row in `BLOCK_ARGB` is **zero**, and zero is black.
+
+  **Two silent failures stacked, and either one alone would have been
+  visible.** A missing texture that fell back to a loud colour would
+  have looked wrong on the first frame. A black square with no texture
+  behind it would have been obviously empty. Together they produced a
+  thing that looks deliberate.
+
+  And `check_texture_budget` (built for F-120, which caught F-121)
+  could not see it, because **it counted the icons instead of opening
+  them**. That is the same mistake as F-126's cave check, which
+  asserted a range on a set that could not fail: a check that measures
+  a proxy of the outcome rather than the outcome.
+
+  Fixed at the rule, not at the bed:
+
+  * every icon file the game will ask for is now **fopen'd** by
+    worldcheck, from the same two facts hud.c uses. It runs in the
+    repo, where the PNGs are, so it costs one open each -- and it found
+    **three** missing, not one: `mutton_mash` and `kebab`, the two
+    dishes from D-126, had no icon at all and were drawing as flat
+    squares;
+  * every carryable block must have a **non-zero fallback colour**.
+    Seven had none: both makers, the fence, both gates and both halves
+    of the bed -- the whole animals round. Only the bed showed it,
+    because only the bed also had the wrong filename;
+  * `item_bed.png` is now `item_bed_foot.png`, and the dishes are
+    drawn: a plate with mash and a cut of meat, and a straight skewer
+    with four lumps on it, which is how a kebab stays apart from a
+    sausage at 16 px.
+
+  Not covered: the six loose textures (water_blend, the torch frames,
+  the flame, Fred's face) are named in non-pure code that worldcheck
+  cannot reach, so they are still counted and not opened.
+
 ### Decisions (D-n), each with date and who decided
 
 - **D-128** 2026-09-29, building step 12: **a cast is two taps, and the

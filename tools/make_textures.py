@@ -1913,6 +1913,50 @@ def sm_item_mutton():
     return _meat(_icon(), (198, 96, 88), (240, 230, 216))
 
 
+def sm_item_mutton_mash():
+    """A plate with a mound of mash and a cut of meat beside it. The
+    PLATE is what makes it a dish rather than another lump of food: an
+    ellipse under everything, lit at its far rim and dark at the near
+    one, so the two things on it are ON something."""
+    img = _icon()
+    plate = (188, 190, 198)
+    mash = (240, 226, 170)
+    meat = (176, 74, 62)
+    for i, y in enumerate(range(9, 14)):
+        half = (6, 6, 5, 4, 2)[i]
+        _rect(img, 8 - half, y, 9 + half, y + 1, _shade(plate, 14 - 11 * i))
+    _blob(img, mash, 3, 6, 8, squash=1.2)
+    _dot(img, 5, 6, _shade(mash, 26))
+    _dot(img, 6, 6, _shade(mash, 26))
+    _blob(img, meat, 2, 11, 8, squash=1.1)
+    for x, y in ((12, 7), (12, 8)):
+        _dot(img, x, y, (238, 226, 212))
+    return img
+
+
+def sm_item_kebab():
+    """A skewer: a STRAIGHT stick with four lumps threaded on it, which
+    is how it stays apart from the sausage's curve at this size. Meat,
+    tomato, bean, meat -- the recipe in order, so the icon names its own
+    ingredients.
+
+    The lumps are 3x3 rather than round, and three apart: at four apart
+    the skewer runs off the tile, and round ones at three apart ran into
+    each other and made a caterpillar. A texel of bare stick between
+    each pair is the whole difference."""
+    img = _icon()
+    stick = (150, 112, 62)
+    for i in range(14):
+        _dot(img, 1 + i, 14 - i, _shade(stick, 16))
+        _dot(img, 2 + i, 14 - i, _shade(stick, -30))
+    lumps = (((182, 76, 62), 4, 11), ((206, 58, 44), 7, 8), ((122, 160, 74), 10, 5), ((182, 76, 62), 13, 2))
+    for rgb, cx, cy in lumps:
+        _rect(img, cx - 1, cy - 1, cx + 2, cy + 2, rgb)
+        _rect(img, cx - 1, cy - 1, cx + 2, cy, _shade(rgb, 26))     # lit along the top
+        _rect(img, cx - 1, cy + 1, cx + 2, cy + 2, _shade(rgb, -34))  # and dark underneath
+    return img
+
+
 def sm_item_wool():
     """A fleece: a pale curly lump, the same curls as the sheep."""
     img = _icon()
@@ -2205,10 +2249,15 @@ TEXTURES = {
     "bed_head.png": lambda: sm_bed_top(True),
     "bed_side.png": sm_bed_side,
     "item_mutton.png": sm_item_mutton,
+    "item_mutton_mash.png": sm_item_mutton_mash,
+    "item_kebab.png": sm_item_kebab,
     "item_wool.png": sm_item_wool,
     "item_shears.png": sm_item_shears,
     "item_string.png": sm_item_string,
-    "item_bed.png": sm_item_bed,
+    # NAMED AFTER THE BLOCK, not after the thing: a block with
+    # BF2_ITEM_ICON is asked for as item_<block name>.png, and the
+    # block is bed_foot (F-128).
+    "item_bed_foot.png": sm_item_bed,
     # Fishing (step 12).
     "item_fishing_rod.png": sm_item_rod,
     "item_sardine.png": lambda: sm_item_fish((186, 196, 206), (228, 234, 240)),
