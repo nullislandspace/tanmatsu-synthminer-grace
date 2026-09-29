@@ -1539,17 +1539,22 @@ not.
 
 The catch is one of **sardines, salmon, shrimp**.
 
-The reorder has one consequence, and the user has already ruled on it:
-**there is no string in this game until spiders arrive in step 13**, and
-Minecraft's rod is sticks and string. So for now the rod is **three
-sticks**, *"this recipe will get updated later when we have string"*.
+The rod is **three sticks for now**, and the user is explicit that this
+is temporary: *"i tell you the final recipe of the fishing rod another
+day when i have decided."* One row in a recipe table, in a game where a
+recipe is a multiset and not a grid (Part C), so changing it later costs
+nothing.
 
-That is the right call and not a placeholder in the bad sense. It keeps
-step 12 free of step 13 -- the whole point of the reorder -- and the
-change, when it comes, is one row in the recipe table, in a game where a
-recipe is a multiset and not a grid (Part C). The only thing to remember
-is that a rod bought for three sticks is nearly free, so **the scarce
-thing in fishing has to be the worms**, not the tackle.
+What they did decide is worth more than the recipe: **string will not
+come from spiders.** That removes the dependency this section was
+written to worry about. The reorder was never really at risk -- fishing
+does not need step 13 for its tackle after all, because whatever string
+turns out to be, it will not be a mob drop. The likely source is a
+plant, and tall grass is already in the world doing one job.
+
+The one thing to hold onto meanwhile: a rod bought for three sticks is
+nearly free, so **the scarce thing in fishing is the worms**, not the
+tackle -- and the final recipe should not change that.
 
 ### The food table
 
@@ -1583,6 +1588,12 @@ Cooked on the stove, one in-game minute each:
 | Pork and beans | 1 pork + 1 beans | 5 | 2 |
 | Steak and potatoes | 1 beef + 1 potato | 5 | 2 |
 | **Pizza** | 2 wheat + 1 sausage + 1 cheese + 2 shrimp | **10** | **8** |
+
+**The fake sausage counts as a pizza's sausage** (the user), so the
+vegetarian option is not a dead end one dish short of the best food in
+the game. It was never going to make the pizza vegetarian -- there are
+two shrimp in it -- so refusing would only have been a trap for someone
+who had done everything right.
 
 **Grilled tomatoes and baked beans are 1:1** (the user), one fruit in,
 one dish out. This file guessed two and guessed wrong, on the reasoning
@@ -1633,12 +1644,11 @@ stays a table row.
 Written down so they are decided on purpose rather than by whoever
 types the code:
 
-- **Does a rod wear out?** At three sticks it is cheap enough that
-  durability would be theatre, so probably not.
-- **The rod's real recipe**, once string exists in step 13 (D-109).
-- **Whether the fake sausage may be a pizza's sausage.** It should be:
-  the pizza has shrimp in it, so it is not a vegetarian dish either way,
-  and refusing would only be a trap.
+- **The rod's final recipe**, which the user will give another day.
+  Three sticks until then, and **string does not come from spiders** --
+  so it is not waiting on step 13 (D-109).
+- **Where string does come from**, which that recipe will settle. Tall
+  grass is the obvious candidate and already exists.
 
 ---
 
@@ -1727,7 +1737,7 @@ types the code:
 | 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | todo | Designed 2026-09-29 from the user's own re-imagining -- **Part A** has all of it, D-104 and D-106 and D-107 the choices. Not Minecraft's list and not its fertiliser: wheat, potatoes, tomatoes, beans and **rice that grows in one-deep water**, planted only in tilled soil **within four blocks of water on the same level** -- checked when the soil is tilled or a seed is offered and **nowhere else**, with dry soil refusing the seed, which is the user's own amendment and leaves the fluid scheduler untouched (D-106) -- and fed by **compost from a composter** rather than bone meal -- the same machine that makes the **worms** step 12 needs for bait. The crop blocks are nearly free (`BF_CROP` and `growth_max` have been sitting unused in `block_def_t` since step 0.3, and the data plane the mesher needs to draw a stage by is the one the fluids already handed it, D-101). **The real cost is time, not stage**: a crop is a block, so there is nowhere in a cell to write when it last grew, and lazy catch-up needs **a per-chunk stamp** -- a new skippable chunk section, no format bump (D-30), and old worlds gain one on their first write, which since step 49 is immediately. About twelve permanent block ids (D-74). |
 | 10 | **Food, hunger, and the kitchen stove** | todo | Designed 2026-09-29, and the user's verdict on the alternative was blunt: cooking on a crafting table or in a furnace *"makes absolutely no sense"*. So food is made on a **stove that reads its ingredients out of the chest beside it** (D-105) -- and the chest is not one a player has to supply: **the recipe includes it, the item places two blocks, and each holds the other's coordinates** (D-110, the user's refinement, which kills the "which chest?" question by making it unaskable and makes a row of stoves possible). Breaking either half takes both, contents drop as every container in this game already does, and a pair that straddles a chunk border repairs itself on load the way D-99 repairs fluids at a seam -- the broken half drops the item, an orphan drops only its contents, so nothing duplicates -- a recipe selector, a fuel slot, an output slot, one in-game minute a dish, and **a message naming what is missing** when a recipe is short or no chest touches it, for the same reason iron refusing a wooden pick needed a line on the HUD. Eleven dishes, every number the user's, with **pizza as the superfood** at 10 hunger and 8 saturation because it needs a crop, a fish, a cow and a pig -- all four systems at once. `item_def_t` gains `hunger` and `saturation`, so a food is a table row. The hunger loop is Minecraft's model, which D-08 committed to on day one; the HUD has drawn both bars since 4.3 with nothing moving them. |
 | 11 | **Animals: pigs, cows, chickens; milk, cheese and sausages; dogs** | todo | Pigs give pork, cows give beef, and **a cow used with a bucket gives milk** -- which D-100 already paid for: a filled bucket is its own item id, so `ITEM_BUCKET_MILK` is one row in `BUCKETS[]` and the held model colours its own contents from the block table. Two slow machines of their own (D-108): the **cheese maker**, 7 planks, an open square barrel that shows white, then yellow-orange, then empty, takes a bucket of milk (**returning the bucket at once**) and an in-game day; and the **sausage maker**, which turns pork and a flower into a sausage in a minute, or **two beans into a vegetarian one with identical stats**. Breeding, and dogs found wild and tamed with steak, are unchanged from the original requirement. |
-| 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, **one per cast and not per catch**, which is why the composter in step 9 has two output slots and why its 0-2 worms a day is the dial that sets how much fishing anyone does. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. One thing the reorder exposes: **there is no string in this game until spiders arrive in step 13**, so Minecraft's rod recipe is unavailable -- the user's ruling is **three sticks for now**, *"this recipe will get updated later when we have string"*, which keeps step 12 free of step 13 and makes the worms the scarce input rather than the tackle. |
+| 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, **one per cast and not per catch**, which is why the composter in step 9 has two output slots and why its 0-2 worms a day is the dial that sets how much fishing anyone does. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. The rod is **three sticks for now**, with the final recipe still the user's to give -- and the thing they have decided is that **string will not come from spiders**, which means this step never depended on step 13 in the first place. **No rod durability** either, their call and the right one: fishing is already paid for in worms, and charging twice for the same activity is how a system stops being worth using. |
 | 13 | **Mobs: zombies, skeletons, spiders; spawning, pathing, combat; beds and spawn; death keeps the inventory** | todo | Now after fishing (D-109). Unchanged otherwise, and still the biggest single block left: it is the first thing in the game that needs an entity with a mind rather than a record with a timer. |
 | 14 | **Audio: sound effects, and music that is mostly silence** (D-82, D-83, D-84, D-85) | done | 2026-09-23: the mixer starts at boot. 21 effects as table rows (`audio/sfx.c`), and which one a block makes is its own registry row (`block_def_t.sound`), so a new block brings its sounds with it. Music is eleven public-domain MIDI files played by a ported sequencer and a six-shape synth: 72 KB for half an hour, against megabytes for the same music as MP3. `worldcheck`'s `check_midi` proves every shipped file parses, ends, rewinds identically and survives truncation at any length (F-72). The raw voice sum clipped, so the synth carries a master gain and a cubic soft limiter (F-73). **Three volume sliders** in Settings -> Audio (D-85): the badge's own, then how loudly the music and the effects are each mixed in. The effects turned out to be inaudible whenever the music was off -- the amplifier was asleep and eating them (F-75) -- which is why the engine is 2.2. Two checks came out of the round and stay behind: `tools/symcheck.sh`, after an unexported `strcasecmp` made the app link clean and then refuse to start with no message at all (F-74), and `check_label_widths()`, after the sliders' labels turned out to be the least of it -- three settings screens had been overlapping their own text in a dozen languages since the day the language count went to 32 (F-76). |
 | 15 | Block and sky lighting | done | 2026-09-22, asked for by the user (torches that light the area, computed when a block changes). Pulled forward from the end of the plan: a light plane per chunk (sky and block light, 0..15 each, D-69), flooded when a chunk arrives -- its own light on core 1, the border exchange on the main task (F-58) -- and updated with the two-queue flood on every block change. The mesher keys faces on light; a per-frame table turns light into brightness for the time of day, through the engine's new `SE_TRI_LIGHT`. Host-tested: fall-off, removal, a shaft opened and capped, across a chunk border and into a chunk arriving late. On the badge: a placed torch lights the ground at night. |
@@ -4986,6 +4996,13 @@ types the code:
   worse ones is the decision, because a second-class version of a dish
   is not an option, it is a tax.
 
+  **And it counts as a pizza's sausage** (the user, the same day), which
+  is the half that makes the first half mean anything: identical stats
+  in the hand are worth little if the best food in the game quietly
+  refuses the substitute. The pizza was never vegetarian -- two shrimp --
+  so a refusal would have been a trap rather than a rule, sprung on
+  somebody who had farmed the beans and built the machine.
+
   Returning the bucket at once, rather than with the cheese, is the
   detail that makes the machine usable at all: there is exactly one
   bucket early on, buckets do not stack (D-100), and a day is a very
@@ -5022,18 +5039,32 @@ types the code:
   means the food chain is playable even if combat takes twice as long as
   planned.
 
-  **One consequence, and the user ruled on it the same day**:
-  Minecraft's fishing rod is sticks and string, and **there is no string
-  in this game until spiders arrive in step 13.** Their answer: *"for now
-  it just takes three sticks (this recipe will get updated later when we
-  have string)"*.
+  **One consequence, and the user ruled on it twice the same day**:
+  Minecraft's fishing rod is sticks and string, and this game has no
+  string. Their first answer: *"for now it just takes three sticks (this
+  recipe will get updated later when we have string)"*. Their second,
+  and the one that matters: *"i tell you the final recipe of the fishing
+  rod another day when i have decided. The only thing i know is that
+  strings will not come from spiders..."*
 
-  That keeps step 12 independent of step 13, which is the entire point of
-  the reorder, and the later change is one row in a recipe table where a
+  **So the dependency this paragraph was written about does not exist.**
+  It read as fishing borrowing an ingredient from the block behind it;
+  string coming from somewhere other than a mob means step 12 never
+  needed step 13 at all, and the reorder is cleaner than the argument
+  for it was. The likely source is a plant, and tall grass is already in
+  the world with one job.
+
+  Three sticks meanwhile, which is one row in a recipe table where a
   recipe is a multiset and not a grid (Part C). The thing to hold onto is
   that a rod this cheap means **the worms are the scarce input to
   fishing**, not the tackle -- so the composter's 0-2 per day is the dial
-  that sets how much fishing anyone does.
+  that sets how much fishing anyone does, and the final recipe should
+  leave it that way.
+
+  **No durability on the rod**, for the same reason: *"we are already
+  paying for fishing with worms."* One activity, one cost. A rod that
+  also wore out would charge twice for the same fish and turn a quiet
+  thing to do at the water into an errand about tackle.
 
   **And the worms are spent per cast, not per catch** (the user, the same
   day). A cast that brings nothing up still costs one, which is what
