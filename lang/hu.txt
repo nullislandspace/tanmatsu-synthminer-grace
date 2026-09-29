@@ -253,6 +253,25 @@ item.axe_iron = Vas fejsze
 item.shovel_iron = Vas lapát
 item.bucket = Vödör
 item.bucket_water = Vizesvödör
+item.hoe_wood = Fakapa
+item.hoe_stone = Kőkapa
+item.hoe_iron = Vaskapa
+item.wheat_seeds = Búzamag
+item.wheat = Búza
+item.potato = Burgonya
+item.tomato_seeds = Paradicsommag
+item.tomato = Paradicsom
+item.beans = Bab
+item.rice = Rizs
+item.compost = Komposzt
+item.worm = Giliszta
+item.farmland = Felszántott föld
+item.composter = Komposztáló
+item.wheat_crop = Búzanövény
+item.potato_crop = Burgonyanövény
+item.tomato_crop = Paradicsomnövény
+item.bean_crop = Babnövény
+item.rice_crop = Rizsnövény
 
 # --- chest ---
 chest.title = Láda
@@ -283,3 +302,27 @@ item.birch_leaves = Nyírfalevél
 item.cactus = Kaktusz
 item.snow = Hó
 item.sandstone = Homokkő
+
+# --- The composter ----------------------------------------------------------
+composter.title = Komposztáló
+composter.input = Hulladék
+composter.compost = Komposzt
+composter.worms = Giliszták
+composter.empty = - üres -
+composter.slot = %d %s
+composter.hint = enter betesz vagy kivesz   esc bezár
+composter.working = korhad, %d%%
+composter.no_input = nincs mit korhasztani
+composter.full = a komposztrekesz tele van
+composter.took = Elvéve: %d %s
+composter.pick_input = Mit komposztálj
+composter.pick_none = Itt semmi sem korhad
+composter.pick_hint = enter választ   esc vissza
+composter.a_day = napi egy adag, és giliszták
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Itt nincs mit felszántani
+farm.too_dry = Túl száraz a vetéshez
+farm.needs_soil = Ezt felszántott földbe ültesd
+farm.needs_water = A rizst egy blokk mély vízbe, homokra ültesd
+farm.already_ripe = Már érett

@@ -253,6 +253,25 @@ item.axe_iron = Machado de ferro
 item.shovel_iron = Pá de ferro
 item.bucket = Balde
 item.bucket_water = Balde de água
+item.hoe_wood = Enxada de madeira
+item.hoe_stone = Enxada de pedra
+item.hoe_iron = Enxada de ferro
+item.wheat_seeds = Sementes de trigo
+item.wheat = Trigo
+item.potato = Batata
+item.tomato_seeds = Sementes de tomate
+item.tomato = Tomate
+item.beans = Feijão
+item.rice = Arroz
+item.compost = Composto
+item.worm = Minhoca
+item.farmland = Terra lavrada
+item.composter = Compostor
+item.wheat_crop = Pé de trigo
+item.potato_crop = Pé de batata
+item.tomato_crop = Pé de tomate
+item.bean_crop = Pé de feijão
+item.rice_crop = Pé de arroz
 
 # --- chest ---
 chest.title = Baú
@@ -283,3 +302,27 @@ item.birch_leaves = Folhas de bétula
 item.cactus = Cato
 item.snow = Neve
 item.sandstone = Arenito
+
+# --- The composter ----------------------------------------------------------
+composter.title = Compostor
+composter.input = Restos
+composter.compost = Composto
+composter.worms = Minhocas
+composter.empty = - vazio -
+composter.slot = %d %s
+composter.hint = enter põe ou tira   esc fecha
+composter.working = a apodrecer, %d%%
+composter.no_input = não há nada para apodrecer
+composter.full = o compartimento de composto está cheio
+composter.took = Tirou %d %s
+composter.pick_input = O que compostar
+composter.pick_none = Aqui nada apodrece
+composter.pick_hint = enter escolhe   esc volta
+composter.a_day = uma unidade por dia, e minhocas
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Aqui não há nada para lavrar
+farm.too_dry = Seco demais para plantar
+farm.needs_soil = Planta isto em terra lavrada
+farm.needs_water = Planta o arroz em água de um bloco, sobre areia
+farm.already_ripe = Já está madura

@@ -253,6 +253,25 @@ item.axe_iron = Järnyxa
 item.shovel_iron = Järnspade
 item.bucket = Hink
 item.bucket_water = Vattenhink
+item.hoe_wood = Trähacka
+item.hoe_stone = Stenhacka
+item.hoe_iron = Järnhacka
+item.wheat_seeds = Vetefrön
+item.wheat = Vete
+item.potato = Potatis
+item.tomato_seeds = Tomatfrön
+item.tomato = Tomat
+item.beans = Bönor
+item.rice = Ris
+item.compost = Kompost
+item.worm = Mask
+item.farmland = Plöjd jord
+item.composter = Kompostlår
+item.wheat_crop = Veteplanta
+item.potato_crop = Potatisplanta
+item.tomato_crop = Tomatplanta
+item.bean_crop = Bönplanta
+item.rice_crop = Risplanta
 
 # --- chest ---
 chest.title = Kista
@@ -283,3 +302,27 @@ item.birch_leaves = Björklöv
 item.cactus = Kaktus
 item.snow = Snö
 item.sandstone = Sandsten
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostlår
+composter.input = Avfall
+composter.compost = Kompost
+composter.worms = Maskar
+composter.empty = - tom -
+composter.slot = %d %s
+composter.hint = enter lägger i eller tar   esc stänger
+composter.working = förmultnar, %d%%
+composter.no_input = inget att förmultna
+composter.full = kompostfacket är fullt
+composter.took = Tog %d %s
+composter.pick_input = Vad ska komposteras
+composter.pick_none = Inget här förmultnar
+composter.pick_hint = enter väljer   esc tillbaka
+composter.a_day = en enhet om dagen, och maskar
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Här finns inget att plöja
+farm.too_dry = För torrt för att plantera
+farm.needs_soil = Plantera det i plöjd jord
+farm.needs_water = Plantera ris i vatten ett block djupt, på sand
+farm.already_ripe = Den är redan mogen

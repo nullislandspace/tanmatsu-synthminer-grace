@@ -245,6 +245,25 @@ item.axe_iron = Желязна брадва
 item.shovel_iron = Желязна лопата
 item.bucket = Кофа
 item.bucket_water = Кофа с вода
+item.hoe_wood = Дървена мотика
+item.hoe_stone = Каменна мотика
+item.hoe_iron = Желязна мотика
+item.wheat_seeds = Семена от пшеница
+item.wheat = Пшеница
+item.potato = Картоф
+item.tomato_seeds = Семена от домат
+item.tomato = Домат
+item.beans = Боб
+item.rice = Ориз
+item.compost = Компост
+item.worm = Червей
+item.farmland = Разорана земя
+item.composter = Компостер
+item.wheat_crop = Растение пшеница
+item.potato_crop = Растение картоф
+item.tomato_crop = Растение домат
+item.bean_crop = Растение боб
+item.rice_crop = Растение ориз
 
 # --- chest ---
 chest.title = Сандък
@@ -275,3 +294,27 @@ item.birch_leaves = Брезови листа
 item.cactus = Кактус
 item.snow = Сняг
 item.sandstone = Пясъчник
+
+# --- The composter ----------------------------------------------------------
+composter.title = Компостер
+composter.input = Отпадъци
+composter.compost = Компост
+composter.worms = Червеи
+composter.empty = - празно -
+composter.slot = %d %s
+composter.hint = enter слага или взема   esc затваря
+composter.working = гние, %d%%
+composter.no_input = няма какво да гние
+composter.full = отделението за компост е пълно
+composter.took = Взети %d %s
+composter.pick_input = Какво да се компостира
+composter.pick_none = Тук нищо не гние
+composter.pick_hint = enter избира   esc назад
+composter.a_day = по една единица на ден, и червеи
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Тук няма какво да се разоре
+farm.too_dry = Твърде сухо за садене
+farm.needs_soil = Посади това в разорана земя
+farm.needs_water = Посади ориз във вода дълбока един блок, върху пясък
+farm.already_ripe = Вече е узряло

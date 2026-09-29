@@ -245,6 +245,25 @@ item.axe_iron = Eisenaxt
 item.shovel_iron = Eisenschaufel
 item.bucket = Eimer
 item.bucket_water = Wassereimer
+item.hoe_wood = Holzhacke
+item.hoe_stone = Steinhacke
+item.hoe_iron = Eisenhacke
+item.wheat_seeds = Weizensamen
+item.wheat = Weizen
+item.potato = Kartoffel
+item.tomato_seeds = Tomatensamen
+item.tomato = Tomate
+item.beans = Bohnen
+item.rice = Reis
+item.compost = Kompost
+item.worm = Wurm
+item.farmland = Ackerboden
+item.composter = Komposter
+item.wheat_crop = Weizenpflanze
+item.potato_crop = Kartoffelpflanze
+item.tomato_crop = Tomatenpflanze
+item.bean_crop = Bohnenpflanze
+item.rice_crop = Reispflanze
 
 # --- chest ---
 chest.title = Truhe
@@ -275,3 +294,27 @@ item.birch_leaves = Birkenlaub
 item.cactus = Kaktus
 item.snow = Schnee
 item.sandstone = Sandstein
+
+# --- The composter ----------------------------------------------------------
+composter.title = Komposter
+composter.input = Abfälle
+composter.compost = Kompost
+composter.worms = Würmer
+composter.empty = - leer -
+composter.slot = %d %s
+composter.hint = Enter legt ein oder nimmt   Esc schließt
+composter.working = verrottet, %d%%
+composter.no_input = nichts zum Verrotten drin
+composter.full = das Kompostfach ist voll
+composter.took = %d %s genommen
+composter.pick_input = Was kompostieren
+composter.pick_none = Nichts hiervon verrottet
+composter.pick_hint = Enter wählt   Esc zurück
+composter.a_day = eine Einheit pro Tag, dazu Würmer
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Hier lässt sich nichts umgraben
+farm.too_dry = Zu trocken zum Pflanzen
+farm.needs_soil = Pflanze das in umgegrabene Erde
+farm.needs_water = Reis in Wasser einen Block tief, auf Sand
+farm.already_ripe = Sie ist schon reif

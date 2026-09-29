@@ -253,6 +253,25 @@ item.axe_iron = Dzelzs cirvis
 item.shovel_iron = Dzelzs lāpsta
 item.bucket = Spainis
 item.bucket_water = Ūdens spainis
+item.hoe_wood = Koka kaplis
+item.hoe_stone = Akmens kaplis
+item.hoe_iron = Dzelzs kaplis
+item.wheat_seeds = Kviešu sēklas
+item.wheat = Kvieši
+item.potato = Kartupelis
+item.tomato_seeds = Tomātu sēklas
+item.tomato = Tomāts
+item.beans = Pupiņas
+item.rice = Rīsi
+item.compost = Komposts
+item.worm = Tārps
+item.farmland = Uzarta zeme
+item.composter = Kompostētājs
+item.wheat_crop = Kviešu stāds
+item.potato_crop = Kartupeļu stāds
+item.tomato_crop = Tomātu stāds
+item.bean_crop = Pupiņu stāds
+item.rice_crop = Rīsu stāds
 
 # --- chest ---
 chest.title = Lāde
@@ -283,3 +302,27 @@ item.birch_leaves = Bērza lapas
 item.cactus = Kaktuss
 item.snow = Sniegs
 item.sandstone = Smilšakmens
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostētājs
+composter.input = Atlikumi
+composter.compost = Komposts
+composter.worms = Tārpi
+composter.empty = - tukšs -
+composter.slot = %d %s
+composter.hint = enter ieliek vai paņem   esc aizver
+composter.working = trūd, %d%%
+composter.no_input = nav ko trūdēt
+composter.full = komposta nodalījums ir pilns
+composter.took = Paņēma %d %s
+composter.pick_input = Ko kompostēt
+composter.pick_none = Šeit nekas netrūd
+composter.pick_hint = enter izvēlas   esc atpakaļ
+composter.a_day = viena vienība dienā, un tārpi
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Šeit nav ko art
+farm.too_dry = Pārāk sauss, lai stādītu
+farm.needs_soil = Stādi to uzartā zemē
+farm.needs_water = Stādi rīsus viena bloka dziļā ūdenī, uz smiltīm
+farm.already_ripe = Tas jau ir nogatavojies

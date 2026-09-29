@@ -135,6 +135,21 @@ void fred_build_axe(mesh_t* m) {
     mesh_box(m, v3(-0.03f, 0.03f, 0.40f), v3(0.03f, 0.24f, 0.62f), FM_IRON, 1.0f);
 }
 
+// THE HOE. The same handle as the shovel with the blade turned ACROSS
+// it, which is the only thing that tells the two apart in a fist at
+// arm's length -- and the reason it needs a model at all: without one it
+// falls to FRED_HOLD_ITEM and is carried as a coloured cube, which is
+// exactly what the user objected to about the bucket ("a generic colored
+// block instead of a proper bucket", 2026-09-28).
+void fred_build_hoe(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_hoe";
+    mesh_box(m, v3(-0.035f, -0.035f, -0.12f), v3(0.035f, 0.035f, 0.60f), FM_WOOD, 1.0f);
+    // The blade: wide across x, shallow along z, and hanging BELOW the
+    // line of the handle, which is what a hoe does and a shovel does not.
+    mesh_box(m, v3(-0.13f, -0.16f, 0.52f), v3(0.13f, -0.04f, 0.60f), FM_IRON, 1.0f);
+}
+
 void fred_build_shovel(mesh_t* m) {
     mesh_init(m);
     m->name = "fred_shovel";

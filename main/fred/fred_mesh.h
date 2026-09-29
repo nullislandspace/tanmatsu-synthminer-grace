@@ -70,3 +70,4 @@ void fred_build_bucket(mesh_t* m);
 // pickaxe. The same handle, a different head.
 void fred_build_axe(mesh_t* m);
 void fred_build_shovel(mesh_t* m);
+void fred_build_hoe(mesh_t* m);

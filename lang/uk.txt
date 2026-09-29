@@ -253,6 +253,25 @@ item.axe_iron = Залізна сокира
 item.shovel_iron = Залізна лопата
 item.bucket = Відро
 item.bucket_water = Відро води
+item.hoe_wood = Дерев'яна сапа
+item.hoe_stone = Кам'яна сапа
+item.hoe_iron = Залізна сапа
+item.wheat_seeds = Насіння пшениці
+item.wheat = Пшениця
+item.potato = Картопля
+item.tomato_seeds = Насіння помідора
+item.tomato = Помідор
+item.beans = Квасоля
+item.rice = Рис
+item.compost = Компост
+item.worm = Черв'як
+item.farmland = Зорана земля
+item.composter = Компостер
+item.wheat_crop = Пшениця (рослина)
+item.potato_crop = Картопля (рослина)
+item.tomato_crop = Помідор (рослина)
+item.bean_crop = Квасоля (рослина)
+item.rice_crop = Рис (рослина)
 
 # --- chest ---
 chest.title = Скриня
@@ -283,3 +302,27 @@ item.birch_leaves = Березове листя
 item.cactus = Кактус
 item.snow = Сніг
 item.sandstone = Пісковик
+
+# --- The composter ----------------------------------------------------------
+composter.title = Компостер
+composter.input = Відходи
+composter.compost = Компост
+composter.worms = Черв'яки
+composter.empty = - порожньо -
+composter.slot = %d %s
+composter.hint = enter кладе або бере   esc закриває
+composter.working = перегниває, %d%%
+composter.no_input = немає чому перегнивати
+composter.full = комірка компосту заповнена
+composter.took = Взято %d %s
+composter.pick_input = Що компостувати
+composter.pick_none = Тут ніщо не перегниває
+composter.pick_hint = enter обирає   esc назад
+composter.a_day = одна порція на день, і черв'яки
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Тут нічого орати
+farm.too_dry = Надто сухо для садіння
+farm.needs_soil = Посади це в зорану землю
+farm.needs_water = Саджай рис у воду глибиною в один блок, на пісок
+farm.already_ripe = Він уже дозрів

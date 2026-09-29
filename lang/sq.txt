@@ -253,6 +253,25 @@ item.axe_iron = Sëpatë hekuri
 item.shovel_iron = Lopatë hekuri
 item.bucket = Kovë
 item.bucket_water = Kovë me ujë
+item.hoe_wood = Shatë druri
+item.hoe_stone = Shatë guri
+item.hoe_iron = Shatë hekuri
+item.wheat_seeds = Fara gruri
+item.wheat = Grurë
+item.potato = Patate
+item.tomato_seeds = Fara domatesh
+item.tomato = Domate
+item.beans = Fasule
+item.rice = Oriz
+item.compost = Kompost
+item.worm = Krimb
+item.farmland = Tokë e lëruar
+item.composter = Kompostues
+item.wheat_crop = Bimë gruri
+item.potato_crop = Bimë patatesh
+item.tomato_crop = Bimë domatesh
+item.bean_crop = Bimë fasulesh
+item.rice_crop = Bimë orizi
 
 # --- chest ---
 chest.title = Arkë
@@ -283,3 +302,27 @@ item.birch_leaves = Gjethe mështekne
 item.cactus = Kaktus
 item.snow = Borë
 item.sandstone = Ranor
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostues
+composter.input = Mbeturina
+composter.compost = Kompost
+composter.worms = Krimba
+composter.empty = - bosh -
+composter.slot = %d %s
+composter.hint = enter fut ose merr   esc mbyll
+composter.working = po kalbet, %d%%
+composter.no_input = s'ka gjë për të kalbur
+composter.full = kutia e kompostit është plot
+composter.took = U morën %d %s
+composter.pick_input = Çfarë të kompostohet
+composter.pick_none = Këtu s'kalbet asgjë
+composter.pick_hint = enter zgjedh   esc kthehet
+composter.a_day = një njësi në ditë, dhe krimba
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = S'ka gjë për të lëruar këtu
+farm.too_dry = Shumë e thatë për të mbjellë
+farm.needs_soil = Mbille këtë në tokë të lëruar
+farm.needs_water = Mbille orizin në ujë një bllok të thellë, mbi rërë
+farm.already_ripe = Është pjekur tashmë

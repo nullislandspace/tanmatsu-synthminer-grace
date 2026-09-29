@@ -253,6 +253,25 @@ item.axe_iron = Железный топор
 item.shovel_iron = Железная лопата
 item.bucket = Ведро
 item.bucket_water = Ведро воды
+item.hoe_wood = Деревянная мотыга
+item.hoe_stone = Каменная мотыга
+item.hoe_iron = Железная мотыга
+item.wheat_seeds = Семена пшеницы
+item.wheat = Пшеница
+item.potato = Картофель
+item.tomato_seeds = Семена томата
+item.tomato = Помидор
+item.beans = Фасоль
+item.rice = Рис
+item.compost = Компост
+item.worm = Червь
+item.farmland = Вспаханная земля
+item.composter = Компостер
+item.wheat_crop = Пшеница (растение)
+item.potato_crop = Картофель (куст)
+item.tomato_crop = Помидор (растение)
+item.bean_crop = Фасоль (растение)
+item.rice_crop = Рис (растение)
 
 # --- chest ---
 chest.title = Сундук
@@ -283,3 +302,27 @@ item.birch_leaves = Берёзовая листва
 item.cactus = Кактус
 item.snow = Снег
 item.sandstone = Песчаник
+
+# --- The composter ----------------------------------------------------------
+composter.title = Компостер
+composter.input = Отходы
+composter.compost = Компост
+composter.worms = Черви
+composter.empty = - пусто -
+composter.slot = %d %s
+composter.hint = enter кладёт или берёт   esc закрывает
+composter.working = перегнивает, %d%%
+composter.no_input = нечему перегнивать
+composter.full = ячейка компоста заполнена
+composter.took = Взято %d %s
+composter.pick_input = Что компостировать
+composter.pick_none = Здесь ничто не перегнивает
+composter.pick_hint = enter выбирает   esc назад
+composter.a_day = одна порция в день, и черви
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Здесь нечего вспахивать
+farm.too_dry = Слишком сухо для посадки
+farm.needs_soil = Посади это во вспаханную землю
+farm.needs_water = Сажай рис в воду глубиной в один блок, на песок
+farm.already_ripe = Он уже созрел

@@ -104,6 +104,44 @@ static recipe_t const RECIPES[] = {
      .n_in    = 1,
      .in      = {{ITEM_IRON_INGOT, 3}}},
 
+    // --- Farming (step 9) --------------------------------------------
+    //
+    // THE HOE, at 2 sticks plus 2 material (the user). Every tool in the
+    // game is 2 sticks plus its material -- 1 for a shovel, 3 for a
+    // pickaxe or an axe -- so a hoe at 2 sits between them and moved
+    // nothing. It is also Minecraft's own price (D-106).
+    {.out     = ITEM_HOE_WOOD, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 2,
+     .in      = {{BLK_PLANKS, 2}, {ITEM_STICK, 2}}},
+    {.out     = ITEM_HOE_STONE, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 2,
+     .in      = {{BLK_COBBLE, 2}, {ITEM_STICK, 2}}},
+    {.out     = ITEM_HOE_IRON, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 2,
+     .in      = {{ITEM_IRON_INGOT, 2}, {ITEM_STICK, 2}}},
+
+    // THE COMPOSTER: seven planks (the user), which is the same price as
+    // the cheese maker will be. Two rows with identical ingredients are
+    // fine here and would not be in Minecraft -- a recipe is a multiset
+    // and the player picks the row out of the book, which the wooden
+    // pickaxe and the wooden axe have been proving since step 8.2
+    // (D-104). Nothing needs distorting to tell them apart.
+    {.out     = BLK_COMPOSTER, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 1,
+     .in      = {{BLK_PLANKS, 7}}},
+
+    // A tomato into seeds, as the user asked: "must be turned into
+    // tomato seeds in the crafting bench". Two of them, so one fruit is
+    // two plants -- enough that a single tomato found in a birch wood
+    // grows into a crop rather than being a thing you ate once.
+    //
+    // NOT reversible: the bench would turn two seeds back into a whole
+    // tomato, which is the kind of loop the RF_REVERSIBLE bit exists to
+    // keep out (the user's own rule about ingots and ore).
+    {.out     = ITEM_TOMATO_SEEDS, .out_n = 2, .station = RS_TABLE,
+     .n_in    = 1,
+     .in      = {{ITEM_TOMATO, 1}}},
+
     // --- In a furnace -----------------------------------------------
     //
     // One input, and the fuel is NOT an ingredient -- it has a slot of

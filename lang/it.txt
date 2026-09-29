@@ -253,6 +253,25 @@ item.axe_iron = Ascia di ferro
 item.shovel_iron = Pala di ferro
 item.bucket = Secchio
 item.bucket_water = Secchio d'acqua
+item.hoe_wood = Zappa di legno
+item.hoe_stone = Zappa di pietra
+item.hoe_iron = Zappa di ferro
+item.wheat_seeds = Semi di grano
+item.wheat = Grano
+item.potato = Patata
+item.tomato_seeds = Semi di pomodoro
+item.tomato = Pomodoro
+item.beans = Fagioli
+item.rice = Riso
+item.compost = Compost
+item.worm = Verme
+item.farmland = Terra arata
+item.composter = Compostiera
+item.wheat_crop = Pianta di grano
+item.potato_crop = Pianta di patate
+item.tomato_crop = Pianta di pomodoro
+item.bean_crop = Pianta di fagioli
+item.rice_crop = Pianta di riso
 
 # --- chest ---
 chest.title = Cassa
@@ -283,3 +302,27 @@ item.birch_leaves = Foglie di betulla
 item.cactus = Cactus
 item.snow = Neve
 item.sandstone = Arenaria
+
+# --- The composter ----------------------------------------------------------
+composter.title = Compostiera
+composter.input = Scarti
+composter.compost = Compost
+composter.worms = Vermi
+composter.empty = - vuoto -
+composter.slot = %d %s
+composter.hint = invio mette o prende   esc chiude
+composter.working = si decompone, %d%%
+composter.no_input = non c'è niente da decomporre
+composter.full = lo scomparto del compost è pieno
+composter.took = Presi %d %s
+composter.pick_input = Cosa compostare
+composter.pick_none = Qui non si decompone nulla
+composter.pick_hint = invio sceglie   esc torna
+composter.a_day = un'unità al giorno, e vermi
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Qui non c'è niente da arare
+farm.too_dry = Troppo asciutto per seminare
+farm.needs_soil = Pianta questo in terra arata
+farm.needs_water = Pianta il riso in acqua alta un blocco, su sabbia
+farm.already_ripe = È già matura

@@ -50,6 +50,10 @@ typedef enum {
     BE_FURNACE,
     BE_CHEST,
     BE_TRASH,
+    // The composter (world/blocks.h, game/composter.h): scraps in one
+    // slot, compost and worms out of two more, and a day per unit on the
+    // same lazy clock the furnace runs on.
+    BE_COMPOST,
 } be_kind_t;
 
 typedef struct {
@@ -72,6 +76,12 @@ typedef struct {
 #define BE_FURNACE_INPUT  0
 #define BE_FURNACE_FUEL   1
 #define BE_FURNACE_OUTPUT 2
+
+// And the composter's three. No fuel slot: rotting needs no fire, which
+// is the user's own design and one fewer thing to feed.
+#define BE_COMPOST_INPUT  0
+#define BE_COMPOST_OUT    1
+#define BE_COMPOST_WORMS  2
 
 // Take the pool (once, at world open) and give it back. Safe to call
 // twice either way.

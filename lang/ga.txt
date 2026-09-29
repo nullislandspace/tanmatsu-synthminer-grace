@@ -253,6 +253,25 @@ item.axe_iron = Tua iarainn
 item.shovel_iron = Sluasaid iarainn
 item.bucket = Buicéad
 item.bucket_water = Buicéad uisce
+item.hoe_wood = Grafán adhmaid
+item.hoe_stone = Grafán cloiche
+item.hoe_iron = Grafán iarainn
+item.wheat_seeds = Síolta cruithneachta
+item.wheat = Cruithneacht
+item.potato = Práta
+item.tomato_seeds = Síolta trátaí
+item.tomato = Tráta
+item.beans = Pónairí
+item.rice = Rís
+item.compost = Múirín
+item.worm = Péist
+item.farmland = Ithir threafa
+item.composter = Múiríneoir
+item.wheat_crop = Planda cruithneachta
+item.potato_crop = Planda prátaí
+item.tomato_crop = Planda trátaí
+item.bean_crop = Planda pónairí
+item.rice_crop = Planda ríse
 
 # --- chest ---
 chest.title = Cófra
@@ -283,3 +302,27 @@ item.birch_leaves = Duilleoga beithe
 item.cactus = Cachtas
 item.snow = Sneachta
 item.sandstone = Gaineamhchloch
+
+# --- The composter ----------------------------------------------------------
+composter.title = Múiríneoir
+composter.input = Dramhaíl
+composter.compost = Múirín
+composter.worms = Péisteanna
+composter.empty = - folamh -
+composter.slot = %d %s
+composter.hint = cuireann enter isteach nó amach   dúnann esc
+composter.working = ag lobhadh, %d%%
+composter.no_input = níl aon rud le lobhadh
+composter.full = tá an sliotán múirín lán
+composter.took = Tógadh %d %s
+composter.pick_input = Cad a mhúiriniú
+composter.pick_none = Ní lobhann aon rud anseo
+composter.pick_hint = roghnaíonn enter   filleann esc
+composter.a_day = aonad sa lá, agus péisteanna
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Níl aon rud le treabhadh anseo
+farm.too_dry = Ró-thirim le cur
+farm.needs_soil = Cuir é seo in ithir threafa
+farm.needs_water = Cuir rís in uisce bloc ar doimhneacht, ar ghaineamh
+farm.already_ripe = Tá sí aibí cheana

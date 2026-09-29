@@ -50,6 +50,16 @@
 // need no palette and can never be misread after a renumbering.
 #define SECTION_BLOCK_ENTITIES 1  // furnace contents, chest contents, sign text
 #define SECTION_ENTITIES       2  // creatures and dropped items
+// THE CHUNK'S SLOW CLOCK (chunk_t.stamp, world/crops.h): four bytes,
+// little-endian, and no tags -- there is exactly one number in it and a
+// record header would be longer than the record.
+//
+// A build without this section simply does not write one, and a build
+// without this id steps over it: that is the whole reason the format
+// has never needed a version bump (D-30). A chunk that arrives without
+// one is stamped "now", which is the only honest answer for a world
+// written before farming existed.
+#define SECTION_CHUNK_CLOCK    3
 
 // The most a chunk payload can ever need for its PLANES: both raw, plus
 // the header and the two plane headers. Sections are on top of this, so

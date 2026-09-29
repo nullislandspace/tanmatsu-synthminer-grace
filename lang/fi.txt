@@ -253,6 +253,25 @@ item.axe_iron = Rautakirves
 item.shovel_iron = Rautalapio
 item.bucket = Ämpäri
 item.bucket_water = Vesiämpäri
+item.hoe_wood = Puukuokka
+item.hoe_stone = Kivikuokka
+item.hoe_iron = Rautakuokka
+item.wheat_seeds = Vehnänsiemenet
+item.wheat = Vehnä
+item.potato = Peruna
+item.tomato_seeds = Tomaatinsiemenet
+item.tomato = Tomaatti
+item.beans = Pavut
+item.rice = Riisi
+item.compost = Komposti
+item.worm = Mato
+item.farmland = Muokattu maa
+item.composter = Kompostori
+item.wheat_crop = Vehnäkasvi
+item.potato_crop = Perunakasvi
+item.tomato_crop = Tomaattikasvi
+item.bean_crop = Papukasvi
+item.rice_crop = Riisikasvi
 
 # --- chest ---
 chest.title = Arkku
@@ -283,3 +302,27 @@ item.birch_leaves = Koivunlehdet
 item.cactus = Kaktus
 item.snow = Lumi
 item.sandstone = Hiekkakivi
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostori
+composter.input = Jätteet
+composter.compost = Komposti
+composter.worms = Madot
+composter.empty = - tyhjä -
+composter.slot = %d %s
+composter.hint = enter laittaa tai ottaa   esc sulkee
+composter.working = maatuu, %d%%
+composter.no_input = ei mitään maatumassa
+composter.full = kompostilokero on täynnä
+composter.took = Otettiin %d %s
+composter.pick_input = Mitä kompostoidaan
+composter.pick_none = Mikään täällä ei maadu
+composter.pick_hint = enter valitsee   esc takaisin
+composter.a_day = yksi yksikkö päivässä, ja matoja
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Täällä ei ole mitään muokattavaa
+farm.too_dry = Liian kuivaa kylvettäväksi
+farm.needs_soil = Kylvä tämä muokattuun maahan
+farm.needs_water = Kylvä riisi yhden lohkon syvyiseen veteen, hiekalle
+farm.already_ripe = Se on jo kypsä

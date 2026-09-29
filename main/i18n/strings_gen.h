@@ -183,6 +183,25 @@ typedef enum {
     SM_STR_ITEM_SHOVEL_IRON,            // item.shovel_iron
     SM_STR_ITEM_BUCKET,                 // item.bucket
     SM_STR_ITEM_BUCKET_WATER,           // item.bucket_water
+    SM_STR_ITEM_HOE_WOOD,               // item.hoe_wood
+    SM_STR_ITEM_HOE_STONE,              // item.hoe_stone
+    SM_STR_ITEM_HOE_IRON,               // item.hoe_iron
+    SM_STR_ITEM_WHEAT_SEEDS,            // item.wheat_seeds
+    SM_STR_ITEM_WHEAT,                  // item.wheat
+    SM_STR_ITEM_POTATO,                 // item.potato
+    SM_STR_ITEM_TOMATO_SEEDS,           // item.tomato_seeds
+    SM_STR_ITEM_TOMATO,                 // item.tomato
+    SM_STR_ITEM_BEANS,                  // item.beans
+    SM_STR_ITEM_RICE,                   // item.rice
+    SM_STR_ITEM_COMPOST,                // item.compost
+    SM_STR_ITEM_WORM,                   // item.worm
+    SM_STR_ITEM_FARMLAND,               // item.farmland
+    SM_STR_ITEM_COMPOSTER,              // item.composter
+    SM_STR_ITEM_WHEAT_CROP,             // item.wheat_crop
+    SM_STR_ITEM_POTATO_CROP,            // item.potato_crop
+    SM_STR_ITEM_TOMATO_CROP,            // item.tomato_crop
+    SM_STR_ITEM_BEAN_CROP,              // item.bean_crop
+    SM_STR_ITEM_RICE_CROP,              // item.rice_crop
     SM_STR_FURNACE_TITLE,               // furnace.title
     SM_STR_FURNACE_INPUT,               // furnace.input
     SM_STR_FURNACE_FUEL,                // furnace.fuel
@@ -216,6 +235,26 @@ typedef enum {
     SM_STR_BENCH_EMPTY,                 // bench.empty
     SM_STR_BENCH_GIVES,                 // bench.gives
     SM_STR_BENCH_DONE,                  // bench.done
+    SM_STR_COMPOSTER_TITLE,             // composter.title
+    SM_STR_COMPOSTER_INPUT,             // composter.input
+    SM_STR_COMPOSTER_COMPOST,           // composter.compost
+    SM_STR_COMPOSTER_WORMS,             // composter.worms
+    SM_STR_COMPOSTER_EMPTY,             // composter.empty
+    SM_STR_COMPOSTER_SLOT,              // composter.slot
+    SM_STR_COMPOSTER_HINT,              // composter.hint
+    SM_STR_COMPOSTER_WORKING,           // composter.working
+    SM_STR_COMPOSTER_NO_INPUT,          // composter.no_input
+    SM_STR_COMPOSTER_FULL,              // composter.full
+    SM_STR_COMPOSTER_TOOK,              // composter.took
+    SM_STR_COMPOSTER_PICK_INPUT,        // composter.pick_input
+    SM_STR_COMPOSTER_PICK_NONE,         // composter.pick_none
+    SM_STR_COMPOSTER_PICK_HINT,         // composter.pick_hint
+    SM_STR_COMPOSTER_A_DAY,             // composter.a_day
+    SM_STR_FARM_CANNOT_TILL,            // farm.cannot_till
+    SM_STR_FARM_TOO_DRY,                // farm.too_dry
+    SM_STR_FARM_NEEDS_SOIL,             // farm.needs_soil
+    SM_STR_FARM_NEEDS_WATER,            // farm.needs_water
+    SM_STR_FARM_ALREADY_RIPE,           // farm.already_ripe
     SM_STR_HUD_NEEDS_TOOL,              // hud.needs_tool
     SM_STR_ACTION_FORWARD,              // action.forward
     SM_STR_ACTION_BACK,                 // action.back

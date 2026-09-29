@@ -40,6 +40,8 @@
 #include "common/trace.h"
 #include "world/chunkmesh.h"
 #include "world/blockupdate.h"
+#include "world/crops.h"
+#include "game/composter.h"
 #include "world/fluid.h"
 #include "world/light.h"
 #include "world/worldstore.h"
@@ -5284,6 +5286,402 @@ static void check_label_widths(void) {
     printf("  tightest fit: %.0f px to spare (\"%s\")\n", (double)worst, worst_text);
 }
 
+// ---------------------------------------------------------------------
+//  Farming (step 9)
+//
+//  The claims worth defending, in the order they matter:
+//
+//    * a hoe makes farmland, and WET or DRY is decided by water within
+//      four blocks on the same level -- once, when it is tilled (D-106);
+//    * dry soil REFUSES a seed rather than swallowing it;
+//    * a crop grows on the chunk's own slow clock, catches up after
+//      an absence, and costs nothing in a chunk with nothing growing;
+//    * the clock survives a save and a load, because a chunk that came
+//      back without one would ripen the next thing planted on the spot;
+//    * a harvest depends on how grown the plant was;
+//    * rice is water AND a plant, and the pond around it does not drain;
+//    * the composter turns a day into a unit and 0 to 2 worms, and banks
+//      nothing while it is empty.
+// ---------------------------------------------------------------------
+
+// How many crop cells the whole resident set holds, and how many of
+// those are ripe.
+static int crop_count(int* ripe_out) {
+    int n = 0, ripe = 0;
+    for (int i = 0; i < CH_SLOT_COUNT; i++) {
+        chunk_t const* c = chunk_slot_at(i);
+        if (c == NULL || c->cstate != CS_READY) continue;
+        int r = 0;
+        n += crops_count_in(c, &r);
+        ripe += r;
+    }
+    if (ripe_out != NULL) *ripe_out = ripe;
+    return n;
+}
+
+// Run the slow sweep for `ticks`, with the world clock advancing with it
+// -- which is what the game does (main.c).
+static void crop_run(uint32_t* clock, int ticks) {
+    for (int i = 0; i < ticks; i++) crops_tick((*clock)++);
+}
+
+static void check_farming(void) {
+    printf("farming: soil, crops and the slow clock\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the farming world would not become resident");
+    uint32_t clock = 100000;  // a world that has been played for a while
+
+    // --- Tilling, and the water rule ---------------------------------
+    for (int x = 0; x < 12; x++)
+        for (int z = 0; z < 12; z++) set_block(x, 19, z, BLK_GRASS, 0);
+
+    CHECK(crops_till(2, 19, 2), "a hoe would not turn over grass");
+    CHECK(world_block(2, 19, 2) == BLK_FARMLAND, "tilled grass with no water near it came out wet");
+    CHECK(!crops_till(2, 20, 2), "a hoe tilled the air above the soil");
+
+    // Water four away wets it; five away does not. The exact edge is the
+    // rule, so both sides of it are checked.
+    set_block(8, 19, 2, BLK_WATER, ST_PLACED);
+    CHECK(crops_water_near(4, 19, 2), "water 4 blocks away did not wet the soil");
+    CHECK(!crops_water_near(3, 19, 2), "water 5 blocks away wet the soil anyway");
+    CHECK(!crops_water_near(4, 18, 2), "water on another level wet the soil");
+    CHECK(crops_till(4, 19, 2), "a hoe would not turn over grass beside water");
+    CHECK(world_block(4, 19, 2) == BLK_FARMLAND_WET, "soil four blocks from water came out dry");
+
+    // Re-tilling is how a plot's wet/dry state is refreshed, which is
+    // the user's own instruction: nothing else ever looks again.
+    set_block(8, 19, 2, BLK_AIR, 0);
+    CHECK(crops_till(4, 19, 2), "an empty plot could not be re-tilled");
+    CHECK(world_block(4, 19, 2) == BLK_FARMLAND, "re-tilling after the water went did not dry the plot");
+    set_block(8, 19, 2, BLK_WATER, ST_PLACED);
+    CHECK(crops_till(4, 19, 2) && world_block(4, 19, 2) == BLK_FARMLAND_WET, "re-tilling did not wet the plot again");
+
+    // --- Dry soil refuses the seed -----------------------------------
+    CHECK(crops_plant(2, 19, 2, ITEM_WHEAT_SEEDS) == PLANT_TOO_DRY, "dry soil took a seed");
+    CHECK(world_block(2, 20, 2) == BLK_AIR, "a refused seed still planted something");
+    CHECK(crops_plant(1, 19, 1, ITEM_WHEAT_SEEDS) == PLANT_NEEDS_SOIL, "a seed went into untilled grass");
+    CHECK(crops_plant(4, 19, 2, ITEM_COAL) == PLANT_NOT_SEED, "coal planted a crop");
+    CHECK(crops_plant(4, 19, 2, ITEM_WHEAT_SEEDS) == PLANT_OK, "wet soil refused a seed");
+    CHECK(world_block(4, 20, 2) == BLK_WHEAT_CROP, "planting put nothing above the soil");
+    CHECK(crop_stage(world_state(4, 20, 2)) == 0, "a new seedling did not start at stage 0");
+
+    // --- It grows on the chunk's clock -------------------------------
+    chunk_t* c = chunk_find(0, 0);
+    CHECK(c != NULL && (c->flags & CF_CROPS) != 0, "planting did not mark the chunk as having crops");
+
+    // Not instantly: a seed planted now is not ripe a tick later.
+    crop_run(&clock, 300);
+    CHECK(crop_stage(world_state(4, 20, 2)) == 0, "a seedling grew in fifteen seconds");
+
+    // A full stage's worth of ticks, plus a round of the sweep so the
+    // chunk is actually visited.
+    crop_run(&clock, (int)CROP_STAGE_TICKS + 512);
+    CHECK(crop_stage(world_state(4, 20, 2)) == 1, "a crop did not gain a stage in %u ticks (it is at %u)",
+          CROP_STAGE_TICKS, crop_stage(world_state(4, 20, 2)));
+
+    // ... and it stops at ripe rather than running off the end of its
+    // three bits.
+    crop_run(&clock, (int)CROP_STAGE_TICKS * 8 + 512);
+    {
+        int ripe = 0;
+        int const n = crop_count(&ripe);
+        printf("  the field is %d plants, %d of them ripe\n", n, ripe);
+        CHECK(n == 1 && ripe == 1, "%d crops, %d ripe: expected one of each", n, ripe);
+    }
+    CHECK(crop_is_ripe(BLK_WHEAT_CROP, world_state(4, 20, 2)), "a crop left for eight stages is not ripe");
+    CHECK(crop_stage(world_state(4, 20, 2)) == BLOCKS[BLK_WHEAT_CROP].growth_max, "a ripe crop grew past its last stage");
+
+    // --- A chunk that was away shows the time it was away ------------
+    //
+    // The user's requirement, and the reason the clock is saved at all:
+    // "advance events in one go to where they would be now as if the
+    // chunk was never unloaded."
+    crops_plant(4, 19, 2, ITEM_WHEAT_SEEDS);  // (the ripe one is still there)
+    set_block(6, 19, 2, BLK_FARMLAND_WET, ST_PLACED);
+    CHECK(crops_plant(6, 19, 2, ITEM_WHEAT_SEEDS) == PLANT_OK, "a second seed would not go in");
+    CHECK(crop_stage(world_state(6, 20, 2)) == 0, "the second seedling did not start at 0");
+
+    c->stamp = clock;               // up to date as of now
+    clock += CROP_STAGE_TICKS * 2;  // ... and then two stages go by with nobody there
+    crops_chunk_join(c, clock);
+    CHECK(crop_stage(world_state(6, 20, 2)) == 2, "a chunk away for two stages came back at stage %u",
+          crop_stage(world_state(6, 20, 2)));
+
+    // --- Nothing grows in a chunk with nothing in it -----------------
+    chunk_t* empty = chunk_find(1, 1);
+    CHECK(empty != NULL, "the neighbour chunk is not resident");
+    CHECK((empty->flags & CF_CROPS) == 0, "a chunk with no crops is marked as having some");
+    uint32_t const before_stamp = empty->stamp;
+    crop_run(&clock, 600);
+    CHECK(empty->stamp != before_stamp || before_stamp == 0, "an empty chunk's clock never moved");
+    CHECK((empty->flags & CF_CROPS) == 0, "an empty chunk gained the crop flag from the sweep");
+
+    // A harvested field stops being swept: the flag clears itself.
+    set_block(6, 20, 2, BLK_AIR, 0);
+    set_block(4, 20, 2, BLK_AIR, 0);
+    crop_run(&clock, (int)CROP_STAGE_TICKS + 600);
+    CHECK((chunk_find(0, 0)->flags & CF_CROPS) == 0, "a harvested chunk is still marked as having crops");
+
+    // --- FARMING WAKES NO PHYSICS ------------------------------------
+    //
+    // Crops are tier 2 and must never enter the tick wheel: that is what
+    // blockupdate.h promises in its own header, and a field of wheat
+    // quietly joining the fluid queue would be a frame-rate bug nobody
+    // would think to look for here.
+    blockupdate_clear();
+    set_block(7, 19, 7, BLK_FARMLAND_WET, ST_PLACED);
+    CHECK(crops_plant(7, 19, 7, ITEM_POTATO) == PLANT_OK, "a potato would not go in");
+    crop_run(&clock, (int)CROP_STAGE_TICKS * 4 + 600);
+    blockupdate_stats_t const bst = blockupdate_stats();
+    printf("  a field grown from seed to ripe left %d cells in the physics queue\n", bst.pending);
+    CHECK(bst.pending == 0, "growing crops put %d cells in the tick wheel", bst.pending);
+    CHECK(crop_is_ripe(BLK_POTATO_CROP, world_state(7, 20, 7)), "the potato did not ripen");
+
+    // --- What a harvest gives ----------------------------------------
+    //
+    // Ripe: the harvest, plus a seed where the seed and the crop are
+    // different things. Unripe: the seed back, and nothing else.
+    item_entity_reset();
+    int before = item_entity_live();
+    interact_break(7, 20, 7, 0);
+    CHECK(item_entity_live() > before, "a ripe potato dropped nothing");
+
+    set_block(3, 19, 7, BLK_FARMLAND_WET, ST_PLACED);
+    CHECK(crops_plant(3, 19, 7, ITEM_WHEAT_SEEDS) == PLANT_OK, "wheat would not go in");
+    item_entity_reset();
+    interact_break(3, 20, 7, 0);
+    CHECK(item_entity_live() == 1, "an unripe crop dropped %d stacks, not one seed", item_entity_live());
+
+    // --- A CROP CANNOT STAND ON NOTHING ------------------------------
+    set_block(3, 19, 8, BLK_FARMLAND_WET, ST_PLACED);
+    CHECK(crops_plant(3, 19, 8, ITEM_WHEAT_SEEDS) == PLANT_OK, "wheat would not go in above the soil");
+    item_entity_reset();
+    interact_break(3, 19, 8, 0);  // dig out the soil under it
+    CHECK(world_block(3, 20, 8) == BLK_AIR, "the crop stayed in the air after its soil was dug out");
+    CHECK(item_entity_live() >= 2, "digging out the soil under a crop dropped %d stacks, not soil and seed",
+          item_entity_live());
+
+    // --- The clock survives the card ---------------------------------
+    //
+    // Not the encoder in isolation: the whole path, through a real
+    // region file. The decode side runs on the core-1 worker and has to
+    // put the number back into the CHUNK being filled rather than into
+    // a pool, which is the one thing about this section that is not
+    // like the block entities beside it (region.c, take_section).
+    {
+        uint8_t      buf[64];
+        chunk_t*     ch = chunk_find(0, 0);
+        ch->stamp       = 123456u;
+        size_t const n  = crops_encode_chunk(ch, buf, sizeof(buf));
+        CHECK(n == 9, "the clock section is %zu bytes, not 9", n);
+        CHECK(buf[0] == SECTION_CHUNK_CLOCK, "the clock section has the wrong id");
+        ch->stamp = 0;
+        crops_decode_section(ch, &buf[5], 4);
+        CHECK(ch->stamp == 123456u, "the clock did not survive a round trip (%u)", ch->stamp);
+
+        // Its OWN directory: TEST_DIR has been written, torn, damaged and
+        // compacted by the checks above, and a region file left in one
+        // of those states is not what this is testing.
+        #define FARM_DIR "build/host/farmtest"
+        CHECK(sm_mkdir_p(FARM_DIR), "could not create " FARM_DIR);
+        {
+            char path[192];
+            region_path(path, sizeof(path), FARM_DIR, region_of(ch->cx), region_of(ch->cz));
+            sm_remove(path);
+        }
+        ch->stamp = 987654u;
+        CHECK(region_write_chunk(FARM_DIR, ch), "could not write the farmed chunk");
+
+        chunk_t back;
+        memset(&back, 0, sizeof(back));
+        back.id = g_ib;
+        back.st = g_sb;
+        back.cx = ch->cx;
+        back.cz = ch->cz;
+        CHECK(region_read_chunk(FARM_DIR, &back, NULL) == 1, "could not read the farmed chunk back");
+        CHECK(back.stamp == 987654u, "the chunk came back from the card with clock %u, not 987654", back.stamp);
+
+        // AND A CHUNK FROM A WORLD WRITTEN BEFORE FARMING has no clock
+        // at all, which must read as "now" rather than as tick zero --
+        // otherwise every field in an upgraded world ripens on sight.
+        back.stamp = 0;
+        crops_chunk_join(&back, 555000u);
+        CHECK(back.stamp == 555000u, "a chunk with no saved clock came back stamped %u, not now", back.stamp);
+    }
+}
+
+// RICE IS TWO THINGS AT ONCE, and this is the check that it can be.
+static void check_rice(void) {
+    printf("farming: rice, which is water and a plant\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(18) != NULL, "the rice world would not become resident");
+
+    // A sandy shallow: sand at 18, water at 19, air above.
+    for (int x = 2; x <= 8; x++) {
+        for (int z = 2; z <= 8; z++) {
+            set_block(x, 17, z, BLK_SAND, 0);
+            set_block(x, 18, z, BLK_SAND, 0);
+            set_block(x, 19, z, BLK_WATER, ST_PLACED);
+        }
+    }
+    fl_run(200);
+
+    CHECK(crops_plant(5, 19, 5, ITEM_RICE) == PLANT_OK, "rice would not go into one-deep water on sand");
+    CHECK(world_block(5, 19, 5) == BLK_RICE_CROP, "planting rice did not put rice in the water cell");
+
+    // Not on dry land, and not in deep water.
+    set_block(5, 19, 7, BLK_WATER, ST_PLACED);
+    set_block(5, 20, 7, BLK_WATER, ST_PLACED);
+    fl_run(50);
+    CHECK(crops_plant(5, 19, 7, ITEM_RICE) == PLANT_NEEDS_WATER, "rice went into water two blocks deep");
+    set_block(5, 20, 7, BLK_AIR, 0);
+    set_block(2, 19, 2, BLK_AIR, 0);
+    CHECK(crops_plant(2, 18, 2, ITEM_RICE) == PLANT_NEEDS_WATER, "rice went into dry sand");
+    // ... and not on stone under the water, which is the other half of
+    // "on sand": a shore, not a quarry.
+    set_block(3, 18, 3, BLK_STONE, 0);
+    CHECK(crops_plant(3, 19, 3, ITEM_RICE) == PLANT_NEEDS_WATER, "rice went into water over stone");
+    set_block(3, 18, 3, BLK_SAND, 0);
+
+    // --- THE POND DOES NOT DRAIN ROUND IT ----------------------------
+    //
+    // The cell holds rice, not water, so everything that asks "is my
+    // neighbour water" has to be told about it -- otherwise a paddy
+    // makes the shallows recede, which is the bug this rule exists to
+    // prevent (blocks.h, BF2_WATERLOGGED).
+    int const wet_before = fl_count();
+    fl_run(400);
+    printf("  a paddy in a %d-cell pool left %d cells of water\n", wet_before, fl_count());
+    CHECK(fl_count() >= wet_before - 1, "planting rice drained %d cells of the pond", wet_before - fl_count());
+    CHECK(world_block(5, 19, 5) == BLK_RICE_CROP, "the water washed the rice away");
+    CHECK(blockupdate_stats().pending == 0, "a planted paddy left the physics queue busy");
+
+    // Harvesting gives the cell back to the water, which flows in again.
+    item_entity_reset();
+    interact_break(5, 19, 5, 0);
+    CHECK(item_entity_live() >= 1, "harvesting rice dropped nothing");
+    fl_run(200);
+    CHECK(world_block(5, 19, 5) == BLK_WATER, "the pond did not close over a harvested paddy");
+}
+
+static void check_composter(void) {
+    printf("composting: a day a unit, and worms\n");
+    chunk_store_clear();
+    CHECK(flat_world(20) != NULL, "the composting world would not become resident");
+    blockent_clear();
+
+    // What rots and what does not. The list is the item table's, which
+    // is the point of having a column rather than a list in the machine.
+    CHECK(composter_accepts(BLK_LEAVES), "leaves do not compost");
+    CHECK(composter_accepts(ITEM_WHEAT_SEEDS), "seeds do not compost");
+    CHECK(composter_accepts(BLK_FLOWER_RED), "flowers do not compost");
+    CHECK(!composter_accepts(BLK_COBBLE), "cobblestone composts");
+    CHECK(!composter_accepts(ITEM_COMPOST), "compost composts into itself");
+
+    blockent_t* be = blockent_add(4, 20, 4, BE_COMPOST);
+    CHECK(be != NULL, "the pool would not give a composter a record");
+    be->stamp             = 0;
+    be->slot[BE_COMPOST_INPUT].item  = BLK_LEAVES;
+    be->slot[BE_COMPOST_INPUT].count = 4;
+
+    // Most of a day is not a day.
+    composter_catch_up(be, COMPOST_TICKS - 1);
+    CHECK(be->slot[BE_COMPOST_OUT].count == 0, "the composter paid out before a day was up");
+    CHECK(composter_progress_pct(be, COMPOST_TICKS - 1) > 90, "the progress bar is not nearly full after a day less one tick");
+
+    // A day is.
+    composter_catch_up(be, COMPOST_TICKS);
+    CHECK(be->slot[BE_COMPOST_OUT].item == ITEM_COMPOST && be->slot[BE_COMPOST_OUT].count == 1,
+          "a day of leaves made %d compost", be->slot[BE_COMPOST_OUT].count);
+    CHECK(be->slot[BE_COMPOST_INPUT].count == 3, "the composter did not eat its scrap");
+
+    // THREE MORE DAYS IN ONE GO, which is the lazy clock doing the thing
+    // it exists for -- a box nobody visited for three days is right when
+    // they come back.
+    composter_catch_up(be, COMPOST_TICKS * 4);
+    CHECK(be->slot[BE_COMPOST_OUT].count == 4, "three days away made %d compost, not 4 in total",
+          be->slot[BE_COMPOST_OUT].count);
+    CHECK(be->slot[BE_COMPOST_INPUT].count == 0, "the input is not empty after four units");
+
+    // AN EMPTY BOX BANKS NOTHING. Otherwise a composter left empty for a
+    // week turns its next scrap into compost the instant it goes in.
+    uint32_t const t = COMPOST_TICKS * 40;
+    composter_catch_up(be, t);
+    be->slot[BE_COMPOST_INPUT].item  = BLK_LEAVES;
+    be->slot[BE_COMPOST_INPUT].count = 1;
+    composter_catch_up(be, t + 1);
+    CHECK(be->slot[BE_COMPOST_OUT].count == 4, "an empty composter banked the time it stood idle");
+    composter_catch_up(be, t + COMPOST_TICKS + 1);
+    CHECK(be->slot[BE_COMPOST_OUT].count == 5, "the box would not start again after standing idle");
+
+    // --- Worms: 0 to 2, and never the same number for ever -----------
+    int hist[4] = {0};
+    for (uint32_t n = 0; n < 600; n++) {
+        int const w = composter_worms_for(4, 20, 4, n);
+        CHECK(w >= 0 && w <= COMPOST_WORMS_MAX, "a unit gave %d worms", w);
+        hist[w]++;
+    }
+    printf("  600 units gave %d x 0 worms, %d x 1, %d x 2\n", hist[0], hist[1], hist[2]);
+    for (int i = 0; i <= COMPOST_WORMS_MAX; i++) {
+        CHECK(hist[i] > 100, "%d worms came up only %d times in 600: the spread is not flat", i, hist[i]);
+    }
+    // Deterministic, which is what Part T requires of anything random.
+    CHECK(composter_worms_for(4, 20, 4, 7) == composter_worms_for(4, 20, 4, 7), "the same unit gave two answers");
+    blockent_clear();
+}
+
+// THE WILD CROPS, in a real generated world. "Sometimes found" is the
+// user's own phrase and they defined it: one or two plants in one
+// instance of the biome. So the thing to measure is the RATE -- rare
+// enough to be a find, common enough to exist at all.
+static void check_wild_crops(void) {
+    printf("farming: the crops a player finds growing\n");
+    uint32_t const seed = 20260929u;
+    int            found[BLK_COUNT];
+    memset(found, 0, sizeof(found));
+
+    chunk_t* c = (chunk_t*)malloc(sizeof(chunk_t));
+    CHECK(c != NULL, "no room for a scratch chunk");
+    if (c == NULL) return;
+    memset(c, 0, sizeof(*c));
+    c->id = (uint8_t*)malloc(CH_CELLS);
+    c->st = (uint8_t*)malloc(CH_CELLS);
+    CHECK(c->id != NULL && c->st != NULL, "no room for a scratch chunk's planes");
+
+    int const span = 22;  // 44 x 44 chunks: 700 x 700 blocks
+    int       columns = 0;
+    for (int32_t cz = -span; cz < span; cz++) {
+        for (int32_t cx = -span; cx < span; cx++) {
+            c->cx = cx;
+            c->cz = cz;
+            worldgen_chunk(c, seed, FARLANDS_NONE);
+            columns += CH_W * CH_D;
+            for (size_t i = 0; i < CH_CELLS; i++) {
+                uint8_t const b = c->id[i];
+                if (block_crop(b)) found[b]++;
+            }
+        }
+    }
+    printf("  in %d columns: %d potato, %d tomato, %d bean, %d rice\n", columns, found[BLK_POTATO_CROP],
+           found[BLK_TOMATO_CROP], found[BLK_BEAN_CROP], found[BLK_RICE_CROP]);
+    CHECK(found[BLK_POTATO_CROP] > 0, "no wild potato in %d columns: nobody could ever start a farm", columns);
+    CHECK(found[BLK_BEAN_CROP] > 0, "no wild beans in %d columns", columns);
+    CHECK(found[BLK_TOMATO_CROP] > 0, "no wild tomato in %d columns", columns);
+    // Rare, not absent: more than one in a thousand columns is a field,
+    // not a find.
+    for (int b = 1; b < BLK_COUNT; b++) {
+        if (!block_crop(b)) continue;
+        CHECK(found[b] * 1000 < columns, "%s grows in more than one column in a thousand", BLOCKS[b].name);
+    }
+    // And what is found is READY: a plant you have to wait for is a
+    // plant you walk past.
+    free(c->id);
+    free(c->st);
+    free(c);
+}
+
 int main(void) {
     check_blocks();
     check_ids();
@@ -5342,6 +5740,10 @@ int main(void) {
     check_light();
     check_fluid();
     check_fluid_worldgen();
+    check_farming();
+    check_rice();
+    check_composter();
+    check_wild_crops();
     check_replay();
     check_drops();
     check_lang();

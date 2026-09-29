@@ -253,6 +253,25 @@ item.axe_iron = Járnöxi
 item.shovel_iron = Járnskófla
 item.bucket = Fata
 item.bucket_water = Vatnsfata
+item.hoe_wood = Viðarhaki
+item.hoe_stone = Steinhaki
+item.hoe_iron = Járnhaki
+item.wheat_seeds = Hveitifræ
+item.wheat = Hveiti
+item.potato = Kartafla
+item.tomato_seeds = Tómatafræ
+item.tomato = Tómatur
+item.beans = Baunir
+item.rice = Hrísgrjón
+item.compost = Molta
+item.worm = Ormur
+item.farmland = Plægð mold
+item.composter = Moltukassi
+item.wheat_crop = Hveitiplanta
+item.potato_crop = Kartöfluplanta
+item.tomato_crop = Tómatplanta
+item.bean_crop = Baunaplanta
+item.rice_crop = Hrísgrjónaplanta
 
 # --- chest ---
 chest.title = Kista
@@ -283,3 +302,27 @@ item.birch_leaves = Birkilauf
 item.cactus = Kaktus
 item.snow = Snjór
 item.sandstone = Sandsteinn
+
+# --- The composter ----------------------------------------------------------
+composter.title = Moltukassi
+composter.input = Afgangar
+composter.compost = Molta
+composter.worms = Ormar
+composter.empty = - tómt -
+composter.slot = %d %s
+composter.hint = enter setur inn eða tekur   esc lokar
+composter.working = rotnar, %d%%
+composter.no_input = ekkert til að rotna
+composter.full = moltuhólfið er fullt
+composter.took = Tók %d %s
+composter.pick_input = Hvað á að molta
+composter.pick_none = Ekkert hér rotnar
+composter.pick_hint = enter velur   esc til baka
+composter.a_day = ein eining á dag, og ormar
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Hér er ekkert til að plægja
+farm.too_dry = Of þurrt til að gróðursetja
+farm.needs_soil = Gróðursettu þetta í plægða mold
+farm.needs_water = Gróðursettu hrísgrjón í eins kubbs djúpu vatni, á sandi
+farm.already_ripe = Hún er þegar þroskuð

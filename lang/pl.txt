@@ -253,6 +253,25 @@ item.axe_iron = Żelazny topór
 item.shovel_iron = Żelazna łopata
 item.bucket = Wiadro
 item.bucket_water = Wiadro wody
+item.hoe_wood = Drewniana motyka
+item.hoe_stone = Kamienna motyka
+item.hoe_iron = Żelazna motyka
+item.wheat_seeds = Nasiona pszenicy
+item.wheat = Pszenica
+item.potato = Ziemniak
+item.tomato_seeds = Nasiona pomidora
+item.tomato = Pomidor
+item.beans = Fasola
+item.rice = Ryż
+item.compost = Kompost
+item.worm = Robak
+item.farmland = Zaorana ziemia
+item.composter = Kompostownik
+item.wheat_crop = Pszenica (roślina)
+item.potato_crop = Ziemniak (roślina)
+item.tomato_crop = Pomidor (roślina)
+item.bean_crop = Fasola (roślina)
+item.rice_crop = Ryż (roślina)
 
 # --- chest ---
 chest.title = Skrzynia
@@ -283,3 +302,27 @@ item.birch_leaves = Brzozowe liście
 item.cactus = Kaktus
 item.snow = Śnieg
 item.sandstone = Piaskowiec
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostownik
+composter.input = Odpadki
+composter.compost = Kompost
+composter.worms = Robaki
+composter.empty = - pusto -
+composter.slot = %d %s
+composter.hint = enter wkłada lub wyjmuje   esc zamyka
+composter.working = gnije, %d%%
+composter.no_input = nie ma czego gnić
+composter.full = przegroda na kompost jest pełna
+composter.took = Wzięto %d %s
+composter.pick_input = Co kompostować
+composter.pick_none = Nic tu nie gnije
+composter.pick_hint = enter wybiera   esc wraca
+composter.a_day = jedna jednostka dziennie, i robaki
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Nie ma tu czego zaorać
+farm.too_dry = Za sucho, by sadzić
+farm.needs_soil = Posadź to w zaoranej ziemi
+farm.needs_water = Sadź ryż w wodzie na jeden blok, na piasku
+farm.already_ripe = Jest już dojrzała

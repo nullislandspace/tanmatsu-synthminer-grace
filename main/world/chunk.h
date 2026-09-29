@@ -162,6 +162,14 @@ typedef enum {
 
 #define CF_GENERATED 0x01u  // terrain exists (as opposed to loaded-from-disk)
 #define CF_EDITED    0x02u  // differs from what is on disk: must be written before eviction
+// SOMETHING IN HERE GROWS. Set when a crop is planted or found on
+// arrival, cleared when the last one is harvested (world/crops.h). It is
+// what makes the slow sweep free: a chunk without it is a flag test.
+//
+// Derived, and never saved -- the crops themselves are in the id plane
+// and they are the truth, so this is rebuilt as a chunk arrives, exactly
+// like the active-cell plane (blockupdate.h) and the light.
+#define CF_CROPS     0x04u
 
 // Levels of detail, nearest first. The same mesh serves FAST and the
 // flat far view; COARSE is a half-resolution grid (voxel_mesh.h).
@@ -192,6 +200,17 @@ typedef struct {
     uint8_t* act;  // CH_ACT_BYTES
 
     int32_t cx, cz;
+
+    // THE CHUNK'S SLOW CLOCK, in world ticks: when the things in it that
+    // take minutes were last brought up to date (world/crops.h). Saved,
+    // in a section of its own, because it is the one fact about a chunk
+    // that cannot be worked out again from its blocks -- and losing it
+    // would make the first crop planted after a reload ripen on the spot.
+    //
+    // Tier 2 of the physics split (D-98): crops today, and whatever else
+    // grows slowly enough not to want the tick wheel.
+    uint32_t stamp;
+
     uint8_t cstate;    // chunk_state_t
     uint8_t flags;     // CF_*
     uint8_t edit_seq;  // bumped on every write; a stale mesh result is dropped

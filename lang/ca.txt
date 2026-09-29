@@ -253,6 +253,25 @@ item.axe_iron = Destral de ferro
 item.shovel_iron = Pala de ferro
 item.bucket = Galleda
 item.bucket_water = Galleda d'aigua
+item.hoe_wood = Aixada de fusta
+item.hoe_stone = Aixada de pedra
+item.hoe_iron = Aixada de ferro
+item.wheat_seeds = Llavors de blat
+item.wheat = Blat
+item.potato = Patata
+item.tomato_seeds = Llavors de tomàquet
+item.tomato = Tomàquet
+item.beans = Mongetes
+item.rice = Arròs
+item.compost = Compost
+item.worm = Cuc
+item.farmland = Terra llaurada
+item.composter = Compostador
+item.wheat_crop = Planta de blat
+item.potato_crop = Planta de patata
+item.tomato_crop = Planta de tomàquet
+item.bean_crop = Planta de mongetes
+item.rice_crop = Planta d'arròs
 
 # --- chest ---
 chest.title = Cofre
@@ -283,3 +302,27 @@ item.birch_leaves = Fulles de bedoll
 item.cactus = Cactus
 item.snow = Neu
 item.sandstone = Gres
+
+# --- The composter ----------------------------------------------------------
+composter.title = Compostador
+composter.input = Restes
+composter.compost = Compost
+composter.worms = Cucs
+composter.empty = - buit -
+composter.slot = %d %s
+composter.hint = entrar posa o treu   esc tanca
+composter.working = es podreix, %d%%
+composter.no_input = no hi ha res per podrir
+composter.full = el calaix del compost és ple
+composter.took = Has pres %d %s
+composter.pick_input = Què compostar
+composter.pick_none = Aquí no es podreix res
+composter.pick_hint = entrar tria   esc torna
+composter.a_day = una unitat al dia, i cucs
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Aquí no hi ha res per llaurar
+farm.too_dry = Massa sec per plantar
+farm.needs_soil = Planta això en terra llaurada
+farm.needs_water = Planta l'arròs en aigua d'un bloc, sobre sorra
+farm.already_ripe = Ja és madura

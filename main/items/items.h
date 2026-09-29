@@ -55,6 +55,33 @@ enum {
     // lava and milk are a row here and a row in BUCKETS, and no logic.
     ITEM_BUCKET,
     ITEM_BUCKET_WATER,
+
+    // --- Farming (step 9) --------------------------------------------
+    //
+    // The hoe is the first tool whose point is not speed: it TILLS.
+    // Three tiers like the others, and 2 sticks plus 2 material, which
+    // sits between a shovel's 1 and a pickaxe's 3 and is Minecraft's own
+    // price (D-106).
+    ITEM_HOE_WOOD,
+    ITEM_HOE_STONE,
+    ITEM_HOE_IRON,
+
+    // SEEDS AND HARVESTS. A potato, a bean and a grain of rice plant
+    // themselves -- the thing you eat is the thing you sow -- while
+    // wheat and tomatoes have a seed of their own, so both appear here
+    // (block_def_t.seed_item says which is which).
+    ITEM_WHEAT_SEEDS,
+    ITEM_WHEAT,
+    ITEM_POTATO,
+    ITEM_TOMATO_SEEDS,
+    ITEM_TOMATO,
+    ITEM_BEANS,
+    ITEM_RICE,
+
+    // What the composter makes: fertiliser, and bait for a rod that does
+    // not exist yet (D-104, D-109).
+    ITEM_COMPOST,
+    ITEM_WORM,
     ITEM_COUNT
 };
 
@@ -69,6 +96,16 @@ typedef struct {
     uint16_t    durability;  // uses before it breaks; 0 = never wears
     uint16_t    fuel;        // ticks it burns in a furnace; 0 = it does not (game/furnace.h)
     uint32_t    argb;        // the icon, until items have sprites of their own
+    // IT ROTS DOWN in a composter (game/composter.h). A column rather
+    // than a list inside the machine, for the same reason `fuel` is one:
+    // a new plant brings its own answer, and the composter never has to
+    // be edited to learn about it (D-104).
+    //
+    // LAST ON PURPOSE. The rows in items.c are positional, so a column
+    // inserted anywhere else would silently shift every one of them --
+    // argb would land in `fuel` and a pickaxe would burn for four
+    // billion ticks. A new column goes on the end, or every row changes.
+    uint8_t     compost;
 } item_def_t;
 
 // Everything about an item, blocks included. For a block id this is

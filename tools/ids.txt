@@ -63,3 +63,23 @@ item axe_iron
 item shovel_iron
 item bucket
 item bucket_water
+block 31 farmland
+block 32 farmland_wet
+block 33 composter
+block 34 wheat_crop
+block 35 potato_crop
+block 36 tomato_crop
+block 37 bean_crop
+block 38 rice_crop
+item hoe_wood
+item hoe_stone
+item hoe_iron
+item wheat_seeds
+item wheat
+item potato
+item tomato_seeds
+item tomato
+item beans
+item rice
+item compost
+item worm

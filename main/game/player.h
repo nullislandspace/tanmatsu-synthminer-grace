@@ -80,6 +80,9 @@
 #define PL_HEALTH_MAX 20
 #define PL_HUNGER_MAX 20
 
+// How long a refusal stays on screen: about two seconds at 20 Hz.
+#define USE_MSG_TICKS 36
+
 typedef struct {
     phys_body_t body;
     float       yaw, pitch;
@@ -116,6 +119,18 @@ typedef struct {
     // player.c has no business knowing what a screen is, and main.c
     // already owns every other screen in the game.
     uint8_t   used_block;
+
+    // WHY THE LAST USE DID NOTHING (use_msg_t, game/interact.h), and how
+    // many ticks are left of saying so. A hoe swung at stone, a seed
+    // offered to dry soil and compost put on ripe wheat all look exactly
+    // like a key that did not register, and the difference has to be on
+    // screen: the same argument as needs_tool above.
+    //
+    // Counted in TICKS rather than held against a clock, because this
+    // file is pure -- and a message that lasted a fixed number of ticks
+    // is also one a replay reproduces.
+    uint8_t   use_msg;
+    uint16_t  use_msg_ticks;
 
     // A full-screen UI is up -- the crafting book (ui/craft_ui.h).
     // Mirrored here once a frame by main.c rather than reached for,

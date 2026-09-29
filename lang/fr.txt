@@ -245,6 +245,25 @@ item.axe_iron = Hache en fer
 item.shovel_iron = Pelle en fer
 item.bucket = Seau
 item.bucket_water = Seau d'eau
+item.hoe_wood = Houe en bois
+item.hoe_stone = Houe en pierre
+item.hoe_iron = Houe en fer
+item.wheat_seeds = Graines de blé
+item.wheat = Blé
+item.potato = Pomme de terre
+item.tomato_seeds = Graines de tomate
+item.tomato = Tomate
+item.beans = Haricots
+item.rice = Riz
+item.compost = Compost
+item.worm = Ver
+item.farmland = Terre labourée
+item.composter = Composteur
+item.wheat_crop = Plant de blé
+item.potato_crop = Plant de patate
+item.tomato_crop = Plant de tomate
+item.bean_crop = Plant de haricots
+item.rice_crop = Plant de riz
 
 # --- chest ---
 chest.title = Coffre
@@ -275,3 +294,27 @@ item.birch_leaves = Feuilles de bouleau
 item.cactus = Cactus
 item.snow = Neige
 item.sandstone = Grès
+
+# --- The composter ----------------------------------------------------------
+composter.title = Composteur
+composter.input = Déchets
+composter.compost = Compost
+composter.worms = Vers
+composter.empty = - vide -
+composter.slot = %d %s
+composter.hint = entrée met ou prend   échap ferme
+composter.working = décomposition, %d%%
+composter.no_input = rien à décomposer
+composter.full = le bac à compost est plein
+composter.took = %d %s pris
+composter.pick_input = Que composter
+composter.pick_none = Rien ici ne se décompose
+composter.pick_hint = entrée choisit   échap revient
+composter.a_day = une unité par jour, et des vers
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Rien à labourer ici
+farm.too_dry = Trop sec pour planter
+farm.needs_soil = Plante ça dans de la terre labourée
+farm.needs_water = Plante le riz dans l'eau, un bloc de fond, sur du sable
+farm.already_ripe = Elle est déjà mûre

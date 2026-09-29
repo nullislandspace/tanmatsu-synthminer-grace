@@ -47,6 +47,7 @@
 #define S_HUMID  0xBBBBu
 #define S_VARIANT 0xCCCCu  // which KIND of forest
 #define S_SNOW   0xDDDDu  // where the caps sit on the high ground
+#define S_CROP   0xEEEEu  // the one or two wild crops, and the rice
 
 // Sea level is CH_SEA_LEVEL (24) of 64, so there is room for caves
 // beneath and for building above. The three height numbers that used to
@@ -71,6 +72,11 @@ biome_def_t const BIOMES[BIOME_COUNT] = {
                       .tree_chance = 0.28f, .plant_chance = 0.09f, .flowers = 0.55f,
                       .h_base = 14.0f, .h_cont = 20.0f, .h_hill = 12.0f,
                       .log_block = BLK_LOG, .leaf_block = BLK_LEAVES,
+                      // The wild potato: "sometimes found in large
+                      // grassy lands" (the user). One in seven thousand
+                      // columns, which is one or two in a plain you can
+                      // see across (D-107).
+                      .rare_plant = BLK_POTATO_CROP, .rare_chance = 0.00014f,
                       .rock_above = 255, .snow_above = 255},
 
     // Trees close enough to walk between in shade, and more undergrowth
@@ -81,6 +87,8 @@ biome_def_t const BIOMES[BIOME_COUNT] = {
                       .tree_chance = 0.66f, .plant_chance = 0.16f, .flowers = 0.25f,
                       .h_base = 14.0f, .h_cont = 20.0f, .h_hill = 15.0f,
                       .log_block = BLK_LOG, .leaf_block = BLK_LEAVES,
+                      // Beans, "sometimes found in normal forrests".
+                      .rare_plant = BLK_BEAN_CROP, .rare_chance = 0.00045f,
                       .rock_above = 255, .snow_above = 255},
 
     // Sand over sand, and nothing growing. No cactus: that would be a
@@ -115,6 +123,12 @@ biome_def_t const BIOMES[BIOME_COUNT] = {
                      .soil_min = 3, .soil_max = 6,
                      .tree_chance = 0.70f, .plant_chance = 0.12f, .flowers = 0.45f,
                      .h_base = 14.0f, .h_cont = 20.0f, .h_hill = 13.0f,
+                     // Tomatoes, "sometimes found in birch forrests" --
+                     // and a birch wood is already rare, which makes the
+                     // tomato the hardest of the three to come across.
+                     // That is right: it is the only one that needs the
+                     // crafting table before it is a crop at all.
+                     .rare_plant = BLK_TOMATO_CROP, .rare_chance = 0.00200f,
                      .log_block = BLK_BIRCH_LOG, .leaf_block = BLK_BIRCH_LEAVES,
                      .rock_above = 255, .snow_above = 255},
 };
@@ -491,6 +505,51 @@ static void place_column_plant(chunk_t* c, int lx, int lz, int32_t wx, int32_t w
     for (int i = 1; i <= h; i++) col[sy + i] = bd->column_plant;
 }
 
+// THE ONE OR TWO WILD CROPS of a biome (D-107), and the rice that stands
+// in the shallows. Both are generated RIPE -- the crop block at its last
+// stage -- so what a player finds is a plant they can harvest for its
+// seed, which is the first one they will ever have.
+//
+// Its own hash, not the plant field's, so adding this moved no flower
+// and no blade of grass in any existing world: every chunk that was
+// generated before today generates identically except for these cells.
+static bool place_rare_plant(chunk_t* c, int lx, int lz, int32_t wx, int32_t wz, uint32_t seed,
+                             biome_def_t const* bd, int sy) {
+    if (bd->rare_plant == BLK_AIR || bd->rare_chance <= 0.0f) return false;
+    if (sm_rand2(wx, wz, seed ^ S_CROP) > bd->rare_chance) return false;
+
+    uint8_t* col = &c->id[CH_IDX(lx, 0, lz)];
+    if (sy + 1 >= CH_H || col[sy] != bd->surface || col[sy + 1] != BLK_AIR) return false;
+
+    col[sy + 1] = bd->rare_plant;
+    // RIPE, in the state plane: the growth stage is bits 1..3 and
+    // growth_max is the block's own number (world/crops.h). No
+    // ST_PLACED -- the world grew this, nobody put it there.
+    c->st[CH_IDX(lx, sy + 1, lz)] = st_with_data(0, block_def(bd->rare_plant)->growth_max);
+    return true;
+}
+
+// RICE IN THE SHALLOWS: "sometimes found on the shore in water one block
+// deep" (the user). The condition is the same one planting it has to
+// satisfy, which is why it reads as a rule rather than as a decoration:
+// water exactly one deep, standing on sand, with air above it.
+//
+// It occupies the WATER cell rather than standing on the bed, because
+// that is what a waterlogged block is (blocks.h, BF2_WATERLOGGED).
+static void place_rice(chunk_t* c, int lx, int lz, int32_t wx, int32_t wz, uint32_t seed) {
+    uint8_t* col = &c->id[CH_IDX(lx, 0, lz)];
+    for (int y = CH_SEA_LEVEL - 2; y <= CH_SEA_LEVEL + 1; y++) {
+        if (y < 1 || y + 1 >= CH_H) continue;
+        if (col[y] != BLK_WATER) continue;
+        if (col[y - 1] != BLK_SAND) continue;   // a sandy bottom, not stone or dirt
+        if (col[y + 1] != BLK_AIR) continue;    // one block deep, and no deeper
+        if (sm_rand2(wx - 11, wz + 5, seed ^ S_CROP) > 0.0016f) return;
+        col[y] = BLK_RICE_CROP;
+        c->st[CH_IDX(lx, y, lz)] = st_with_data(0, block_def(BLK_RICE_CROP)->growth_max);
+        return;
+    }
+}
+
 static void decorate_plants(chunk_t* c, uint32_t seed) {
     for (int lz = 0; lz < CH_D; lz++) {
         for (int lx = 0; lx < CH_W; lx++) {
@@ -498,6 +557,13 @@ static void decorate_plants(chunk_t* c, uint32_t seed) {
             uint8_t*      col = &c->id[CH_IDX(lx, 0, lz)];
 
             biome_def_t const* bd = &BIOMES[worldgen_biome(wx, wz, seed)];
+
+            // RICE FIRST, because it lives UNDER the waterline and every
+            // other pass here starts by looking for dry land. A shore is
+            // an edge rather than a place (step 33's rule: the waterline
+            // is sand in every biome), so rice is not a biome row -- it
+            // is a condition, and the condition is the shallows.
+            place_rice(c, lx, lz, wx, wz, seed);
 
             // THE BIOME'S OWN SURFACE BLOCK, not grass: a desert has no
             // grass to find, and looking for it is why the cactus pass
@@ -512,6 +578,10 @@ static void decorate_plants(chunk_t* c, uint32_t seed) {
             if (sy < 0 || col[sy + 1] != BLK_AIR) continue;
 
             place_column_plant(c, lx, lz, wx, wz, seed, bd, sy);
+            // A wild crop wins over a flower on the same cell: it is the
+            // rarer thing by four orders of magnitude, and losing one to
+            // a blade of grass would make it rarer still.
+            if (place_rare_plant(c, lx, lz, wx, wz, seed, bd, sy)) continue;
             if (bd->plant_chance <= 0.0f) continue;
             if (col[sy + 1] != BLK_AIR) continue;  // a cactus went there
 

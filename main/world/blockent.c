@@ -23,12 +23,13 @@ static char const* kind_name(uint8_t kind) {
         case BE_FURNACE: return "furnace";
         case BE_CHEST: return "chest";
         case BE_TRASH: return "trash";
+        case BE_COMPOST: return "composter";
         default: return "";
     }
 }
 
 static uint8_t kind_by_name(char const* s) {
-    for (uint8_t k = BE_FURNACE; k <= BE_TRASH; k++) {
+    for (uint8_t k = BE_FURNACE; k <= BE_COMPOST; k++) {
         if (strcmp(kind_name(k), s) == 0) return k;
     }
     return BE_NONE;
@@ -147,7 +148,9 @@ int blockent_count_in(int32_t cx, int32_t cz) {
 // How many slots a kind actually uses. Only those are written, so a
 // furnace costs three fields and not twenty-seven empty ones.
 static int slots_used(uint8_t kind) {
-    return kind == BE_FURNACE ? 3 : BE_SLOTS;
+    // A furnace has three and a composter has three; a chest and a
+    // trashcan use all of them.
+    return (kind == BE_FURNACE || kind == BE_COMPOST) ? 3 : BE_SLOTS;
 }
 
 // One record's tagged fields. Items go in BY NAME, like everything else

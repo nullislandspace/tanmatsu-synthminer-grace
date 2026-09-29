@@ -260,6 +260,27 @@ item.axe_iron = Iron axe
 item.shovel_iron = Iron shovel
 item.bucket = Bucket
 item.bucket_water = Water bucket
+item.hoe_wood = Wooden hoe
+item.hoe_stone = Stone hoe
+item.hoe_iron = Iron hoe
+item.wheat_seeds = Wheat seeds
+item.wheat = Wheat
+item.potato = Potato
+item.tomato_seeds = Tomato seeds
+item.tomato = Tomato
+item.beans = Beans
+item.rice = Rice
+item.compost = Compost
+item.worm = Worm
+# Tilled soil, wet or dry: one name for both, since it is one thing
+item.farmland = Farmland
+item.composter = Composter
+# The growing plants, which are blocks rather than things you carry
+item.wheat_crop = Wheat plant
+item.potato_crop = Potato plant
+item.tomato_crop = Tomato plant
+item.bean_crop = Bean plant
+item.rice_crop = Rice plant
 
 # --- The furnace ------------------------------------------------------------
 furnace.title = Furnace
@@ -310,6 +331,39 @@ bench.empty = Nothing here comes apart
 # the footer, for the thing under the cursor
 bench.gives = gives back %s
 bench.done = Took apart %d %s
+
+# --- The composter ----------------------------------------------------------
+composter.title = Composter
+composter.input = Scraps
+composter.compost = Compost
+composter.worms = Worms
+composter.empty = - empty -
+# %d is the count, %s the item
+composter.slot = %d %s
+composter.hint = enter puts in or takes out   esc closes
+# %d%% is how far through the current unit it is
+composter.working = rotting down, %d%%
+composter.no_input = nothing in it to rot
+composter.full = the compost slot is full
+# %d is the count, %s the item
+composter.took = Took %d %s
+composter.pick_input = What to compost
+composter.pick_none = Nothing here rots down
+composter.pick_hint = enter chooses   esc goes back
+# the footer under the cursor: how long one unit takes
+composter.a_day = one unit a day, and worms with it
+
+# --- Farming -----------------------------------------------------------------
+# Said when a hoe is used on ground that cannot be tilled
+farm.cannot_till = Nothing to till here
+# Tilled soil with no water within four blocks: seeds will not go in it
+farm.too_dry = Too dry to plant
+# Said when a seed is used anywhere but on wet tilled soil
+farm.needs_soil = Plant this in tilled soil
+# Rice, which goes in shallow water standing on sand
+farm.needs_water = Plant rice in water one block deep, on sand
+# Said when compost is used on a plant that is already ripe
+farm.already_ripe = It is ripe already
 
 # --- What a block will not do -----------------------------------------------
 # %s is the tool it wants, e.g. "a stone pickaxe"

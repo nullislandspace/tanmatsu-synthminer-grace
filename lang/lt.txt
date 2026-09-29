@@ -253,6 +253,25 @@ item.axe_iron = Geležinis kirvis
 item.shovel_iron = Geležinis kastuvas
 item.bucket = Kibiras
 item.bucket_water = Kibiras vandens
+item.hoe_wood = Medinis kauptukas
+item.hoe_stone = Akmeninis kauptukas
+item.hoe_iron = Geležinis kauptukas
+item.wheat_seeds = Kviečių sėklos
+item.wheat = Kviečiai
+item.potato = Bulvė
+item.tomato_seeds = Pomidorų sėklos
+item.tomato = Pomidoras
+item.beans = Pupelės
+item.rice = Ryžiai
+item.compost = Kompostas
+item.worm = Kirminas
+item.farmland = Suarta žemė
+item.composter = Kompostinė
+item.wheat_crop = Kviečių augalas
+item.potato_crop = Bulvių augalas
+item.tomato_crop = Pomidorų augalas
+item.bean_crop = Pupelių augalas
+item.rice_crop = Ryžių augalas
 
 # --- chest ---
 chest.title = Skrynia
@@ -283,3 +302,27 @@ item.birch_leaves = Beržo lapai
 item.cactus = Kaktusas
 item.snow = Sniegas
 item.sandstone = Smiltainis
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostinė
+composter.input = Atliekos
+composter.compost = Kompostas
+composter.worms = Kirminai
+composter.empty = - tuščia -
+composter.slot = %d %s
+composter.hint = enter įdeda ar paima   esc uždaro
+composter.working = pūva, %d%%
+composter.no_input = nėra ko pūdyti
+composter.full = komposto langelis pilnas
+composter.took = Paimta %d %s
+composter.pick_input = Ką kompostuoti
+composter.pick_none = Čia niekas nepūva
+composter.pick_hint = enter pasirenka   esc atgal
+composter.a_day = vienas vienetas per dieną, ir kirminai
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Čia nėra ko arti
+farm.too_dry = Per sausa sodinti
+farm.needs_soil = Sodink tai suartoje žemėje
+farm.needs_water = Sodink ryžius vieno bloko gylio vandenyje, ant smėlio
+farm.already_ripe = Jis jau prinokęs

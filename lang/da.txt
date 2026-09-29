@@ -253,6 +253,25 @@ item.axe_iron = Jernøkse
 item.shovel_iron = Jernskovl
 item.bucket = Spand
 item.bucket_water = Spand med vand
+item.hoe_wood = Træhakke
+item.hoe_stone = Stenhakke
+item.hoe_iron = Jernhakke
+item.wheat_seeds = Hvedefrø
+item.wheat = Hvede
+item.potato = Kartoffel
+item.tomato_seeds = Tomatfrø
+item.tomato = Tomat
+item.beans = Bønner
+item.rice = Ris
+item.compost = Kompost
+item.worm = Orm
+item.farmland = Pløjet jord
+item.composter = Kompostbeholder
+item.wheat_crop = Hvedeplante
+item.potato_crop = Kartoffelplante
+item.tomato_crop = Tomatplante
+item.bean_crop = Bønneplante
+item.rice_crop = Risplante
 
 # --- chest ---
 chest.title = Kiste
@@ -283,3 +302,27 @@ item.birch_leaves = Birkeløv
 item.cactus = Kaktus
 item.snow = Sne
 item.sandstone = Sandsten
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostbeholder
+composter.input = Affald
+composter.compost = Kompost
+composter.worms = Orme
+composter.empty = - tom -
+composter.slot = %d %s
+composter.hint = enter lægger i eller tager   esc lukker
+composter.working = rådner, %d%%
+composter.no_input = intet at rådne
+composter.full = kompostrummet er fuldt
+composter.took = Tog %d %s
+composter.pick_input = Hvad skal komposteres
+composter.pick_none = Intet her rådner
+composter.pick_hint = enter vælger   esc tilbage
+composter.a_day = én enhed om dagen, og orme
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Her er intet at pløje
+farm.too_dry = For tørt til at plante
+farm.needs_soil = Plant det i pløjet jord
+farm.needs_water = Plant ris i vand én blok dybt, på sand
+farm.already_ripe = Den er allerede moden

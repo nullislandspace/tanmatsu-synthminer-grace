@@ -96,6 +96,35 @@ typedef enum {
     VM_CACTUS,
     VM_SNOW,
     VM_SANDSTONE,
+    VM_FARMLAND,
+    VM_FARMLAND_WET,
+    VM_COMPOSTER_TOP,
+    VM_COMPOSTER_SIDE,
+    // A CROP IS A RUN OF FOUR, one per growth stage, and the mesher
+    // takes the stage out of the state byte and adds it to the first
+    // (voxel_mesh.c, and block_def_t's note about mat[VF_TOP]). So the
+    // four have to stay adjacent and in order, which is why they are
+    // written out rather than generated.
+    VM_WHEAT_0,
+    VM_WHEAT_1,
+    VM_WHEAT_2,
+    VM_WHEAT_3,
+    VM_POTATO_0,
+    VM_POTATO_1,
+    VM_POTATO_2,
+    VM_POTATO_3,
+    VM_TOMATO_0,
+    VM_TOMATO_1,
+    VM_TOMATO_2,
+    VM_TOMATO_3,
+    VM_BEANS_0,
+    VM_BEANS_1,
+    VM_BEANS_2,
+    VM_BEANS_3,
+    VM_RICE_0,
+    VM_RICE_1,
+    VM_RICE_2,
+    VM_RICE_3,
     VM_COUNT
 } vox_mat_t;
 
@@ -182,6 +211,9 @@ typedef struct {
 // How high the fluid stands in a cell holding `data`, 0..1. Level 0 is
 // a whole cell; the rest step down by an eighth, so level 7 is a film
 // you can see the ground through and level 1 is nearly full.
+// Growth stages a crop has textures for: VM_<CROP>_0 .. _3.
+#define VOX_CROP_STAGES 4
+
 static inline float voxel_fluid_height(uint8_t data) {
     unsigned const lvl = data & VOX_FLUID_LEVEL_MASK;
     return lvl == 0u ? 1.0f : (float)(8u - lvl) / 8.0f;

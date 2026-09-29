@@ -29,6 +29,7 @@ set(APP_SOURCES
     main/world/light.c
     main/world/blockupdate.c
     main/world/fluid.c
+    main/world/crops.c
     main/world/worldgen.c
     main/world/farlands.c
     main/world/chunk_codec.c
@@ -51,6 +52,7 @@ set(APP_SOURCES
     main/game/raycast.c
     main/game/interact.c
     main/game/furnace.c
+    main/game/composter.c
     main/game/input.c
     main/game/player.c
     main/game/tick.c
@@ -73,6 +75,7 @@ set(APP_SOURCES
     main/ui/menu.c
     main/ui/craft_ui.c
     main/ui/furnace_ui.c
+    main/ui/composter_ui.c
     main/ui/chest_ui.c
     main/ui/bench_ui.c
     main/ui/amount_ui.c

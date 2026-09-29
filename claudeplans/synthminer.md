@@ -1734,7 +1734,7 @@ types the code:
 | 31 | **How many to move, and a cheat console** | done | 2026-09-23, asked for by the user. `ui/amount_ui.{c,h}`: moving a stack of more than one into or out of a chest, or into a furnace, asks first -- a slider AND a number, because one answers "about half" and the other answers "exactly seventeen" and neither answers both. It starts at everything, which is what the key did before it asked, and a stack of ONE never asks: there is nothing to decide and the modal would be a keypress added to every move. Taking a furnace's output never asks either (the user's rule: there is no reason to leave half a smelt behind). `ui/cheat_ui.{c,h}` on the backtick: every item in the game, searched by its STABLE name -- "pickaxe_wood", "iron_ore" -- which is English already, is what the save format keys on, is unambiguous, and needs no translation, which is exactly what the user asked for. |
 | 8.6 | The 8.4 screens in all 32 languages | done | 2026-09-23: 24 more keys each. Three languages spell "disassembly bench" wider than the column that holds an item name (Portuguese, Greek, Bulgarian) and were shortened rather than the column widened -- it is already the widest layout in the game. F-83. |
 | 8.5 | Item names and the crafting UI in all 32 languages | done | 2026-09-23: 63 keys x 31 languages -- every block and item a player can carry, the crafting book, the furnace and its picker. **Six overflowed and the check caught all six** before the badge did (French, Irish, Albanian, Greek, Bulgarian, Serbian), and widening the two crafting panels to hold them exposed something nothing had been measuring: **the book's row labels are ITEM NAMES**, and Russian "Деревянная лопата" is half as wide again as "Wooden shovel". `item.` joined `LABEL_COLUMNS`, the panels went to the wide layout, and the fold table grew to cover 82978 characters across the 32 languages. |
-| 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | todo | Designed 2026-09-29 from the user's own re-imagining -- **Part A** has all of it, D-104 and D-106 and D-107 the choices. Not Minecraft's list and not its fertiliser: wheat, potatoes, tomatoes, beans and **rice that grows in one-deep water**, planted only in tilled soil **within four blocks of water on the same level** -- checked when the soil is tilled or a seed is offered and **nowhere else**, with dry soil refusing the seed, which is the user's own amendment and leaves the fluid scheduler untouched (D-106) -- and fed by **compost from a composter** rather than bone meal -- the same machine that makes the **worms** step 12 needs for bait. The crop blocks are nearly free (`BF_CROP` and `growth_max` have been sitting unused in `block_def_t` since step 0.3, and the data plane the mesher needs to draw a stage by is the one the fluids already handed it, D-101). **The real cost is time, not stage**: a crop is a block, so there is nowhere in a cell to write when it last grew, and lazy catch-up needs **a per-chunk stamp** -- a new skippable chunk section, no format bump (D-30), and old worlds gain one on their first write, which since step 49 is immediately. About twelve permanent block ids (D-74). |
+| 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | done | 2026-09-29, built from Part A and D-104 to D-110. **Eight permanent block ids** (31-38, D-74): farmland dry and wet, the composter, and five crops; twelve items, three of them hoes. The hoe tills grass or dirt and the soil comes out **wet or dry by a water search done on that keypress and never again** (D-106) -- dry soil then REFUSES the seed, which is the failure worth having: a refusal a player learns from instead of a plot that silently never sprouts. **Crops cost almost nothing to draw**: `BF_CROP` and `growth_max` had been sitting in the block table unused since step 0.3, and the stage-to-texture step rides on the data plane the fluids already paid for (D-101), so a crop is `mat[VF_TOP] + stage` and four textures in a run. **The real cost was time, and it is D-111**: a crop is a block, so there is nowhere in a cell to write when it last grew -- `chunk_t.stamp` is now saved in a nine-byte section of its own, no version bump, and a chunk that arrives without one is stamped *now* (which is what stops every field in an upgraded world ripening on sight; the host check caught exactly that). Growth runs on a **round-robin sweep, one chunk slot a tick** and a flag test for a chunk with nothing growing (D-112), plus the full catch-up when a chunk lands -- the user's *"advance events in one go to where they would be now"*. **Rice is the interesting one**: it stands IN the water, so its cell is a plant and a full water source at once (`BF2_WATERLOGGED`), which is safe only because the user's own rule puts it in water exactly one block deep. The **composter** is the furnace's record with a longer number: a day a unit, 0-2 worms from the world's hash and never `rand()`, and **an empty box banks nothing** so a week of standing idle does not turn the next scrap into instant compost. Wild potatoes, beans and tomatoes generate ripe in their biomes and rice in the shallows (D-107) -- measured at 54, 23, 10 and 37 in a 700 x 700 block world, which is a find rather than a crop. **Measured, not assumed: a field grown from seed to ripe leaves 0 cells in the physics queue**, so crops never touch tier 1. Two checks caught real bugs before the badge did: a hand-built test world ripened everything instantly (the zero-clock case, now D-111's rule) and `check_label_widths` caught French and Russian potato-plant labels overflowing the crafting book. 39 new strings x 32 languages. Not yet: eating any of it, which is step 10. |
 | 10 | **Food, hunger, and the kitchen stove** | todo | Designed 2026-09-29, and the user's verdict on the alternative was blunt: cooking on a crafting table or in a furnace *"makes absolutely no sense"*. So food is made on a **stove that reads its ingredients out of the chest beside it** (D-105) -- and the chest is not one a player has to supply: **the recipe includes it, the item places two blocks, and each holds the other's coordinates** (D-110, the user's refinement, which kills the "which chest?" question by making it unaskable and makes a row of stoves possible). Breaking either half takes both, contents drop as every container in this game already does, and a pair that straddles a chunk border repairs itself on load the way D-99 repairs fluids at a seam -- the broken half drops the item, an orphan drops only its contents, so nothing duplicates -- a recipe selector, a fuel slot, an output slot, one in-game minute a dish, and **a message naming what is missing** when a recipe is short or no chest touches it, for the same reason iron refusing a wooden pick needed a line on the HUD. Eleven dishes, every number the user's, with **pizza as the superfood** at 10 hunger and 8 saturation because it needs a crop, a fish, a cow and a pig -- all four systems at once. `item_def_t` gains `hunger` and `saturation`, so a food is a table row. The hunger loop is Minecraft's model, which D-08 committed to on day one; the HUD has drawn both bars since 4.3 with nothing moving them. |
 | 11 | **Animals: pigs, cows, chickens; milk, cheese and sausages; dogs** | todo | Pigs give pork, cows give beef, and **a cow used with a bucket gives milk** -- which D-100 already paid for: a filled bucket is its own item id, so `ITEM_BUCKET_MILK` is one row in `BUCKETS[]` and the held model colours its own contents from the block table. Two slow machines of their own (D-108): the **cheese maker**, 7 planks, an open square barrel that shows white, then yellow-orange, then empty, takes a bucket of milk (**returning the bucket at once**) and an in-game day; and the **sausage maker**, which turns pork and a flower into a sausage in a minute, or **two beans into a vegetarian one with identical stats**. Breeding, and dogs found wild and tamed with steak, are unchanged from the original requirement. |
 | 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, **one per cast and not per catch**, which is why the composter in step 9 has two output slots and why its 0-2 worms a day is the dial that sets how much fishing anyone does. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. The rod is **three sticks for now**, with the final recipe still the user's to give -- and the thing they have decided is that **string will not come from spiders**, which means this step never depended on step 13 in the first place. **No rod durability** either, their call and the right one: fishing is already paid for in worms, and charging twice for the same activity is how a system stops being worth using. |
@@ -5149,6 +5149,90 @@ types the code:
   stops being a message a player can provoke. A stove always has its
   chest. The message stays as the orphan case's report and the missing-
   ingredient message does all the real work.
+
+- **D-111** 2026-09-29, Claude, building step 9: **a chunk keeps a slow
+  clock of its own, and it is saved.**
+
+  Part A called this out as the real cost of farming and it was right,
+  but only building it showed what the number has to be. A crop is a
+  BLOCK. Its stage fits in the state byte -- three bits, reserved since
+  step 0.3 and never used -- and **when it last grew does not fit
+  anywhere at all**: there are hundreds of cells in a field and 192
+  block-entity records across the whole resident ring.
+
+  So `chunk_t.stamp`: one tick count per chunk, written in a section of
+  its own (`SECTION_CHUNK_CLOCK`, nine bytes, no tags -- a record header
+  would be longer than the record). No format version bump, because the
+  format's own rule is that a reader skips a section id it does not know
+  (D-30), and a chunk that arrives without one is stamped **now**.
+
+  That last part is the decision, not the plumbing. A missing clock read
+  as tick zero would tell a chunk that a hundred thousand ticks had
+  passed and **ripen every field in an upgraded world the moment it was
+  walked into**. It is also the bug the host check caught first, in a
+  test world built by hand -- so the rule is now written where it cannot
+  be missed: zero means "never set", and a new world's clock starts at
+  DAY_START rather than at 0 anyway.
+
+  **Growth is quantised to that clock**, and a field therefore ripens in
+  steps, together. That reads as a field rather than as sixty
+  independent timers, and it means a seed planted just before a step
+  boundary gets at most one stage early.
+
+- **D-112** 2026-09-29, Claude, building step 9: **the slow sweep visits
+  one chunk slot a tick, and a chunk with nothing growing in it is a
+  flag test.**
+
+  `blockupdate.h` says in its own header that a growing wheat field will
+  never enter the tick wheel, and that is right -- but the lazy clock
+  alone is not enough for a crop either, because a crop is SEEN. A
+  furnace can be worked out at the moment somebody opens it; a field has
+  to visibly grow while the player is standing in it.
+
+  So there is a third shape, between the two tiers: a round-robin sweep,
+  **one of the 256 chunk slots per tick** (a full round every 13
+  seconds), which walks a chunk's cells only if `CF_CROPS` is set. The
+  flag is derived and never saved -- set when a crop is planted or found
+  on arrival, cleared by the sweep itself when the last one is
+  harvested -- so it is rebuilt from the world exactly like the light
+  and the active-cell plane.
+
+  What it costs, pinned by a host check: **a field grown from seed to
+  ripe leaves 0 cells in the physics queue**. Crops never touch tier 1.
+
+- **D-113** 2026-09-29, Claude, building step 9: **a crop cannot stand
+  on nothing, and that is not the cactus rule.**
+
+  Dig the soil out from under a field and the field comes with it,
+  harvested as it stood. `BF2_STACKED` looks like the same idea and is
+  not: it takes a column of the SAME block going up, which is a cactus
+  growing out of itself. This takes ONE cell of a DIFFERENT block
+  resting on the one that has gone.
+
+  Both are stand-ins for the block update that should tell a neighbour
+  "your support is gone, decide what to do" -- the note `BF2_STACKED`
+  has carried since step 55 applies here word for word. The machinery
+  for it now exists (D-98's wheel); what does not exist yet is a reason
+  to spend a queue entry per crop cell on something a single line in the
+  break path answers.
+
+- **D-114** 2026-09-29, Claude, building step 9: **a hoe gets a model,
+  because the alternative is the bucket's mistake again.**
+
+  `fred_hold_for` gave a model to picks, axes and shovels and a coloured
+  cube to everything else. The user's verdict on the last thing that
+  fell through that hole was clear enough to treat as a rule: *"the
+  bucket in hand is a generic colored block instead of a proper
+  bucket"*. A hoe is a handle with the blade turned ACROSS it and hanging
+  below the line of the shaft, which is the whole of what tells it from
+  a shovel in a fist at arm's length.
+
+  Two lines of the same round: `TOOL_HOE` is the first tool class whose
+  point is what it DOES rather than how fast it breaks things, so no
+  block names it in its `tool` column and its tiers buy durability
+  instead of speed. And `fred_shutdown` now frees the bucket as well,
+  which it has not done since step 55 -- harmless, since fred is shut
+  down once when the app exits, and wrong.
 
 - **D-96** 2026-09-26, out of the user's question and then their
   instruction: **the audio codec is ours, and it is public domain.**

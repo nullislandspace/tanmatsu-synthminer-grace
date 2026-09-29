@@ -1276,6 +1276,230 @@ def sm_torch_flame():
 # Keyed by the path under textures/. The generators share their seeded
 # random streams in this order, so keep it: a reordered entry changes
 # every texture after it.
+# ---------------------------------------------------------------------
+#  Farming (step 9): tilled soil, a composter, and five crops in four
+#  growth stages each.
+#
+#  A CROP IS ONE FUNCTION, CALLED FOUR TIMES. The stage decides how tall
+#  the plant stands and whether it is carrying anything, so the four
+#  textures of a crop cannot drift apart -- and a sixth crop is a row in
+#  CROPS below, not twenty new pictures.
+# ---------------------------------------------------------------------
+
+
+def sm_farmland(wet=False):
+    """Tilled soil seen from above: dirt, combed into furrows. Wet is the
+    same picture darker and browner, which is what water does to soil and
+    is the whole of the player-facing difference (D-106)."""
+    gen = sm_gen(60 if not wet else 61)
+    lum = sm_dirt_lum(gen)
+    # Four furrows running east-west, a groove and a ridge each. The
+    # jitter along each one matters more than the contrast: a straight
+    # dark line every four rows reads as PLANKS, which is what the first
+    # attempt looked like. Broken, it reads as soil somebody has been
+    # over with a hoe.
+    for y in range(B):
+        if y % 4 == 0:
+            for x in range(B):
+                lum[y, x] -= 14 + int(gen.integers(0, 9))
+        elif y % 4 == 1:
+            for x in range(B):
+                lum[y, x] += 6 + int(gen.integers(0, 7))
+    lum += gen.integers(-6, 7, (B, B))
+    tint = (120, 86, 54) if not wet else (74, 52, 30)
+    return sm_rgb(lum - (0 if not wet else 10), tint)
+
+
+def sm_composter_side():
+    """Staves and two hoops, like the chest but taller-looking: it is a
+    wooden box, and it should read as one from across a field."""
+    lum, _ = sm_planks_lum(62)
+    for y in range(B):
+        for x in range(B):
+            if x % 4 == 3:
+                lum[y, x] -= 30          # the gap between two staves
+    for y in (3, 12):                    # the hoops
+        lum[y, :] += 22
+        lum[y + 1, :] -= 18
+    return sm_rgb(lum, (156, 122, 70))
+
+
+def sm_composter_top():
+    """Open, with the scraps showing: a dark ring of wood round a middle
+    of rotting green-brown."""
+    lum, gen = sm_planks_lum(63)
+    out = sm_rgb(lum, (150, 118, 68))
+    for y in range(2, B - 2):
+        for x in range(2, B - 2):
+            v = int(gen.integers(-18, 19))
+            c = (78 + v, 66 + v, 36 + v)
+            out[y, x] = np.clip(np.array(c), 0, 255)
+    return out
+
+
+# One row per crop: the colours of the stem, of the ripe head, and how
+# tall it stands when it is ready. `head` is what appears in the last two
+# stages -- an ear of wheat, a tomato, a pod.
+CROPS = {
+    "wheat":  dict(stem=(110, 150, 60), head=(214, 186, 92), tall=13, spread=1),
+    "potato": dict(stem=(70, 130, 54), head=(180, 150, 78), tall=10, spread=2),
+    "tomato": dict(stem=(72, 126, 56), head=(208, 60, 44), tall=12, spread=2),
+    "beans":  dict(stem=(74, 130, 62), head=(150, 170, 80), tall=12, spread=1),
+    "rice":   dict(stem=(96, 150, 74), head=(206, 198, 108), tall=11, spread=1),
+}
+
+
+def sm_crop(name, stage):
+    """One growth stage of one crop, as a cut-out sprite for the crossed
+    quads a K_PLANT is drawn with.
+
+    The stage does three things: the plant gets taller, the blades get
+    more numerous, and from stage 2 it starts carrying its head. So the
+    four read as a progression at a glance from standing height, which is
+    the only place anybody will ever see them."""
+    c = CROPS[name]
+    gen = sm_gen(70 + 4 * list(CROPS).index(name) + stage)
+    rgb = np.zeros((B, B, 3), np.uint8)
+    holes = np.ones((B, B), bool)
+
+    def px(x, y, col, jitter=12):
+        if 0 <= x < B and 0 <= y < B:
+            rgb[y, x] = np.clip(np.array(col) + gen.integers(-jitter, jitter + 1, 3), 0, 255)
+            holes[y, x] = False
+
+    # How far up the 16 px tile the plant reaches, and how many blades.
+    frac = (stage + 1) / 4.0
+    top = B - 1 - int(round(c["tall"] * frac))
+    blades = 2 + 2 * stage
+    xs = [B // 2 + int(round((i - (blades - 1) / 2.0) * (c["spread"] + 1))) for i in range(blades)]
+
+    for i, x in enumerate(xs):
+        # A blade leans a little more the further it is from the middle,
+        # so a ripe plant is a sheaf rather than a comb.
+        lean = (x - B // 2) // 3
+        for y in range(top + (i % 2), B):
+            xx = x + (lean if y < top + 4 else 0)
+            px(xx, y, c["stem"], 16)
+
+    if stage >= 2:
+        # The head: a couple of grains, a fruit or a pod per blade, and
+        # more of them in the last stage than in the one before it.
+        for i, x in enumerate(xs):
+            if stage == 2 and i % 2:
+                continue
+            for k in range(2 if stage == 3 else 1):
+                px(x, top + 1 + k, c["head"], 8)
+                if stage == 3:
+                    px(x + (1 if x < B - 1 else -1), top + 1 + k, c["head"], 8)
+
+    return sm_alpha(rgb, holes)
+
+
+def sm_item_hoe(rgb):
+    """A handle with a blade turned over at right angles to it -- which is
+    what tells a hoe from an axe at 16 px."""
+    img = _icon()
+    _tool_handle(img)
+    _rect(img, 6, 3, 12, 5, rgb)
+    _rect(img, 6, 3, 8, 6, _shade(rgb, 18))
+    _rect(img, 6, 5, 12, 6, _shade(rgb, -24))
+    return img
+
+
+def sm_item_seeds(rgb):
+    """A scatter of little seeds, which has to read as MANY small things
+    rather than one, or it looks like a stone."""
+    img = _icon()
+    for x, y in ((5, 9), (8, 6), (10, 10), (7, 12), (11, 7)):
+        _dot(img, x, y, rgb)
+        _dot(img, x + 1, y, _shade(rgb, -20))
+        _dot(img, x, y + 1, _shade(rgb, -34))
+    return img
+
+
+def sm_item_round(rgb, r=4, cy=8, cx=8):
+    """A blob: a potato, a tomato. Shaded from the top left, like the
+    ingot, so a row of them does not read as flat."""
+    img = _icon()
+    for y in range(cy - r, cy + r + 1):
+        for x in range(cx - r, cx + r + 1):
+            dx, dy = x - cx, y - cy
+            if dx * dx + dy * dy > r * r:
+                continue
+            _dot(img, x, y, _shade(rgb, 14 - 4 * (dx + dy)))
+    return img
+
+
+def sm_item_wheat():
+    """An ear on a stalk: the shape people know from the block."""
+    img = _icon()
+    stem = (150, 132, 70)
+    for y in range(6, 14):
+        _dot(img, 8, y, stem)
+    for i, y in enumerate(range(3, 9)):
+        _dot(img, 7 - (i % 2), y, (222, 196, 104))
+        _dot(img, 9 + (i % 2), y, _shade((222, 196, 104), -18))
+    return img
+
+
+def sm_item_beans():
+    """Three fat pods, each with the beans showing as bumps along it. A
+    thin diagonal line was the first try and read as a twig."""
+    img = _icon()
+    pod = (150, 172, 84)
+    for x0, y0 in ((3, 6), (6, 9), (9, 5)):
+        for i in range(5):                         # the pod, two texels thick
+            _dot(img, x0 + i, y0, pod)
+            _dot(img, x0 + i, y0 + 1, _shade(pod, -30))
+        for i in (1, 3):                           # the beans inside it
+            _dot(img, x0 + i, y0, _shade(pod, 30))
+    return img
+
+
+def sm_item_rice():
+    """A heap of grains: a mound, like the compost, but pale and with the
+    individual grains picked out so it is not read as snow."""
+    img = _icon()
+    gen = sm_gen(91)
+    grain = (230, 226, 206)
+    for j, y in enumerate(range(12, 6, -1)):
+        w = 6 - j
+        for x in range(8 - w, 8 + w):
+            _dot(img, x, y, _shade(grain, int(gen.integers(-22, 10))))
+    for x, y in ((6, 11), (9, 10), (7, 9), (10, 8), (8, 7)):
+        _dot(img, x, y, (252, 250, 240))
+    return img
+
+
+def sm_item_compost():
+    """Dark crumbly stuff in a heap, flecked so it is not a black hole in
+    the slot -- the same problem sm_item_coal has, solved the same way."""
+    img = _icon()
+    gen = sm_gen(90)
+    base = (84, 64, 44)
+    for y in range(8, 14):
+        w = (y - 6)
+        for x in range(8 - w, 8 + w):
+            v = int(gen.integers(-16, 17))
+            _dot(img, x, y, _shade(base, v))
+    for x, y in ((6, 10), (9, 9), (11, 12)):
+        _dot(img, x, y, (128, 150, 70))    # a leaf that has not gone yet
+    return img
+
+
+def sm_item_worm():
+    """A curled worm. Pink-brown, two texels thick, so it reads at slot
+    size as a body rather than a line."""
+    img = _icon()
+    body = (196, 128, 120)
+    path = ((5, 10), (6, 11), (7, 11), (8, 10), (9, 9), (10, 9), (11, 8), (11, 7), (10, 6), (9, 6))
+    for x, y in path:
+        _dot(img, x, y, body)
+        _dot(img, x, y + 1, _shade(body, -34))
+    _dot(img, 9, 5, _shade(body, 18))
+    return img
+
+
 TEXTURES = {
     "grass_top.png": sm_grass_top,
     "grass_side.png": sm_grass_side,
@@ -1339,6 +1563,43 @@ TEXTURES = {
     "sign_kurt.png": lambda: sm_sign(SIGN_TEXTS[0]),
     "sign_wolfie.png": lambda: sm_sign(SIGN_TEXTS[1]),
     "sign_flob.png": lambda: sm_sign(SIGN_TEXTS[2]),
+    # Farming (step 9).
+    "farmland.png": sm_farmland,
+    "farmland_wet.png": lambda: sm_farmland(wet=True),
+    "composter_top.png": sm_composter_top,
+    "composter_side.png": sm_composter_side,
+    "wheat_0.png": lambda n="wheat", s=0: sm_crop(n, s),
+    "wheat_1.png": lambda n="wheat", s=1: sm_crop(n, s),
+    "wheat_2.png": lambda n="wheat", s=2: sm_crop(n, s),
+    "wheat_3.png": lambda n="wheat", s=3: sm_crop(n, s),
+    "potato_0.png": lambda n="potato", s=0: sm_crop(n, s),
+    "potato_1.png": lambda n="potato", s=1: sm_crop(n, s),
+    "potato_2.png": lambda n="potato", s=2: sm_crop(n, s),
+    "potato_3.png": lambda n="potato", s=3: sm_crop(n, s),
+    "tomato_0.png": lambda n="tomato", s=0: sm_crop(n, s),
+    "tomato_1.png": lambda n="tomato", s=1: sm_crop(n, s),
+    "tomato_2.png": lambda n="tomato", s=2: sm_crop(n, s),
+    "tomato_3.png": lambda n="tomato", s=3: sm_crop(n, s),
+    "beans_0.png": lambda n="beans", s=0: sm_crop(n, s),
+    "beans_1.png": lambda n="beans", s=1: sm_crop(n, s),
+    "beans_2.png": lambda n="beans", s=2: sm_crop(n, s),
+    "beans_3.png": lambda n="beans", s=3: sm_crop(n, s),
+    "rice_0.png": lambda n="rice", s=0: sm_crop(n, s),
+    "rice_1.png": lambda n="rice", s=1: sm_crop(n, s),
+    "rice_2.png": lambda n="rice", s=2: sm_crop(n, s),
+    "rice_3.png": lambda n="rice", s=3: sm_crop(n, s),
+    "item_hoe_wood.png": lambda: sm_item_hoe((192, 140, 72)),
+    "item_hoe_stone.png": lambda: sm_item_hoe((150, 158, 166)),
+    "item_hoe_iron.png": lambda: sm_item_hoe((222, 222, 228)),
+    "item_wheat_seeds.png": lambda: sm_item_seeds((186, 176, 108)),
+    "item_tomato_seeds.png": lambda: sm_item_seeds((196, 172, 124)),
+    "item_wheat.png": sm_item_wheat,
+    "item_potato.png": lambda: sm_item_round((198, 154, 86)),
+    "item_tomato.png": lambda: sm_item_round((210, 62, 46)),
+    "item_beans.png": sm_item_beans,
+    "item_rice.png": sm_item_rice,
+    "item_compost.png": sm_item_compost,
+    "item_worm.png": sm_item_worm,
 }
 
 

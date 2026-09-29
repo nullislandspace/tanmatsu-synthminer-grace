@@ -96,9 +96,24 @@ int interact_fell(int32_t x, int32_t y, int32_t z);
 // The caller applies the result. That split is deliberate: the world
 // change and the inventory change have to agree, and the one place that
 // knows whether the hand can take what is coming back is the caller.
+// Why a use did nothing, for the line under the crosshair. A refusal
+// that says nothing is indistinguishable from a bug -- the same argument
+// as iron refusing a wooden pickaxe (blocks.h, BF2_TOOL_REQUIRED).
+typedef enum {
+    USE_SAID_NOTHING = 0,
+    USE_CANNOT_TILL,     // a hoe, on something that is not soil
+    USE_TOO_DRY,         // a seed, on tilled soil with no water near it
+    USE_NEEDS_SOIL,      // a seed, on anything but tilled soil
+    USE_NEEDS_WATER,     // rice, away from one-deep water over sand
+    USE_ALREADY_RIPE,    // compost, on a crop with nowhere left to grow
+} use_msg_t;
+
 typedef struct {
     bool     acted;    // it did something; do NOT also try to place a block
     uint16_t becomes;  // what the held stack turns into, 0 to leave it alone
+    bool     consume;  // take ONE from the held stack (a seed, a compost)
+    bool     wear;     // the tool in hand did a job and should wear by one
+    uint8_t  msg;      // use_msg_t: why nothing happened, if nothing did
     uint8_t  sound;    // block_sound_t to play, SND_NONE for silence
     // What moved and where, for the flight recorder (common/trace.h) --
     // pouring a bucket out is an edit like any other and belongs in the
@@ -108,3 +123,17 @@ typedef struct {
 } use_result_t;
 
 use_result_t interact_use_item(double ex, double ey, double ez, float dx, float dy, float dz, uint16_t item);
+
+// --- Farming's half of the same key -----------------------------------
+//
+// THREE MORE THINGS THE USE KEY DOES, all of them through the ray above
+// and all of them in world/crops.h, which owns the rules:
+//
+//    a HOE     tills grass or dirt into farmland, wet or dry
+//    a SEED    goes into wet tilled soil -- or, for rice, into the
+//              shallows it grows in
+//    COMPOST   pushes one crop on by a stage
+//
+// They are here rather than in player.c for the reason the bucket is:
+// the world change and the inventory change have to agree, and the
+// caller is the one that knows whether the hand can take the result.

@@ -62,6 +62,7 @@
 #include "ui/cheat_ui.h"
 #include "ui/chest_ui.h"
 #include "ui/craft_ui.h"
+#include "ui/composter_ui.h"
 #include "ui/furnace_ui.h"
 #include "se_stream.h"
 #include "ui/menu.h"
@@ -73,6 +74,7 @@
 #include "world/chunk_worker.h"
 #include "world/chunkmesh.h"
 #include "world/blockupdate.h"
+#include "world/crops.h"
 #include "world/light.h"
 #include "world/region.h"
 #include "testkit/screenshot.h"
@@ -1731,10 +1733,13 @@ static void on_update(float dt, void* user) {
     if (furnace_ui_active()) furnace_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
     // The trashcan empties by the same clock, and for the same reason.
     if (chest_ui_active()) chest_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
+    // And the composter, which is the furnace's trick with a longer
+    // number: a day a unit, worked out when somebody looks at it.
+    if (composter_ui_active()) composter_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
     if (bench_ui_active()) bench_ui_update(&s_player.inv);
     if (cheat_ui_active()) cheat_ui_update(&s_player.inv);
     s_player.ui_open = craft_ui_active() || furnace_ui_active() || chest_ui_active() || bench_ui_active() ||
-                       cheat_ui_active();
+                       cheat_ui_active() || composter_ui_active();
 
     // The menus. Whatever changes the world or the game's running state
     // comes back as a command and is acted on here, in one place.
@@ -1870,6 +1875,11 @@ static void on_update(float dt, void* user) {
             // nothing under it. Costs nothing at all when the queue is
             // empty, which is almost always (world/blockupdate.h).
             blockupdate_tick();
+            // AND THE SLOW HALF OF THE SAME IDEA: one chunk slot's worth
+            // of things that take minutes -- crops today (world/crops.h).
+            // A slot with nothing growing in it is a flag test, so this
+            // is free in a world nobody has farmed.
+            crops_tick((uint32_t)s_meta.time_of_day);
             player_tick(&s_player, mask, input_pressed());
             sm_audio_player_tick(&s_player);  // footsteps and landings, AFTER the tick
             // A block the player opened. The registry says WHICH blocks
@@ -1889,6 +1899,9 @@ static void on_update(float dt, void* user) {
                        !chest_ui_active()) {
                 s_player.inv.open = false;
                 chest_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
+            } else if (s_player.used_block == BLK_COMPOSTER && !composter_ui_active()) {
+                s_player.inv.open = false;
+                composter_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
             } else if (s_player.used_block == BLK_BENCH && !bench_ui_active()) {
                 s_player.inv.open = false;
                 bench_ui_open();
@@ -1975,6 +1988,10 @@ static void on_input(bsp_input_event_t const* ev, void* user) {
     }
     if (craft_ui_active()) {
         craft_ui_event(ev);
+        return;
+    }
+    if (composter_ui_active()) {
+        composter_ui_event(ev);
         return;
     }
     if (furnace_ui_active()) {
@@ -2393,6 +2410,7 @@ static void on_render(pax_buf_t* fb, void* user) {
         hud_inventory(fb, &s_player);
         if (craft_ui_active()) craft_ui_draw(fb, &s_player.inv);
         if (furnace_ui_active()) furnace_ui_draw(fb, &s_player.inv);
+        if (composter_ui_active()) composter_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
         if (chest_ui_active()) chest_ui_draw(fb, &s_player.inv);
         if (bench_ui_active()) bench_ui_draw(fb, &s_player.inv);
         if (cheat_ui_active()) cheat_ui_draw(fb);
@@ -2401,6 +2419,21 @@ static void on_render(pax_buf_t* fb, void* user) {
             i18n_fmt(line, sizeof(line), SM_STR_HUD_NEEDS_TOOL, T(item_label(s_player.needs_tool)));
             char const* const lines = line;
             hud_text_lines(fb, &lines, 1);
+        } else if (s_player.use_msg_ticks > 0) {
+            // WHY A USE DID NOTHING (game/interact.h). The reason lives
+            // on the player as a small number and the words live here,
+            // because player.c has no business knowing a language.
+            sm_str_t key = SM_STR_FARM_NEEDS_SOIL;
+            switch (s_player.use_msg) {
+                case USE_CANNOT_TILL: key = SM_STR_FARM_CANNOT_TILL; break;
+                case USE_TOO_DRY: key = SM_STR_FARM_TOO_DRY; break;
+                case USE_NEEDS_WATER: key = SM_STR_FARM_NEEDS_WATER; break;
+                case USE_ALREADY_RIPE: key = SM_STR_FARM_ALREADY_RIPE; break;
+                case USE_NEEDS_SOIL:
+                default: break;
+            }
+            char const* const line = T(key);
+            hud_text_lines(fb, &line, 1);
         } else if (s_info || replay_recording()) {
             draw_info(fb);
         } else if (showtime_now() < s_shot_msg_until) {

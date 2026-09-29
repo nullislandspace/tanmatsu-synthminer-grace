@@ -8,6 +8,7 @@
 #include <string.h>
 #include "common/psram.h"
 #include "world/blockupdate.h"
+#include "world/crops.h"
 #include "world/light.h"
 
 static chunk_t  s_slots[CH_SLOT_COUNT];
@@ -179,6 +180,10 @@ chunk_t* chunk_claim(int32_t cx, int32_t cz) {
     c->cz     = cz;
     c->cstate = CS_LOADING;
     c->flags  = 0;
+    // The slow clock comes from the card, or from the moment the chunk
+    // arrives if it has none (world/crops.h). Zero means "no clock yet",
+    // which crops_chunk_join() reads as now.
+    c->stamp  = 0;
     c->bottom = 0;
     c->edit_seq++;
     return c;
@@ -321,6 +326,11 @@ void world_set(int32_t x, int32_t y, int32_t z, uint8_t block, uint8_t state) {
     world_mark_dirty(x, y, z);
     // Light follows the block: a torch placed, a wall that now shades.
     light_block_changed(x, y, z, was, block);
+    // A crop planted anywhere means this chunk has something growing in
+    // it and has to be swept (world/crops.h). One more hook on the one
+    // funnel every write goes through, for the same reason as the other
+    // two: a caller cannot forget what it never has to remember.
+    crops_block_changed(x, y, z, was, block);
     // And so does physics: water beside a wall that has gone, sand over
     // a hole. The one funnel every write passes through, which is why
     // neither of these can be forgotten by a caller (blockupdate.h).

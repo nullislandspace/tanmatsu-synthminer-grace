@@ -253,6 +253,25 @@ item.axe_iron = Željezna sjekira
 item.shovel_iron = Željezna lopata
 item.bucket = Kanta
 item.bucket_water = Kanta vode
+item.hoe_wood = Drvena motika
+item.hoe_stone = Kamena motika
+item.hoe_iron = Željezna motika
+item.wheat_seeds = Sjeme pšenice
+item.wheat = Pšenica
+item.potato = Krumpir
+item.tomato_seeds = Sjeme rajčice
+item.tomato = Rajčica
+item.beans = Grah
+item.rice = Riža
+item.compost = Kompost
+item.worm = Crv
+item.farmland = Preorana zemlja
+item.composter = Kompostar
+item.wheat_crop = Biljka pšenice
+item.potato_crop = Biljka krumpira
+item.tomato_crop = Biljka rajčice
+item.bean_crop = Biljka graha
+item.rice_crop = Biljka riže
 
 # --- chest ---
 chest.title = Škrinja
@@ -283,3 +302,27 @@ item.birch_leaves = Brezovo lišće
 item.cactus = Kaktus
 item.snow = Snijeg
 item.sandstone = Pješčenjak
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostar
+composter.input = Otpaci
+composter.compost = Kompost
+composter.worms = Crvi
+composter.empty = - prazno -
+composter.slot = %d %s
+composter.hint = enter stavlja ili uzima   esc zatvara
+composter.working = truli, %d%%
+composter.no_input = nema se što truliti
+composter.full = pretinac za kompost je pun
+composter.took = Uzeto %d %s
+composter.pick_input = Što kompostirati
+composter.pick_none = Ovdje ništa ne truli
+composter.pick_hint = enter bira   esc natrag
+composter.a_day = jedna jedinica dnevno, i crvi
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Ovdje nema što preorati
+farm.too_dry = Presuho za sadnju
+farm.needs_soil = Posadi to u preoranu zemlju
+farm.needs_water = Posadi rižu u vodu duboku jedan blok, na pijesak
+farm.already_ripe = Već je zrela

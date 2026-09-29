@@ -253,6 +253,25 @@ item.axe_iron = Hacha de hierro
 item.shovel_iron = Pala de hierro
 item.bucket = Cubo
 item.bucket_water = Cubo de agua
+item.hoe_wood = Azada de madera
+item.hoe_stone = Azada de piedra
+item.hoe_iron = Azada de hierro
+item.wheat_seeds = Semillas de trigo
+item.wheat = Trigo
+item.potato = Patata
+item.tomato_seeds = Semillas de tomate
+item.tomato = Tomate
+item.beans = Judías
+item.rice = Arroz
+item.compost = Compost
+item.worm = Gusano
+item.farmland = Tierra labrada
+item.composter = Compostera
+item.wheat_crop = Planta de trigo
+item.potato_crop = Planta de patata
+item.tomato_crop = Planta de tomate
+item.bean_crop = Planta de judías
+item.rice_crop = Planta de arroz
 
 # --- chest ---
 chest.title = Cofre
@@ -283,3 +302,27 @@ item.birch_leaves = Hojas de abedul
 item.cactus = Cactus
 item.snow = Nieve
 item.sandstone = Arenisca
+
+# --- The composter ----------------------------------------------------------
+composter.title = Compostera
+composter.input = Restos
+composter.compost = Compost
+composter.worms = Gusanos
+composter.empty = - vacío -
+composter.slot = %d %s
+composter.hint = intro mete o saca   esc cierra
+composter.working = pudriéndose, %d%%
+composter.no_input = no hay nada que pudrir
+composter.full = la casilla de compost está llena
+composter.took = Cogidos %d %s
+composter.pick_input = Qué compostar
+composter.pick_none = Aquí no se pudre nada
+composter.pick_hint = intro elige   esc vuelve
+composter.a_day = una unidad al día, y gusanos
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Aquí no hay nada que labrar
+farm.too_dry = Demasiado seco para plantar
+farm.needs_soil = Planta esto en tierra labrada
+farm.needs_water = Planta el arroz en agua de un bloque, sobre arena
+farm.already_ripe = Ya está madura

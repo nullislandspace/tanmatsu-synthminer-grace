@@ -100,6 +100,19 @@ typedef enum {
 // becomes one of its rules instead of a special case in interact.c.
 #define BF2_STACKED    (1u << 4)
 
+// THE CELL IS FULL OF WATER AS WELL AS THIS BLOCK. Rice, and nothing
+// else so far: it grows in water one block deep, so the cell has to be
+// water for the pond it stands in and rice for the player.
+//
+// A cell holds ONE block and the state byte's low bits already belong
+// to the growth stage, so there is nowhere to write a level -- which is
+// exactly why this is safe. Rice only ever stands in water one deep, so
+// its water is always a FULL SOURCE (level 0, not falling), and that is
+// the one case that needs no state at all. world/fluid.c reads a cell
+// like this as a source so a pond does not drain into it, and the
+// mesher draws the surface under the sprite (D-107).
+#define BF2_WATERLOGGED (1u << 6)
+
 // DRAW ME FROM item_<name>.png IN THE INVENTORY, not from my own side
 // texture. Most blocks are cubes and their side texture IS what they
 // look like in the hand; a torch is a stick, and its side texture is a
@@ -117,7 +130,11 @@ typedef enum {
     TOOL_PICK,
     TOOL_AXE,
     TOOL_SHOVEL,
-    TOOL_SHEARS
+    TOOL_SHEARS,
+    // The hoe TILLS rather than digs: it is the only tool whose point is
+    // what it does to a block rather than how fast it breaks it, so no
+    // block names it in `tool` (game/interact.h, interact_use_item).
+    TOOL_HOE
 } tool_t;
 
 #define HARDNESS_UNBREAKABLE 0xFFFFu
@@ -154,6 +171,15 @@ typedef struct {
     uint8_t     flags;
     uint8_t     light;       // light emitted, 0..15 (world/light.h)
     uint8_t     growth_max;  // BF_CROP: the highest growth stage
+
+    // BF_CROP: THE ITEM THAT PLANTS THIS, and what an unripe one drops
+    // when it is broken. ITEM_NONE for anything that is not a crop.
+    //
+    // A ripe crop drops `drop_item` x (drop_min..drop_max) as usual, and
+    // its seed as well when the two differ -- so wheat gives grain and a
+    // seed, while a potato, whose seed IS a potato, simply gives
+    // potatoes (world/crops.h).
+    uint16_t    seed_item;
     uint8_t     sound;       // block_sound_t: what it sounds like (audio/sfx.h)
     uint8_t     flags2;      // BF2_*
 } block_def_t;
@@ -215,7 +241,23 @@ enum {
     BLK_CACTUS         = 28,
     BLK_SNOW           = 29,
     BLK_SANDSTONE      = 30,
-    // New blocks here: BLK_SOMETHING = 31, and a line in tools/ids.txt.
+    // Farming (step 9). Tilled soil is TWO IDS rather than one id with a
+    // wet bit, because the difference is a different top texture and
+    // the mesher reads materials out of this table -- a state-driven
+    // texture would be new machinery for one block. What it costs is an
+    // id, and ids are cheap next to a special case (D-106).
+    BLK_FARMLAND       = 31,
+    BLK_FARMLAND_WET   = 32,
+    BLK_COMPOSTER      = 33,
+    // The five crops. Their NAMES all end in _crop because the harvest
+    // is an item with the plain name -- "wheat" is what you carry, and
+    // item_by_name() searches one id space (items.h).
+    BLK_WHEAT_CROP     = 34,
+    BLK_POTATO_CROP    = 35,
+    BLK_TOMATO_CROP    = 36,
+    BLK_BEAN_CROP      = 37,
+    BLK_RICE_CROP      = 38,
+    // New blocks here: BLK_SOMETHING = 39, and a line in tools/ids.txt.
     BLK_COUNT
 };
 
@@ -259,6 +301,15 @@ static inline bool block_stacked(uint8_t id) {
 static inline bool block_has_item_icon(uint8_t id) {
     return (block_def(id)->flags2 & BF2_ITEM_ICON) != 0;
 }
+// A crop: grows through its stages and is planted rather than placed.
+static inline bool block_crop(uint8_t id) {
+    return (block_def(id)->flags & BF_CROP) != 0;
+}
+// The cell is water as well as this block (BF2_WATERLOGGED): rice.
+static inline bool block_waterlogged(uint8_t id) {
+    return (block_def(id)->flags2 & BF2_WATERLOGGED) != 0;
+}
+
 static inline bool block_usable(uint8_t id) {
     return (block_def(id)->flags2 & BF2_USABLE) != 0;
 }

@@ -6,6 +6,7 @@
 
 #include "common/trace.h"
 #include "world/blockupdate.h"
+#include "world/crops.h"
 #include "world/light.h"
 #include <string.h>
 #include "common/psram.h"
@@ -336,6 +337,12 @@ static void apply(result_t* r) {
                 // reads as (blockupdate.h, the boundary note). Same
                 // place, same task, same reason as the light.
                 blockupdate_chunk_join(c);
+                // And the slow half of the same idea: everything in
+                // this chunk that grows, advanced by however long it
+                // was away (world/crops.h -- the user's "advance events
+                // in one go to where they would be now as if the chunk
+                // was never unloaded").
+                crops_chunk_join(c, crops_now());
             }
         }
         return;

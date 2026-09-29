@@ -18,7 +18,8 @@
 #include "world/chunk_render.h"
 
 static bool       s_ready;
-static mesh_t     s_head, s_body, s_arm, s_fp_arm, s_leg, s_pick, s_axe, s_shovel, s_bucket, s_cube, s_sprite, s_torch;
+static mesh_t     s_head, s_body, s_arm, s_fp_arm, s_leg, s_pick, s_axe, s_shovel, s_hoe, s_bucket, s_cube, s_sprite,
+    s_torch;
 static mesh_mat_t s_mats[FM_COUNT];
 
 // The head of a tool, by level.
@@ -46,6 +47,7 @@ void fred_init(void) {
     fred_build_pick(&s_pick);
     fred_build_axe(&s_axe);
     fred_build_shovel(&s_shovel);
+    fred_build_hoe(&s_hoe);
     fred_build_bucket(&s_bucket);
     // A block in the hand: a small one, in the block's textures.
     mesh_init(&s_cube);
@@ -98,6 +100,11 @@ void fred_shutdown(void) {
     mesh_free(&s_pick);
     mesh_free(&s_axe);
     mesh_free(&s_shovel);
+    // The hoe, and the bucket beside it: the bucket has been built and
+    // not freed since step 55, which nothing noticed because fred is
+    // shut down once, when the app exits.
+    mesh_free(&s_hoe);
+    mesh_free(&s_bucket);
     mesh_free(&s_cube);
     mesh_free(&s_sprite);
     mesh_free(&s_torch);
@@ -114,7 +121,7 @@ fred_hold_t fred_hold_for(uint16_t item) {
         return h;
     }
     item_def_t const d = item_def(item);
-    if (d.tool == TOOL_PICK || d.tool == TOOL_AXE || d.tool == TOOL_SHOVEL) {
+    if (d.tool == TOOL_PICK || d.tool == TOOL_AXE || d.tool == TOOL_SHOVEL || d.tool == TOOL_HOE) {
         h.kind  = FRED_HOLD_TOOL;
         h.tool  = d.tool;
         h.level = d.tool_level;
@@ -172,7 +179,10 @@ static void submit_held(xform_t const* arm, fred_hold_t const* hold, mesh_mat_t 
         mesh_mat_t    m[FM_COUNT];
         for (int i = 0; i < FM_COUNT; i++) m[i] = mats[i];
         m[FM_IRON].argb     = HEAD_ARGB[hold->level < 4 ? hold->level : 0];
-        mesh_t const* tool = hold->tool == TOOL_AXE ? &s_axe : hold->tool == TOOL_SHOVEL ? &s_shovel : &s_pick;
+        mesh_t const* tool = hold->tool == TOOL_AXE      ? &s_axe
+                             : hold->tool == TOOL_SHOVEL ? &s_shovel
+                             : hold->tool == TOOL_HOE    ? &s_hoe
+                                                         : &s_pick;
         mesh_submit(tool, &fist, m, FM_COUNT);
     } else if (hold->kind == FRED_HOLD_SPRITE || hold->kind == FRED_HOLD_TORCH) {
         // Held out of the fist the way the tools are, top end forward.

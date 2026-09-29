@@ -38,6 +38,31 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     // no failure to get wrong. Iron is cheap enough by then.
     [ITEM_BUCKET - BLK_COUNT]       = {"bucket", SM_STR_ITEM_BUCKET, 1, TOOL_NONE, 0, 0, 0, 0xFFC0C4CCu},
     [ITEM_BUCKET_WATER - BLK_COUNT] = {"bucket_water", SM_STR_ITEM_BUCKET_WATER, 1, TOOL_NONE, 0, 0, 0, 0xFF3A62C8u},
+
+    // THE HOE. Its durability is the same as the other tools of its
+    // tier, and it burns like them if it is wooden -- the fuel column
+    // is why a wooden thing never needs a line in the furnace.
+    //
+    // A hoe never breaks a block faster than a fist does, which is why
+    // no block names TOOL_HOE in its `tool`: the tiers buy uses, not
+    // speed, so an iron hoe is a hoe you stop re-making.
+    [ITEM_HOE_WOOD - BLK_COUNT]  = {"hoe_wood", SM_STR_ITEM_HOE_WOOD, 1, TOOL_HOE, 1, 60, 200, 0xFFB4883Cu},
+    [ITEM_HOE_STONE - BLK_COUNT] = {"hoe_stone", SM_STR_ITEM_HOE_STONE, 1, TOOL_HOE, 2, 130, 0, 0xFF949CA4u},
+    [ITEM_HOE_IRON - BLK_COUNT]  = {"hoe_iron", SM_STR_ITEM_HOE_IRON, 1, TOOL_HOE, 3, 250, 0, 0xFFDEDEE4u},
+
+    // Seeds and harvests. None of them is food yet: eating arrives with
+    // the hunger loop in step 10, and these are its ingredients.
+    [ITEM_WHEAT_SEEDS - BLK_COUNT]  = {"wheat_seeds", SM_STR_ITEM_WHEAT_SEEDS, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFB8B070u, 1},
+    [ITEM_WHEAT - BLK_COUNT]        = {"wheat", SM_STR_ITEM_WHEAT, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFD8BC5Cu, 1},
+    [ITEM_POTATO - BLK_COUNT]       = {"potato", SM_STR_ITEM_POTATO, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC89A54u, 1},
+    [ITEM_TOMATO_SEEDS - BLK_COUNT] = {"tomato_seeds", SM_STR_ITEM_TOMATO_SEEDS, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC0A878u, 1},
+    [ITEM_TOMATO - BLK_COUNT]       = {"tomato", SM_STR_ITEM_TOMATO, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFD03C2Cu, 1},
+    [ITEM_BEANS - BLK_COUNT]        = {"beans", SM_STR_ITEM_BEANS, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF9C6A38u, 1},
+    [ITEM_RICE - BLK_COUNT]         = {"rice", SM_STR_ITEM_RICE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE8E4D0u, 1},
+
+    // Compost, and the worms that come out of the same box.
+    [ITEM_COMPOST - BLK_COUNT] = {"compost", SM_STR_ITEM_COMPOST, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF54402Cu},
+    [ITEM_WORM - BLK_COUNT]    = {"worm", SM_STR_ITEM_WORM, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC08078u},
 };
 
 // A bucket and what is in it. Adding lava is this row plus a row in the
@@ -87,6 +112,10 @@ static uint32_t const BLOCK_ARGB[BLK_COUNT] = {
     [BLK_BENCH] = 0xFF967446u,          [BLK_BIRCH_LOG] = 0xFFD2D0C4u,
     [BLK_BIRCH_LEAVES] = 0xFF6C983Eu,   [BLK_CACTUS] = 0xFF4A803Cu,
     [BLK_SNOW] = 0xFFECF0F8u,           [BLK_SANDSTONE] = 0xFFD6C694u,
+    [BLK_FARMLAND] = 0xFF8A6642u,       [BLK_FARMLAND_WET] = 0xFF5E4428u,
+    [BLK_COMPOSTER] = 0xFF9A7A46u,      [BLK_WHEAT_CROP] = 0xFFC8B45Au,
+    [BLK_POTATO_CROP] = 0xFF6A9E48u,    [BLK_TOMATO_CROP] = 0xFFB4462Eu,
+    [BLK_BEAN_CROP] = 0xFF86A24Eu,      [BLK_RICE_CROP] = 0xFFC2BE6Au,
 };
 
 // What each block is CALLED on screen, beside the colour above. A
@@ -117,7 +146,27 @@ static sm_str_t const BLOCK_LABEL[BLK_COUNT] = {
     [BLK_CACTUS] = SM_STR_ITEM_CACTUS,
     [BLK_SNOW] = SM_STR_ITEM_SNOW,
     [BLK_SANDSTONE] = SM_STR_ITEM_SANDSTONE,
+    [BLK_FARMLAND] = SM_STR_ITEM_FARMLAND,
+    [BLK_FARMLAND_WET] = SM_STR_ITEM_FARMLAND,
+    [BLK_COMPOSTER] = SM_STR_ITEM_COMPOSTER,
+    [BLK_WHEAT_CROP] = SM_STR_ITEM_WHEAT_CROP,
+    [BLK_POTATO_CROP] = SM_STR_ITEM_POTATO_CROP,
+    [BLK_TOMATO_CROP] = SM_STR_ITEM_TOMATO_CROP,
+    [BLK_BEAN_CROP] = SM_STR_ITEM_BEAN_CROP,
+    [BLK_RICE_CROP] = SM_STR_ITEM_RICE_CROP,
     // Air and the barrier are never in anybody's hands and have none.
+};
+
+// What ROTS DOWN, block side. Leaves, flowers, undergrowth: the green
+// stuff a player clears anyway, which is what makes the composter a use
+// for the by-product rather than another thing to farm (D-104).
+static uint8_t const BLOCK_COMPOST[BLK_COUNT] = {
+    [BLK_LEAVES] = 1, [BLK_BIRCH_LEAVES] = 1, [BLK_TALL_GRASS] = 1,
+    [BLK_FLOWER_RED] = 1, [BLK_FLOWER_YELLOW] = 1,
+    // A whole plant, pulled up green: the crop blocks themselves. Not
+    // the soil, obviously, and not the composter.
+    [BLK_WHEAT_CROP] = 1, [BLK_POTATO_CROP] = 1, [BLK_TOMATO_CROP] = 1,
+    [BLK_BEAN_CROP] = 1, [BLK_RICE_CROP] = 1,
 };
 
 // What a BLOCK burns for, in ticks. Wood and things made of wood, as
@@ -127,7 +176,7 @@ static sm_str_t const BLOCK_LABEL[BLK_COUNT] = {
 static uint16_t const BLOCK_FUEL[BLK_COUNT] = {
     [BLK_LOG] = 300, [BLK_PLANKS] = 300, [BLK_CRAFTING_TABLE] = 300,
     [BLK_CHEST] = 300, [BLK_TRASH] = 300, [BLK_BENCH] = 300,
-    [BLK_BIRCH_LOG] = 300,
+    [BLK_BIRCH_LOG] = 300, [BLK_COMPOSTER] = 300,
 };
 
 item_def_t item_def(uint16_t id) {
@@ -144,6 +193,7 @@ item_def_t item_def(uint16_t id) {
             .tool_level = 0,
             .durability = 0,
             .fuel       = BLOCK_FUEL[id < BLK_COUNT ? id : BLK_BARRIER],
+            .compost    = BLOCK_COMPOST[id < BLK_COUNT ? id : BLK_BARRIER],
             .argb       = BLOCK_ARGB[id < BLK_COUNT ? id : BLK_BARRIER],
         };
     }

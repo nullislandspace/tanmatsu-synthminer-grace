@@ -92,6 +92,22 @@ void fluid_update(int32_t x, int32_t y, int32_t z) {
                 int32_t const nx = x + DX[i], nz = z + DZ[i];
                 uint8_t const nid = world_block(nx, y, nz);
                 if (nid == BLK_BARRIER) unknown = true;
+                // A WATERLOGGED CELL IS A FULL SOURCE OF WATER -- rice,
+                // which shares its cell with the pond it grows in
+                // (blocks.h, BF2_WATERLOGGED). Without this the water
+                // around a paddy would read the rice as dry ground and
+                // recede from it, which is the shallows draining
+                // themselves because somebody planted something.
+                //
+                // Water specifically: a waterlogged block holds water
+                // and there is nothing else it could hold. A second
+                // fluid that wanted this would want a column in the
+                // block table saying which.
+                if (b == BLK_WATER && block_waterlogged(nid)) {
+                    best = 0;
+                    srcs++;
+                    continue;
+                }
                 if (nid != b) continue;
                 uint8_t const nst = world_state(nx, y, nz);
                 // A FALLING NEIGHBOUR FEEDS AT FULL STRENGTH. It has to:

@@ -253,6 +253,25 @@ item.axe_iron = Σιδερένιο τσεκούρι
 item.shovel_iron = Σιδερένιο φτυάρι
 item.bucket = Κουβάς
 item.bucket_water = Κουβάς με νερό
+item.hoe_wood = Ξύλινη τσάπα
+item.hoe_stone = Πέτρινη τσάπα
+item.hoe_iron = Σιδερένια τσάπα
+item.wheat_seeds = Σπόροι σιταριού
+item.wheat = Σιτάρι
+item.potato = Πατάτα
+item.tomato_seeds = Σπόροι ντομάτας
+item.tomato = Ντομάτα
+item.beans = Φασόλια
+item.rice = Ρύζι
+item.compost = Κομπόστ
+item.worm = Σκουλήκι
+item.farmland = Οργωμένο χώμα
+item.composter = Κομποστοποιητής
+item.wheat_crop = Φυτό σιταριού
+item.potato_crop = Φυτό πατάτας
+item.tomato_crop = Φυτό ντομάτας
+item.bean_crop = Φυτό φασολιών
+item.rice_crop = Φυτό ρυζιού
 
 # --- chest ---
 chest.title = Κιβώτιο
@@ -283,3 +302,27 @@ item.birch_leaves = Φύλλα σημύδας
 item.cactus = Κάκτος
 item.snow = Χιόνι
 item.sandstone = Ψαμμίτης
+
+# --- The composter ----------------------------------------------------------
+composter.title = Κομποστοποιητής
+composter.input = Υπολείμματα
+composter.compost = Κομπόστ
+composter.worms = Σκουλήκια
+composter.empty = - άδειο -
+composter.slot = %d %s
+composter.hint = enter βάζει ή παίρνει   esc κλείνει
+composter.working = σαπίζει, %d%%
+composter.no_input = δεν υπάρχει τίποτα να σαπίσει
+composter.full = η θέση κομπόστ είναι γεμάτη
+composter.took = Πήρες %d %s
+composter.pick_input = Τι να κομποστοποιηθεί
+composter.pick_none = Τίποτα εδώ δεν σαπίζει
+composter.pick_hint = enter επιλέγει   esc πίσω
+composter.a_day = μία μονάδα τη μέρα, και σκουλήκια
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Δεν υπάρχει τίποτα να οργωθεί εδώ
+farm.too_dry = Πολύ ξηρό για φύτεμα
+farm.needs_soil = Φύτεψέ το σε οργωμένο χώμα
+farm.needs_water = Φύτεψε ρύζι σε νερό ενός μπλοκ, πάνω σε άμμο
+farm.already_ripe = Είναι ήδη ώριμο

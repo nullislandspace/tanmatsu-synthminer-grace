@@ -128,6 +128,18 @@ typedef struct {
     // a single new block id. 255 for a biome that never shows rock.
     uint8_t     rock_above;
 
+    // ONE OR TWO PLANTS IN THE WHOLE PLACE (D-107, and the user's own
+    // definition of "sometimes found"): the wild potato in the plains,
+    // the tomato in a birch wood, the bean in a forest. It is the first
+    // of every crop a player will ever have, so it is a FIND rather than
+    // a recipe -- which is what makes walking into a birch wood worth
+    // something beyond the colour of the trunks.
+    //
+    // Generated RIPE, as the crop block at its last stage, so finding
+    // one costs no block id of its own. BLK_AIR for a biome with none.
+    uint8_t     rare_plant;
+    float       rare_chance;  // per column, so this is a very small number
+
     // ... and snow above THIS height, where the snow field allows it.
     // 255 for a biome that never sees any.
     uint8_t     snow_above;

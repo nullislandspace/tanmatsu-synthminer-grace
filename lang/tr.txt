@@ -253,6 +253,25 @@ item.axe_iron = Demir balta
 item.shovel_iron = Demir kürek
 item.bucket = Kova
 item.bucket_water = Su kovası
+item.hoe_wood = Ahşap çapa
+item.hoe_stone = Taş çapa
+item.hoe_iron = Demir çapa
+item.wheat_seeds = Buğday tohumu
+item.wheat = Buğday
+item.potato = Patates
+item.tomato_seeds = Domates tohumu
+item.tomato = Domates
+item.beans = Fasulye
+item.rice = Pirinç
+item.compost = Kompost
+item.worm = Solucan
+item.farmland = Sürülmüş toprak
+item.composter = Kompost kutusu
+item.wheat_crop = Buğday bitkisi
+item.potato_crop = Patates bitkisi
+item.tomato_crop = Domates bitkisi
+item.bean_crop = Fasulye bitkisi
+item.rice_crop = Pirinç bitkisi
 
 # --- chest ---
 chest.title = Sandık
@@ -283,3 +302,27 @@ item.birch_leaves = Huş yaprakları
 item.cactus = Kaktüs
 item.snow = Kar
 item.sandstone = Kumtaşı
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompost kutusu
+composter.input = Artıklar
+composter.compost = Kompost
+composter.worms = Solucanlar
+composter.empty = - boş -
+composter.slot = %d %s
+composter.hint = enter koyar ya da alır   esc kapatır
+composter.working = çürüyor, %d%%
+composter.no_input = çürütecek bir şey yok
+composter.full = kompost gözü dolu
+composter.took = %d %s alındı
+composter.pick_input = Ne kompostlanacak
+composter.pick_none = Burada hiçbir şey çürümez
+composter.pick_hint = enter seçer   esc geri döner
+composter.a_day = günde bir birim, ve solucanlar
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Burada sürülecek bir şey yok
+farm.too_dry = Ekmek için fazla kuru
+farm.needs_soil = Bunu sürülmüş toprağa ek
+farm.needs_water = Pirinci bir blok derinlikteki suya, kumun üstüne ek
+farm.already_ripe = Zaten olgun

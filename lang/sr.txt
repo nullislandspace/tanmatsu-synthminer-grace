@@ -253,6 +253,25 @@ item.axe_iron = Гвоздена секира
 item.shovel_iron = Гвоздена лопата
 item.bucket = Кофа
 item.bucket_water = Кофа с водом
+item.hoe_wood = Дрвена мотика
+item.hoe_stone = Камена мотика
+item.hoe_iron = Гвоздена мотика
+item.wheat_seeds = Семе пшенице
+item.wheat = Пшеница
+item.potato = Кромпир
+item.tomato_seeds = Семе парадајза
+item.tomato = Парадајз
+item.beans = Пасуљ
+item.rice = Пиринач
+item.compost = Компост
+item.worm = Црв
+item.farmland = Узорана земља
+item.composter = Компостер
+item.wheat_crop = Биљка пшенице
+item.potato_crop = Биљка кромпира
+item.tomato_crop = Биљка парадајза
+item.bean_crop = Биљка пасуља
+item.rice_crop = Биљка пиринча
 
 # --- chest ---
 chest.title = Сандук
@@ -283,3 +302,27 @@ item.birch_leaves = Брезово лишће
 item.cactus = Кактус
 item.snow = Снег
 item.sandstone = Пешчар
+
+# --- The composter ----------------------------------------------------------
+composter.title = Компостер
+composter.input = Отпаци
+composter.compost = Компост
+composter.worms = Црви
+composter.empty = - празно -
+composter.slot = %d %s
+composter.hint = enter ставља или узима   esc затвара
+composter.working = труне, %d%%
+composter.no_input = нема шта да труне
+composter.full = преграда за компост је пуна
+composter.took = Узето %d %s
+composter.pick_input = Шта компостирати
+composter.pick_none = Овде ништа не труне
+composter.pick_hint = enter бира   esc назад
+composter.a_day = једна јединица дневно, и црви
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Овде нема шта да се оре
+farm.too_dry = Сувише суво за садњу
+farm.needs_soil = Посади то у узорану земљу
+farm.needs_water = Посади пиринач у воду дубоку један блок, на песак
+farm.already_ripe = Већ је зрела

@@ -243,6 +243,25 @@ item.axe_iron = Ijzeren bijl
 item.shovel_iron = Ijzeren schop
 item.bucket = Emmer
 item.bucket_water = Emmer water
+item.hoe_wood = Houten schoffel
+item.hoe_stone = Stenen schoffel
+item.hoe_iron = IJzeren schoffel
+item.wheat_seeds = Tarwezaad
+item.wheat = Tarwe
+item.potato = Aardappel
+item.tomato_seeds = Tomatenzaad
+item.tomato = Tomaat
+item.beans = Bonen
+item.rice = Rijst
+item.compost = Compost
+item.worm = Worm
+item.farmland = Akkerland
+item.composter = Composteerbak
+item.wheat_crop = Tarweplant
+item.potato_crop = Aardappelplant
+item.tomato_crop = Tomatenplant
+item.bean_crop = Bonenplant
+item.rice_crop = Rijstplant
 
 # --- chest ---
 chest.title = Kist
@@ -273,3 +292,27 @@ item.birch_leaves = Berkenblad
 item.cactus = Cactus
 item.snow = Sneeuw
 item.sandstone = Zandsteen
+
+# --- The composter ----------------------------------------------------------
+composter.title = Composteerbak
+composter.input = Afval
+composter.compost = Compost
+composter.worms = Wormen
+composter.empty = - leeg -
+composter.slot = %d %s
+composter.hint = enter legt in of neemt   esc sluit
+composter.working = verteert, %d%%
+composter.no_input = niets om te verteren
+composter.full = het compostvak is vol
+composter.took = %d %s gepakt
+composter.pick_input = Wat composteren
+composter.pick_none = Hier verteert niets
+composter.pick_hint = enter kiest   esc terug
+composter.a_day = één eenheid per dag, en wormen
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Hier valt niets te spitten
+farm.too_dry = Te droog om te planten
+farm.needs_soil = Plant dit in omgespitte grond
+farm.needs_water = Plant rijst in water van één blok diep, op zand
+farm.already_ripe = Hij is al rijp

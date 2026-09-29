@@ -538,6 +538,88 @@ static void check_plant_dirs(void) {
     mesh_free(&m);
 }
 
+// FARMING (step 9). Two claims about how a crop is drawn, and both of
+// them are things a screenshot would not settle:
+//
+//   * a crop's TEXTURE follows its growth stage, out of the same data
+//     plane the fluids put there (D-101). Four stages, four materials,
+//     one run -- so a sprout and a ripe ear are not the same picture;
+//   * RICE OWES THE POND A SURFACE. It stands in the water rather than
+//     on it, so its cell is a plant AND full water; without the water
+//     quad there is a plant-shaped hole in the shallows.
+static void check_crop_mesh(void) {
+    static uint8_t data[VG * VG * VG];
+    memset(data, 0, sizeof(data));
+    vox_grid_t const g = {.cells = s_vg, .data = data, .w = VG, .h = VG, .d = VG, .step = 1};
+
+    // (a) THE STAGE PICKS THE TEXTURE.
+    int seen[VOX_CROP_STAGES];
+    for (int stage = 0; stage < VOX_CROP_STAGES; stage++) {
+        vg_clear();
+        memset(data, 0, sizeof(data));
+        vg_fill(2, 1, 2, 2, 1, 2, BLK_FARMLAND_WET);
+        *vg_cell(2, 2, 2)      = BLK_WHEAT_CROP;
+        data[vg_index(2, 2, 2)] = (uint8_t)stage;  // st_data: the growth stage
+
+        mesh_t m;
+        mesh_init(&m);
+        voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+        seen[stage] = -1;
+        int tris    = 0;
+        for (int i = 0; i < m.tn; i++) {
+            int const mat = m.t[i].mat;
+            if (mat < VM_WHEAT_0 || mat > VM_WHEAT_3) continue;
+            tris++;
+            if (seen[stage] < 0) seen[stage] = mat;
+            CHECK(seen[stage] == mat, "voxel: a crop at stage %d drew two different textures", stage);
+        }
+        CHECK(tris == 8, "voxel: a crop at stage %d drew %d triangles, expected 8", stage, tris);
+        CHECK(seen[stage] == VM_WHEAT_0 + stage, "voxel: a crop at stage %d drew material %d, expected %d", stage,
+              seen[stage], VM_WHEAT_0 + stage);
+        mesh_free(&m);
+    }
+    printf("voxel: a crop drew materials %d, %d, %d, %d for its four stages\n", seen[0], seen[1], seen[2], seen[3]);
+
+    // (b) RICE IS WATER AS WELL AS A PLANT.
+    vg_clear();
+    memset(data, 0, sizeof(data));
+    vg_fill(1, 1, 1, 3, 1, 3, BLK_SAND);
+    vg_fill(1, 2, 1, 3, 2, 3, BLK_WATER);  // a 3 x 3 pool, one deep
+    *vg_cell(2, 2, 2)       = BLK_RICE_CROP;
+    data[vg_index(2, 2, 2)] = 3;  // ripe: the stage bits, NOT a fluid level
+
+    mesh_t m;
+    mesh_init(&m);
+    voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+
+    int   rice = 0, water_over_rice = 0;
+    float rice_water_y = -1.0f;
+    for (int i = 0; i < m.tn; i++) {
+        if (m.t[i].mat >= VM_RICE_0 && m.t[i].mat <= VM_RICE_3) rice++;
+        if (m.t[i].mat != VM_WATER) continue;
+        // A water triangle with all three corners over the rice cell.
+        uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
+        bool           over  = true;
+        for (int k = 0; k < 3; k++) {
+            if (m.v[vi[k]].x < 2.0f - 0.01f || m.v[vi[k]].x > 3.0f + 0.01f) over = false;
+            if (m.v[vi[k]].z < 2.0f - 0.01f || m.v[vi[k]].z > 3.0f + 0.01f) over = false;
+        }
+        if (!over) continue;
+        water_over_rice++;
+        rice_water_y = m.v[vi[0]].y;
+    }
+    printf("voxel: a paddy: %d rice tris, %d water tris over it at y %.3f\n", rice, water_over_rice,
+           (double)rice_water_y);
+    CHECK(rice == 8, "voxel: the rice plant drew %d triangles, expected 8", rice);
+    CHECK(water_over_rice > 0, "voxel: a rice cell drew no water: the pond has a plant-shaped hole in it");
+    // FULL DEPTH, whatever the stage says. The stage bits sit exactly
+    // where a fluid level would, so reading one as the other would
+    // drain the paddy as the rice ripened -- here by 3/8 of a block.
+    CHECK(fabsf(rice_water_y - 3.0f) < 1e-4f, "voxel: the water over ripe rice is at y %.3f, expected 3.000",
+          (double)rice_water_y);
+    mesh_free(&m);
+}
+
 // Vertical sections (D-34). A chunk is no longer meshed as one tall
 // box: it is cut into CH_SECT-high slices, each meshed on its own with
 // the slices above and below supplying its border, and each carrying a
@@ -628,5 +710,6 @@ static void check_assets(void) {
     check_voxel_cube();
     check_face_dirs();
     check_plant_dirs();
+    check_crop_mesh();
     check_sectioned_mesher();
 }

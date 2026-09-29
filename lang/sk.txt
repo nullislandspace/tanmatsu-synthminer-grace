@@ -253,6 +253,25 @@ item.axe_iron = Železná sekera
 item.shovel_iron = Železná lopata
 item.bucket = Vedro
 item.bucket_water = Vedro vody
+item.hoe_wood = Drevená motyka
+item.hoe_stone = Kamenná motyka
+item.hoe_iron = Železná motyka
+item.wheat_seeds = Pšeničné semená
+item.wheat = Pšenica
+item.potato = Zemiak
+item.tomato_seeds = Paradajkové semená
+item.tomato = Paradajka
+item.beans = Fazuľa
+item.rice = Ryža
+item.compost = Kompost
+item.worm = Dážďovka
+item.farmland = Zoraná pôda
+item.composter = Kompostér
+item.wheat_crop = Pšenica (rastlina)
+item.potato_crop = Zemiak (rastlina)
+item.tomato_crop = Paradajka (rastlina)
+item.bean_crop = Fazuľa (rastlina)
+item.rice_crop = Ryža (rastlina)
 
 # --- chest ---
 chest.title = Truhla
@@ -283,3 +302,27 @@ item.birch_leaves = Brezové lístie
 item.cactus = Kaktus
 item.snow = Sneh
 item.sandstone = Pieskovec
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostér
+composter.input = Odpad
+composter.compost = Kompost
+composter.worms = Dážďovky
+composter.empty = - prázdne -
+composter.slot = %d %s
+composter.hint = enter vloží alebo vyberie   esc zatvorí
+composter.working = tlie, %d%%
+composter.no_input = niet čo nechať tlieť
+composter.full = priehradka na kompost je plná
+composter.took = Vzaté %d %s
+composter.pick_input = Čo kompostovať
+composter.pick_none = Nič tu netlie
+composter.pick_hint = enter vyberie   esc späť
+composter.a_day = jedna jednotka denne, a dážďovky
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Tu nie je čo zorať
+farm.too_dry = Príliš sucho na sadenie
+farm.needs_soil = Zasaď to do zoranej pôdy
+farm.needs_water = Zasaď ryžu do vody hlbokej jeden blok, na piesok
+farm.already_ripe = Už je zrelá

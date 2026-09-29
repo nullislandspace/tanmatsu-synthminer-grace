@@ -98,6 +98,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     // A field that says "this tick" is cleared at the top of the tick.
     p->used_block = BLK_AIR;
     p->needs_tool = 0;
+    if (p->use_msg_ticks > 0 && --p->use_msg_ticks == 0) p->use_msg = USE_SAID_NOTHING;
 
     // --- The inventory screen ----------------------------------------
     //
@@ -340,8 +341,24 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                 s->wear  = 0;
                 inv_mark_seen(&p->inv, u.becomes);
             }
+            // A SEED OR A COMPOST IS SPENT, one from the stack -- the
+            // other way a use can change what is in the hand, and the
+            // ordinary one for everything that is not a bucket.
+            if (u.consume) inv_consume_held(&p->inv);
+            // A HOE WEARS LIKE ANY OTHER TOOL, once per job. Tilling is
+            // the only thing it does, so this is the whole of its life.
+            if (u.wear) inv_wear_held(&p->inv, 1);
+            p->use_msg       = USE_SAID_NOTHING;
+            p->use_msg_ticks = 0;
             trace_edit('U', u.x, u.y, u.z, block_def(u.block)->name, 1);
             if (u.sound != SND_NONE) sfx_play_place(u.block);
+        } else if (u.msg != USE_SAID_NOTHING) {
+            // It refused, and it has a reason. Held for about two
+            // seconds, and repeated presses keep it up rather than
+            // making it flicker.
+            p->use_msg       = u.msg;
+            p->use_msg_ticks = USE_MSG_TICKS;
+            sfx_play(SFX_DENY);
         } else if (p->aim_valid) {
             if (block_usable(p->aim.block)) {
                 p->used_block = p->aim.block;

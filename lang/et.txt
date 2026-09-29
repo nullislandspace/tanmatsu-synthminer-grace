@@ -253,6 +253,25 @@ item.axe_iron = Raudkirves
 item.shovel_iron = Raudlabidas
 item.bucket = Ämber
 item.bucket_water = Veeämber
+item.hoe_wood = Puukõblas
+item.hoe_stone = Kivikõblas
+item.hoe_iron = Raudkõblas
+item.wheat_seeds = Nisuseemned
+item.wheat = Nisu
+item.potato = Kartul
+item.tomato_seeds = Tomatiseemned
+item.tomato = Tomat
+item.beans = Oad
+item.rice = Riis
+item.compost = Kompost
+item.worm = Uss
+item.farmland = Küntud muld
+item.composter = Kompostikast
+item.wheat_crop = Nisutaim
+item.potato_crop = Kartulitaim
+item.tomato_crop = Tomatitaim
+item.bean_crop = Oataim
+item.rice_crop = Riisitaim
 
 # --- chest ---
 chest.title = Kirst
@@ -283,3 +302,27 @@ item.birch_leaves = Kaselehed
 item.cactus = Kaktus
 item.snow = Lumi
 item.sandstone = Liivakivi
+
+# --- The composter ----------------------------------------------------------
+composter.title = Kompostikast
+composter.input = Jäätmed
+composter.compost = Kompost
+composter.worms = Ussid
+composter.empty = - tühi -
+composter.slot = %d %s
+composter.hint = enter paneb või võtab   esc sulgeb
+composter.working = kõduneb, %d%%
+composter.no_input = pole midagi kõdunemas
+composter.full = kompostipesa on täis
+composter.took = Võtsid %d %s
+composter.pick_input = Mida kompostida
+composter.pick_none = Siin ei kõdune miski
+composter.pick_hint = enter valib   esc tagasi
+composter.a_day = üks ühik päevas, ja ussid
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Siin pole midagi künda
+farm.too_dry = Liiga kuiv istutamiseks
+farm.needs_soil = Istuta see küntud mulda
+farm.needs_water = Istuta riis ühe ploki sügavusse vette, liivale
+farm.already_ripe = See on juba küps

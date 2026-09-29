@@ -229,6 +229,24 @@ static float fluid_surface(vox_grid_t const* g, int x, int y, int z) {
 // A lone cell should read as exactly as deep as it is, and with dry
 // cells skipped it does: it is the only liquid at each of its corners,
 // so all four come out at its own height and the surface is flat.
+// IS THIS CELL WATER, for the purposes of a surface? A liquid is, and so
+// is a waterlogged block -- rice, which is a plant standing in a full
+// cell of it (blocks.h, BF2_WATERLOGGED). Both of the functions below
+// have to agree about that, or a paddy gets a sloping edge where the
+// plants are.
+static bool cell_is_water(vox_grid_t const* g, int x, int y, int z) {
+    uint8_t const b = grid_cell(g, x, y, z);
+    return block_kind(b) == K_LIQUID || block_waterlogged(b);
+}
+
+// How deep it stands. A waterlogged cell is ALWAYS FULL: its state byte
+// holds a growth stage, not a fluid level, and reading one as the other
+// would drain the paddy as the rice ripened.
+static float cell_water_height(vox_grid_t const* g, int x, int y, int z) {
+    if (block_waterlogged(grid_cell(g, x, y, z))) return 1.0f;
+    return voxel_fluid_height(grid_data(g, x, y, z));
+}
+
 static float fluid_corner(vox_grid_t const* g, int x, int y, int z, int cx, int cz) {
     float sum = 0.0f;
     int   n   = 0;
@@ -238,13 +256,13 @@ static float fluid_corner(vox_grid_t const* g, int x, int y, int z, int cx, int 
             // Liquid directly above: the column carries on up through
             // this corner, so there is no dip in it at all.
             if (block_kind(grid_cell(g, px, y + 1, pz)) == K_LIQUID) return 1.0f;
-            if (block_kind(grid_cell(g, px, y, pz)) != K_LIQUID) continue;
-            sum += voxel_fluid_height(grid_data(g, px, y, pz));
+            if (!cell_is_water(g, px, y, pz)) continue;
+            sum += cell_water_height(g, px, y, pz);
             n++;
         }
     }
     // The cell itself is always one of the four, so n is never 0.
-    return n > 0 ? sum / (float)n : voxel_fluid_height(grid_data(g, x, y, z));
+    return n > 0 ? sum / (float)n : cell_water_height(g, x, y, z);
 }
 
 static void emit_fluid(mesh_t* m, vox_grid_t const* g, int x, int y, int z, uint8_t mat) {
@@ -293,7 +311,11 @@ static void emit_fluid(mesh_t* m, vox_grid_t const* g, int x, int y, int z, uint
         int const          nx = x + SX[i], nz = z + SZ[i];
         block_kind_t const nk = block_kind(grid_cell(g, nx, y, nz));
         if (nk != K_AIR && nk != K_LIQUID && nk != K_PLANT) continue;  // a cube hides it
-        float const base = fluid_surface(g, nx, y, nz);
+        // A waterlogged neighbour is a FULL cell of water with a plant in
+        // it, so there is no step down into it and the side is dropped
+        // by the test below rather than drawn against a paddy.
+        float const base = cell_is_water(g, nx, y, nz) ? cell_water_height(g, nx, y, nz)
+                                                       : fluid_surface(g, nx, y, nz);
 
         // The two corners of this cell along that edge.
         float t0, t1;
@@ -544,7 +566,33 @@ void voxel_mesh_build(mesh_t* m, vox_grid_t const* g, vox_mesh_mode_t mode) {
                 }
                 if (k == K_PLANT || k == K_TORCH || k == K_SIGN) mesh_set_light(m, LIGHT(x, y, z));  // lit by its own cell
                 if (k == K_SIGN) emit_sign(m, X, Y, Z);
-                if (k == K_PLANT && mode == VOX_MESH_FANCY) emit_plant(m, X, Y, Z, (uint8_t)voxel_face_mat(b, VF_SIDE));
+                if (k == K_PLANT && mode == VOX_MESH_FANCY) {
+                    // A CROP IS DRAWN BY ITS STAGE, and the stage is in
+                    // the state byte this grid already carries -- the
+                    // data plane the fluids paid for (D-101). Its four
+                    // textures are one run starting at mat[VF_TOP]
+                    // (blocks.h), so the stage is an addition and not a
+                    // lookup. Anything else draws with its side texture,
+                    // as it always has.
+                    uint8_t mat = (uint8_t)voxel_face_mat(b, VF_SIDE);
+                    if (block_crop(b)) {
+                        unsigned stage = grid_data(g, x, y, z) & 0x07u;
+                        if (stage >= VOX_CROP_STAGES) stage = VOX_CROP_STAGES - 1u;
+                        mat = (uint8_t)(voxel_face_mat(b, VF_TOP) + (int)stage);
+                    }
+                    emit_plant(m, X, Y, Z, mat);
+                }
+                // RICE STANDS IN WATER, so its cell owes the pond a
+                // surface: without this there is a plant-shaped hole in
+                // the shallows with no water in it (blocks.h,
+                // BF2_WATERLOGGED). One quad, at the top of the cell,
+                // exactly where the greedy pass would have put the
+                // water it is standing in.
+                if (k == K_PLANT && block_waterlogged(b) && mode == VOX_MESH_FANCY) {
+                    mesh_set_light(m, LIGHT(x, y + 1, z));
+                    emit_fluid(m, g, x, y, z, (uint8_t)voxel_face_mat(BLK_WATER, VF_TOP));
+                    mesh_set_light(m, LIGHT(x, y, z));
+                }
                 if (k == K_TORCH) {
                     // Upright in the middle of the cell, or shifted to
                     // one wall and lifted, which is what a torch on a

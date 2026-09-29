@@ -253,6 +253,25 @@ item.axe_iron = Topor de fier
 item.shovel_iron = Lopată de fier
 item.bucket = Găleată
 item.bucket_water = Găleată cu apă
+item.hoe_wood = Sapă de lemn
+item.hoe_stone = Sapă de piatră
+item.hoe_iron = Sapă de fier
+item.wheat_seeds = Semințe de grâu
+item.wheat = Grâu
+item.potato = Cartof
+item.tomato_seeds = Semințe de roșii
+item.tomato = Roșie
+item.beans = Fasole
+item.rice = Orez
+item.compost = Compost
+item.worm = Vierme
+item.farmland = Pământ arat
+item.composter = Compostor
+item.wheat_crop = Plantă de grâu
+item.potato_crop = Plantă de cartof
+item.tomato_crop = Plantă de roșii
+item.bean_crop = Plantă de fasole
+item.rice_crop = Plantă de orez
 
 # --- chest ---
 chest.title = Ladă
@@ -283,3 +302,27 @@ item.birch_leaves = Frunze de mesteacăn
 item.cactus = Cactus
 item.snow = Zăpadă
 item.sandstone = Gresie
+
+# --- The composter ----------------------------------------------------------
+composter.title = Compostor
+composter.input = Resturi
+composter.compost = Compost
+composter.worms = Viermi
+composter.empty = - gol -
+composter.slot = %d %s
+composter.hint = enter pune sau ia   esc închide
+composter.working = putrezește, %d%%
+composter.no_input = nimic de putrezit
+composter.full = compartimentul de compost e plin
+composter.took = Ai luat %d %s
+composter.pick_input = Ce se compostează
+composter.pick_none = Nimic de aici nu putrezește
+composter.pick_hint = enter alege   esc înapoi
+composter.a_day = o unitate pe zi, și viermi
+
+# --- Farming ----------------------------------------------------------------
+farm.cannot_till = Nu e nimic de arat aici
+farm.too_dry = Prea uscat pentru plantat
+farm.needs_soil = Plantează asta în pământ arat
+farm.needs_water = Plantează orezul în apă de un bloc, pe nisip
+farm.already_ripe = E deja coaptă

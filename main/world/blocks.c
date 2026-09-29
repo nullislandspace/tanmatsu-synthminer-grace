@@ -113,8 +113,14 @@ block_def_t const BLOCKS[BLK_COUNT] = {
     [BLK_FLOWER_YELLOW] =
         {.name = "flower_yellow", .drop_item = BLK_FLOWER_YELLOW, .drop_min = 1, .drop_max = 1, .kind = K_PLANT, .mat = M1(VM_FLOWER_YELLOW), .hardness = 1, .flags = BF_REPLACEABLE, .sound = SND_SOFT},
 
+    // WHERE FARMING STARTS. Tall grass gives up a wheat seed about half
+    // the time, and that is the whole of the entry fee: no recipe, no
+    // machine, just the undergrowth that has been in every world since
+    // step 1 (D-107). drop_min 0 is what makes it a chance rather than a
+    // certainty, and drop_for() treats a roll of nothing as nothing.
     [BLK_TALL_GRASS] =
-        {.name = "tall_grass", .kind = K_PLANT, .mat = M1(VM_TALL_GRASS), .hardness = 1, .flags = BF_REPLACEABLE, .sound = SND_SOFT},
+        {.name = "tall_grass", .drop_item = ITEM_WHEAT_SEEDS, .drop_min = 0, .drop_max = 1,
+         .kind = K_PLANT, .mat = M1(VM_TALL_GRASS), .hardness = 1, .flags = BF_REPLACEABLE, .sound = SND_SOFT},
 
     // Never generated, never placed, never meshed: what world_block()
     // answers for a chunk that is not resident (D-14).
@@ -250,6 +256,92 @@ block_def_t const BLOCKS[BLK_COUNT] = {
     // Not solid, as in Minecraft: you walk through a sign. It drops
     // nothing, since there is no sign item yet (D-79).
     [BLK_SIGN] = {.name = "sign", .kind = K_SIGN, .mat = M1(VM_PLANKS), .hardness = 40, .tool = TOOL_AXE, .sound = SND_WOOD},
+
+    // --- Farming (step 9) --------------------------------------------
+    //
+    // Tilled soil. It drops DIRT, not itself: a hoe makes farmland out
+    // of ground and a shovel turns it back into what it was, so there is
+    // no farmland item and nothing to carry about.
+    //
+    // Wet and dry are two ids and one difference -- the top texture --
+    // and which one a till produces is decided once, by looking for
+    // water within four blocks on the same level (D-106). Nothing looks
+    // again until somebody tills or plants there.
+    [BLK_FARMLAND] = {.name     = "farmland", .drop_item = BLK_DIRT, .drop_min = 1, .drop_max = 1,
+                      .kind     = K_CUBE,
+                      .mat      = M3(VM_FARMLAND, VM_DIRT, VM_DIRT),
+                      .hardness = 20,
+                      .tool     = TOOL_SHOVEL,
+                      .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_GRAVEL},
+
+    [BLK_FARMLAND_WET] = {.name     = "farmland_wet", .drop_item = BLK_DIRT, .drop_min = 1, .drop_max = 1,
+                          .kind     = K_CUBE,
+                          .mat      = M3(VM_FARMLAND_WET, VM_DIRT, VM_DIRT),
+                          .hardness = 20,
+                          .tool     = TOOL_SHOVEL,
+                          .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_GRAVEL},
+
+    // The composter: seven planks, no fuel, and a day per unit. Compost
+    // out of one slot and WORMS out of the other, which is what ties the
+    // farm to the fishing (D-104).
+    [BLK_COMPOSTER] = {.name     = "composter", .drop_item = BLK_COMPOSTER, .drop_min = 1, .drop_max = 1,
+                       .kind     = K_CUBE,
+                       .mat      = M3(VM_COMPOSTER_TOP, VM_COMPOSTER_SIDE, VM_COMPOSTER_SIDE),
+                       .hardness = 50,
+                       .tool     = TOOL_AXE,
+                       .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_WOOD,
+                       .flags2   = BF2_USABLE | BF2_RECORD},
+
+    // THE FIVE CROPS. Each is a K_PLANT sprite with its stage in state
+    // bits 1..3, and `mat` says two things at once (blocks.h):
+    //
+    //   mat[VF_TOP]  -- the FIRST of its four stage textures, which the
+    //                   mesher adds the stage to;
+    //   mat[VF_SIDE] -- the RIPE one, which is what the inventory icon
+    //                   and the flat-shaded far meshes use, because a
+    //                   sprout is not a picture of wheat.
+    //
+    // They are not REPLACEABLE: water must not wash a field away, and a
+    // block placed against one must not eat it. Breaking one is
+    // instant, as picking a plant should be.
+    [BLK_WHEAT_CROP] = {.name     = "wheat_crop", .drop_item = ITEM_WHEAT, .drop_min = 1, .drop_max = 1,
+                        .kind     = K_PLANT,
+                        .mat      = M3(VM_WHEAT_0, VM_WHEAT_3, VM_WHEAT_0),
+                        .hardness = 1,
+                        .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_WHEAT_SEEDS,
+                        .sound    = SND_SOFT},
+
+    [BLK_POTATO_CROP] = {.name     = "potato_crop", .drop_item = ITEM_POTATO, .drop_min = 1, .drop_max = 3,
+                         .kind     = K_PLANT,
+                         .mat      = M3(VM_POTATO_0, VM_POTATO_3, VM_POTATO_0),
+                         .hardness = 1,
+                         .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_POTATO,
+                         .sound    = SND_SOFT},
+
+    [BLK_TOMATO_CROP] = {.name     = "tomato_crop", .drop_item = ITEM_TOMATO, .drop_min = 1, .drop_max = 3,
+                         .kind     = K_PLANT,
+                         .mat      = M3(VM_TOMATO_0, VM_TOMATO_3, VM_TOMATO_0),
+                         .hardness = 1,
+                         .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_TOMATO_SEEDS,
+                         .sound    = SND_SOFT},
+
+    [BLK_BEAN_CROP] = {.name     = "bean_crop", .drop_item = ITEM_BEANS, .drop_min = 1, .drop_max = 3,
+                       .kind     = K_PLANT,
+                       .mat      = M3(VM_BEANS_0, VM_BEANS_3, VM_BEANS_0),
+                       .hardness = 1,
+                       .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_BEANS,
+                       .sound    = SND_SOFT},
+
+    // Rice stands IN water, so the cell is both (BF2_WATERLOGGED). It is
+    // the only block in the game that is two things at once, and the
+    // reason it can be is that its water is always a full source.
+    [BLK_RICE_CROP] = {.name     = "rice_crop", .drop_item = ITEM_RICE, .drop_min = 1, .drop_max = 3,
+                       .kind     = K_PLANT,
+                       .mat      = M3(VM_RICE_0, VM_RICE_3, VM_RICE_0),
+                       .hardness = 1,
+                       .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_RICE,
+                       .sound    = SND_SOFT,
+                       .flags2   = BF2_WATERLOGGED},
 };
 
 // Which kind of record each block keeps. A function rather than a
@@ -261,6 +353,7 @@ uint8_t block_record_kind(uint8_t id) {
         case BLK_FURNACE: return BE_FURNACE;
         case BLK_CHEST: return BE_CHEST;
         case BLK_TRASH: return BE_TRASH;
+        case BLK_COMPOSTER: return BE_COMPOST;
         default: return BE_NONE;
     }
 }

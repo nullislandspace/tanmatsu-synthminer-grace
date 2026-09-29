@@ -17,6 +17,7 @@
 #include "world/region.h"
 
 #include "world/blockent.h"
+#include "world/crops.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -344,8 +345,11 @@ static bool region_create(FILE* f, int32_t rx, int32_t rz, region_t* r) {
 // ignored, which is the promise chunk_codec.h makes and the reason the
 // format has not had to change to gain block entities.
 static void take_section(uint8_t id, uint8_t const* data, size_t len, void* user) {
-    (void)user;
     if (id == SECTION_BLOCK_ENTITIES) blockent_decode_section(data, len);
+    // The chunk's own slow clock, which goes back into the chunk being
+    // decoded rather than into a pool -- so this one needs `user`, and
+    // it is the chunk (world/crops.h).
+    if (id == SECTION_CHUNK_CLOCK && user != NULL) crops_decode_section((chunk_t*)user, data, len);
 }
 
 // A region that was being compacted when something went wrong.
@@ -426,7 +430,7 @@ int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
 
     // A payload that will not decode is a lost chunk, not a lost world:
     // report "not there" and let it be generated again.
-    return chunk_decode_ex(buf, e.length, c, remap, take_section, NULL) ? 1 : 0;
+    return chunk_decode_ex(buf, e.length, c, remap, take_section, c) ? 1 : 0;
 }
 
 // --- Writing ----------------------------------------------------------
@@ -441,7 +445,13 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     // built first, then handed to the encoder as the section it has
     // always had a number for and never had a byte in (chunk_codec.h).
     static uint8_t sections[CHUNK_SECTIONS_MAX];
-    size_t const   sn = blockent_encode_chunk(c->cx, c->cz, sections, sizeof(sections));
+    // THE CLOCK FIRST, and it is nine bytes. Every chunk has one whether
+    // anything is growing in it or not, and a clock lost is a field that
+    // ripens the moment it is replanted (world/crops.h) -- so it goes in
+    // before the records, which are the part that could in principle
+    // fill the buffer.
+    size_t sn = crops_encode_chunk(c, sections, sizeof(sections));
+    sn += blockent_encode_chunk(c->cx, c->cz, &sections[sn], sizeof(sections) - sn);
 
     static uint8_t buf[CHUNK_PAYLOAD_MAX];
     size_t const   n = chunk_encode(c, sn > 0 ? sections : NULL, sn, buf, sizeof(buf));
