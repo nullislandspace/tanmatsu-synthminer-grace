@@ -1897,8 +1897,7 @@ static void on_update(float dt, void* user) {
             // was last tick, which is what every other creature in
             // every other game does and what keeps the order fixed for
             // a replay.
-            mob_tick((uint32_t)s_meta.time_of_day, s_player.body.x, s_player.body.y, s_player.body.z,
-                     inv_held(&s_player.inv)->item);
+            mob_tick((uint32_t)s_meta.time_of_day, &s_player.body, inv_held(&s_player.inv)->item);
             sm_audio_mob_tick(s_player.body.x, s_player.body.z);
             player_tick(&s_player, mask, input_pressed());
             sm_audio_player_tick(&s_player);  // footsteps and landings, AFTER the tick

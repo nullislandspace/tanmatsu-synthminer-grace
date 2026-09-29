@@ -3975,6 +3975,42 @@ types the code:
   the player's doing, and the rule is "a fence is not a step", not "a
   fence is a forcefield".
 
+- **F-123** 2026-09-29, the user, straight after the fences: *"cows
+  phase through each other and the player."* They did, and it was not
+  an oversight in the creature code -- it is what `physics.h` says on
+  its first line: *"An axis-aligned box swept against the voxel world...
+  nothing here knows what a player is."* The collider knows about the
+  WORLD. Two dozen bodies moving through each other is what that buys,
+  and until there was more than one body it cost nothing.
+
+  Fixed with a **soft push** rather than hard collision, which is
+  Minecraft's answer and the right one here: overlapping bodies are
+  eased apart a little each tick along the line between them. A hard
+  one would need the sweep to test against moving boxes -- and two
+  animals in a corner would lock solid instead of squeezing past each
+  other, which is worse than what it replaces.
+
+  Four things it has to get right, and each is a line in the check:
+
+  * **it stops.** A push that keeps pushing walks a herd off the edge
+    of the world over an afternoon, so it is capped per tick and it
+    ends the moment the two are clear;
+  * **the world still wins.** Every push goes through `phys_move`, so
+    three cows squeezed against a wall stay on their own side of it;
+  * **the player is moved less than the animal** (0.35 of it). Being
+    shoved about by livestock is annoying in a way that shoving them is
+    not;
+  * **a sitting dog is furniture.** It holds its ground and the player
+    goes round it, which is the whole point of telling one to sit.
+
+  The separation runs as a pass AFTER everything has moved, not during:
+  pushing as it went would give the creature with the lower pool index
+  the advantage, and a herd would drift the way the pool is ordered. A
+  pair that is exactly coincident -- which happens the moment a calf is
+  born between its parents -- parts along a direction taken from the
+  hash of the two ids, not a constant, or every such pair would part
+  the same way for ever.
+
 ### Decisions (D-n), each with date and who decided
 
 - **D-81** 2026-09-23, **the user**: **the UI is translated, English by

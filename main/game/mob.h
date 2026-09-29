@@ -159,10 +159,25 @@ mob_t*       mob_at_mut(int i);
 int mob_spawn(uint8_t kind, double x, double y, double z, bool baby);
 
 // One tick of every creature in a resident chunk: falling, ambling,
-// fleeing, following, growing up and breeding. `px, py, pz` is where
-// the player is standing and `held` what they are holding, which is all
-// an animal knows about them.
-void mob_tick(uint32_t now, double px, double py, double pz, uint16_t held);
+// fleeing, following, growing up and breeding.
+//
+// THE PLAYER'S BODY, NOT A POSITION, because creatures SHOVE: two cows
+// in a doorway push each other apart and a cow walking into the player
+// moves them both. That is the one thing an animal does TO the player
+// rather than because of them, and it needs somewhere to write. NULL is
+// allowed -- the host checks run herds with nobody about.
+void mob_tick(uint32_t now, phys_body_t* player, uint16_t held);
+
+// HOW HARD THEY SHOVE. Blocks a tick, and the most one shove can move
+// anything: a soft separation rather than a wall, so two animals in a
+// pen slide past each other instead of locking solid, and a body wedged
+// by the world is never forced through it (every push goes through
+// phys_move like any other movement).
+#define MOB_PUSH        0.045f
+// ... and the share of it the PLAYER takes when a creature walks into
+// them. Less than half, because being shoved about by livestock is
+// annoying in a way that shoving them is not.
+#define MOB_PUSH_PLAYER 0.35f
 
 // --- What the player does to them -------------------------------------
 

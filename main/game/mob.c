@@ -253,6 +253,58 @@ static void pick_intent(mob_t* m, uint32_t now) {
     m->yaw        = (float)((r >> 4) % 628u) / 100.0f;  // 0 .. 2pi
 }
 
+// --- Shoving -------------------------------------------------------------
+//
+// TWO BODIES DO NOT SHARE A SPACE. The collider knows about the world
+// and nothing else (physics.h: "nothing here knows what a player is"),
+// which is right -- but it means a cow walks through a cow and through
+// the player, which is what the user saw.
+//
+// The answer is a SOFT PUSH rather than a hard collision, and it is
+// Minecraft's: bodies that overlap are eased apart a little each tick
+// along the line between them. A hard one would need the sweep to test
+// against moving boxes, and two animals in a corner would lock solid
+// instead of squeezing past each other.
+//
+// Round rather than square: the boxes are as wide as they are deep, so
+// a circle of the same width is the same test with no corner cases,
+// and the overlap is a subtraction.
+
+// Push `a` and `b` apart, each by its own share. Either may be NULL-
+// shared (a sitting dog does not budge), and every move goes through
+// phys_move so the world still wins.
+static void shove(phys_body_t* a, phys_body_t* b, float a_share, float b_share, uint32_t salt) {
+    double const dy = a->y - b->y;
+    // Different floors: a cow on a roof is not in the way of one below.
+    if (dy > (double)b->h || -dy > (double)a->h) return;
+
+    double dx = a->x - b->x, dz = a->z - b->z;
+    double const r  = ((double)a->w + (double)b->w) * 0.5;
+    double const d2 = dx * dx + dz * dz;
+    if (d2 >= r * r) return;
+
+    double d = sqrt(d2);
+    if (d < 1e-4) {
+        // Exactly on top of each other, which happens the moment a calf
+        // is born between its parents. A hash rather than a constant, or
+        // every such pair would part along the same axis for ever.
+        uint32_t const h = salt * 2654435761u;
+        dx               = ((h & 0xFFFFu) / 32768.0) - 1.0;
+        dz               = (((h >> 16) & 0xFFFFu) / 32768.0) - 1.0;
+        d                = sqrt(dx * dx + dz * dz);
+        if (d < 1e-4) {
+            dx = 1.0;
+            dz = 0.0;
+            d  = 1.0;
+        }
+    }
+    double push = (r - d) * 0.5;
+    if (push > (double)MOB_PUSH) push = (double)MOB_PUSH;
+    double const ux = dx / d, uz = dz / d;
+    if (a_share > 0.0f) phys_move(a, ux * push * (double)a_share, 0.0, uz * push * (double)a_share);
+    if (b_share > 0.0f) phys_move(b, -ux * push * (double)b_share, 0.0, -uz * push * (double)b_share);
+}
+
 // The player, as far as an animal is concerned.
 typedef struct {
     double x, y, z;
@@ -288,8 +340,9 @@ static void breed_pass(mob_t* m, uint32_t now) {
     }
 }
 
-void mob_tick(uint32_t now, double px, double py, double pz, uint16_t held) {
-    watcher_t const you = {px, py, pz, held};
+void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
+    watcher_t const you = {player != NULL ? player->x : 0.0, player != NULL ? player->y : 0.0,
+                           player != NULL ? player->z : 0.0, held};
 
     for (int i = 0; i < MOB_MAX; i++) {
         mob_t* m = &s_pool[i];
@@ -397,6 +450,30 @@ void mob_tick(uint32_t now, double px, double py, double pz, uint16_t held) {
         // A voice now and then, and only when there is somebody near
         // enough to hear it: about once every twenty seconds each.
         if (m->say == MOB_SAY_NONE && to_you < 20.0 && (roll(m, now, 0x77u) % 400u) == 0u) m->say = MOB_SAY_IDLE;
+    }
+
+    // --- Nobody shares a space ------------------------------------------
+    //
+    // After everything has moved, not during: a pass that pushed as it
+    // went would give the creature with the lower index the advantage,
+    // and a herd would drift the way the pool is ordered.
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_t* a = &s_pool[i];
+        if (!a->alive || !resident(a)) continue;
+
+        // The player first, so a cow cannot be pushed INTO them by
+        // another cow and stay there for a tick.
+        if (player != NULL) {
+            // A SITTING DOG IS FURNITURE: it holds its ground and the
+            // player goes round it, which is the whole point of telling
+            // one to sit.
+            shove(&a->body, player, a->sitting ? 0.0f : 1.0f - MOB_PUSH_PLAYER, MOB_PUSH_PLAYER, a->id);
+        }
+        for (int j = i + 1; j < MOB_MAX; j++) {
+            mob_t* b = &s_pool[j];
+            if (!b->alive || !resident(b)) continue;
+            shove(&a->body, &b->body, a->sitting ? 0.0f : 0.5f, b->sitting ? 0.0f : 0.5f, a->id * 31u + b->id);
+        }
     }
 }
 

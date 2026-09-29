@@ -2876,7 +2876,11 @@ static void check_fluid(void) {
 // Run the creatures for `n` ticks with the player standing at (px, pz)
 // holding `held` -- which is all an animal knows about anybody.
 static void mob_run(uint32_t* clock, int n, double px, double pz, uint16_t held) {
-    for (int i = 0; i < n; i++) mob_tick((*clock)++, px, 20.0, pz, held);
+    // A player standing well out of the way, so a herd is not being
+    // shoved about while the test is watching it (mob.h, MOB_PUSH).
+    phys_body_t you;
+    phys_body_init(&you, px, 20.0, pz);
+    for (int i = 0; i < n; i++) mob_tick((*clock)++, &you, held);
 }
 
 static int mob_count_kind(uint8_t kind) {
@@ -2974,17 +2978,129 @@ static bool pen_holds(pen_kind_t kind, int ticks, double* high_out) {
 
     int const c = mob_spawn(MOB_COW, 6.5, 20.0, 6.5, false);
     if (c < 0) return false;
-    uint32_t clk  = 1000;
-    double   high = 0.0;
-    bool     out  = false;
+    uint32_t    clk  = 1000;
+    double      high = 0.0;
+    bool        out  = false;
+    phys_body_t watcher;
+    phys_body_init(&watcher, 60.0, 20.0, 60.0);  // nobody near the pen
     for (int t = 0; t < ticks && !out; t++) {
-        mob_tick(clk++, 60.0, 20.0, 60.0, 0);
+        mob_tick(clk++, &watcher, 0);
         mob_t const* m = mob_at(c);
         if (m->body.y > high) high = m->body.y;
         out = m->body.x < 4.0 || m->body.x > 10.0 || m->body.z < 4.0 || m->body.z > 10.0;
     }
     if (high_out != NULL) *high_out = high;
     return !out;
+}
+
+// ---------------------------------------------------------------------
+//  Nobody shares a space (F-123)
+//
+//  The user, after the fences: "cows phase through each other and the
+//  player." They did: the collider knows about the world and nothing
+//  else, which is right for a collider and wrong for a field of cows.
+//
+//  What is checked here is what a soft push has to get right:
+//
+//    * two bodies in the same place come apart, and do not oscillate;
+//    * they stop as soon as they are clear, rather than drifting;
+//    * the world still wins -- a push cannot force a body through a
+//      wall or out of a pen;
+//    * a sitting dog holds its ground, which is the whole point of
+//      telling one to sit.
+// ---------------------------------------------------------------------
+static double flat_dist(phys_body_t const* a, phys_body_t const* b) {
+    double const dx = a->x - b->x, dz = a->z - b->z;
+    return sqrt(dx * dx + dz * dz);
+}
+
+static void check_shoving(void) {
+    printf("shoving: two bodies do not share a space (F-123)\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the shoving world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    mob_reset();
+
+    phys_body_t watcher;
+    phys_body_init(&watcher, 12.0, 20.0, 12.0);
+    uint32_t clk = 2000;
+
+    // --- Two cows in exactly the same place ---------------------------
+    int const a = mob_spawn(MOB_COW, 6.5, 20.0, 6.5, false);
+    int const b = mob_spawn(MOB_COW, 6.5, 20.0, 6.5, false);
+    CHECK(a >= 0 && b >= 0, "the pool would not take two cows");
+    // Standing still: intent is what the tick picks, so pin them and
+    // watch only the push.
+    for (int t = 0; t < 120; t++) {
+        mob_at_mut(a)->intent = mob_at_mut(b)->intent = MOB_STAND;
+        mob_at_mut(a)->intent_for = mob_at_mut(b)->intent_for = 10000;
+        mob_tick(clk++, &watcher, 0);
+    }
+    double const apart = flat_dist(&mob_at(a)->body, &mob_at(b)->body);
+    double const want  = (double)mob_def(MOB_COW)->w;
+    printf("  two cows spawned on the same spot stood %.2f apart (they are %.2f wide)\n", apart, want);
+    CHECK(apart > want * 0.9, "two cows in the same place stayed there (%.3f apart)", apart);
+    // AND THEY STOP. A push that kept pushing would walk a herd off the
+    // edge of the world over an afternoon.
+    for (int t = 0; t < 400; t++) {
+        mob_at_mut(a)->intent = mob_at_mut(b)->intent = MOB_STAND;
+        mob_at_mut(a)->intent_for = mob_at_mut(b)->intent_for = 10000;
+        mob_tick(clk++, &watcher, 0);
+    }
+    double const later = flat_dist(&mob_at(a)->body, &mob_at(b)->body);
+    CHECK(later < apart + 0.35, "the push kept pushing: %.2f apart, then %.2f", apart, later);
+
+    // --- A cow walks into the player ----------------------------------
+    mob_reset();
+    phys_body_init(&watcher, 6.5, 20.0, 6.5);
+    int const c = mob_spawn(MOB_COW, 6.9, 20.0, 6.5, false);
+    CHECK(c >= 0, "the pool would not take the cow");
+    double const px0 = watcher.x;
+    for (int t = 0; t < 60; t++) {
+        mob_at_mut(c)->intent     = MOB_STAND;
+        mob_at_mut(c)->intent_for = 10000;
+        mob_tick(clk++, &watcher, 0);
+    }
+    printf("  a cow standing in the player moved them %.2f blocks and itself %.2f\n", fabs(watcher.x - px0),
+           fabs(mob_at(c)->body.x - 6.9));
+    CHECK(flat_dist(&mob_at(c)->body, &watcher) > (double)mob_def(MOB_COW)->w * 0.8,
+          "a cow and the player ended up in the same place");
+    CHECK(fabs(watcher.x - px0) > 0.01, "the player was not moved at all");
+    CHECK(fabs(mob_at(c)->body.x - 6.9) > fabs(watcher.x - px0),
+          "the player was shoved further than the cow");
+
+    // --- The world still wins -----------------------------------------
+    //
+    // Three cows in a two-block slot with a wall at one end: the push
+    // must not squeeze any of them through it.
+    mob_reset();
+    phys_body_init(&watcher, 12.0, 20.0, 12.0);
+    for (int y = 20; y <= 21; y++) {
+        for (int z = 4; z <= 8; z++) set_block(3, y, z, BLK_STONE, ST_PLACED);
+    }
+    for (int i = 0; i < 3; i++) mob_spawn(MOB_COW, 4.5, 20.0, 6.0 + 0.1 * i, false);
+    for (int t = 0; t < 600; t++) mob_tick(clk++, &watcher, 0);
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_t const* m = mob_at(i);
+        if (!m->alive) continue;
+        CHECK(m->body.x > 4.0, "a cow was pushed through a wall (x %.2f)", m->body.x);
+    }
+
+    // --- A sitting dog is furniture -----------------------------------
+    mob_reset();
+    int const dog = mob_spawn(MOB_DOG, 6.5, 20.0, 6.5, false);
+    mob_at_mut(dog)->tame    = true;
+    mob_at_mut(dog)->sitting = true;
+    double const dx0 = mob_at(dog)->body.x, dz0 = mob_at(dog)->body.z;
+    phys_body_init(&watcher, 6.6, 20.0, 6.5);  // the player standing in it
+    for (int t = 0; t < 60; t++) mob_tick(clk++, &watcher, 0);
+    CHECK(fabs(mob_at(dog)->body.x - dx0) < 0.01 && fabs(mob_at(dog)->body.z - dz0) < 0.01,
+          "a sitting dog was shoved (moved %.3f, %.3f)", mob_at(dog)->body.x - dx0, mob_at(dog)->body.z - dz0);
+    CHECK(flat_dist(&mob_at(dog)->body, &watcher) > 0.3, "the player stood inside a sitting dog");
+    printf("  a sitting dog held its ground and the player went round it\n");
+    mob_reset();
 }
 
 static void check_pens(void) {
@@ -3114,9 +3230,11 @@ static void check_animals(void) {
     int const pen[3] = {mob_spawn(MOB_PIG, 6.5, 20.0, 6.5, false), mob_spawn(MOB_COW, 7.5, 20.0, 6.5, false),
                         mob_spawn(MOB_COW, 6.5, 20.0, 7.5, false)};
     CHECK(pen[0] >= 0 && pen[1] >= 0 && pen[2] >= 0, "the pool would not take the pen's animals");
-    double high = 0.0;
+    double      high = 0.0;
+    phys_body_t watcher;
+    phys_body_init(&watcher, 60.0, 20.0, 60.0);
     for (int t = 0; t < 20000; t++) {
-        mob_tick(clock++, 60.0, 20.0, 60.0, 0);
+        mob_tick(clock++, &watcher, 0);
         for (int i = 0; i < 3; i++) {
             mob_t const* m = mob_at(pen[i]);
             if (m->body.y > high) high = m->body.y;
@@ -6451,6 +6569,7 @@ int main(void) {
     check_wild_crops();
     check_texture_budget();
     check_pens();
+    check_shoving();
     check_animals();
     check_makers();
     check_replay();
