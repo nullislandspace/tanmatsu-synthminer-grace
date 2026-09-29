@@ -128,6 +128,19 @@ enum {
     // a station nothing has yet, so they are inert rather than wrong.
     ITEM_MUTTON_MASH,
     ITEM_KEBAB,
+
+    // --- Fishing (step 12) --------------------------------------------
+    //
+    // THE ROD, AND WHAT COMES UP. Three sticks for now, which is the
+    // placeholder the user set when they reserved the real recipe --
+    // and the thing that was blocking it is gone, because string comes
+    // off a sheep now (D-126). No durability either, their call: the
+    // rod is paid for in worms and charging twice for one activity is
+    // how a system stops being worth using.
+    ITEM_ROD,
+    ITEM_SARDINE,
+    ITEM_SALMON,
+    ITEM_SHRIMP,
     ITEM_COUNT
 };
 

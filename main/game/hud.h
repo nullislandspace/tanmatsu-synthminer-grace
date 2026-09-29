@@ -66,6 +66,12 @@ void hud_dropped_items(void);
 // triangles.
 void hud_creatures(double px, double pz);
 
+// The fishing float, if a line is out: a small red and white marker
+// sitting on the water, which DIPS while something is biting -- the
+// only warning the strike window gives, and the reason it is drawn at
+// all (game/fishing.h).
+void hud_float(fishing_t const* f);
+
 // A few lines of text at the top left, with a shadow so they read over
 // sky and ground alike: the position overlay (SM_INFO).
 void hud_text_lines(pax_buf_t* fb, char const* const* lines, int n);

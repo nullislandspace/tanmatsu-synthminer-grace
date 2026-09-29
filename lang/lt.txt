@@ -385,3 +385,15 @@ bed.slept = Miegi iki ryto
 bed.daytime = Miegoti galima tik naktį
 bed.no_room = Nėra vietos lovai
 bed.spawn_set = Čia pabusi
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Meškerė
+item.sardine = Sardinė
+item.salmon = Lašiša
+item.shrimp = Krevetė
+fish.cast = Užmeti valą
+fish.no_worm = Masalui reikia slieko
+fish.no_water = Mesk į vandenį
+fish.caught = Sugavai %s
+fish.too_soon = Kol kas nekimba
+fish.reeled = Suvynioji valą

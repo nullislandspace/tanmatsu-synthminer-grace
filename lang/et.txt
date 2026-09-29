@@ -385,3 +385,15 @@ bed.slept = Magad hommikuni
 bed.daytime = Magada saab ainult öösel
 bed.no_room = Voodi jaoks pole ruumi
 bed.spawn_set = Sa ärkad siin
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Õngeritv
+item.sardine = Sardiin
+item.salmon = Lõhe
+item.shrimp = Krevett
+fish.cast = Heidad õnge
+fish.no_worm = Söödaks on vaja vihmaussi
+fish.no_water = Heida see vette
+fish.caught = Püüad %s
+fish.too_soon = Veel ei näksa
+fish.reeled = Kerid õnge tagasi

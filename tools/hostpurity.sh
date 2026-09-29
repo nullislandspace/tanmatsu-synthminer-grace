@@ -47,6 +47,7 @@ PURE=(
     main/game/furnace.c     main/game/furnace.h
     main/game/maker.c       main/game/maker.h
     main/game/mob.c         main/game/mob.h
+    main/game/fishing.c     main/game/fishing.h
 )
 
 # Headers a pure module must not reach for. psram.h is the sanctioned

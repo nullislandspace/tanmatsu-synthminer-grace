@@ -385,3 +385,15 @@ bed.slept = Sabaha kadar uyursun
 bed.daytime = Sadece geceleri uyuyabilirsin
 bed.no_room = Yatak için yer yok
 bed.spawn_set = Burada uyanacaksın
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Olta
+item.sardine = Sardalya
+item.salmon = Somon
+item.shrimp = Karides
+fish.cast = Oltayı atıyorsun
+fish.no_worm = Yem için bir solucan lazım
+fish.no_water = Suya at
+fish.caught = %s yakaladın
+fish.too_soon = Henüz bir şey vurmuyor
+fish.reeled = Misinayı topluyorsun

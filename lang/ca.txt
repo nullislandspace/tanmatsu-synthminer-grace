@@ -385,3 +385,15 @@ bed.slept = Dorms fins al matí
 bed.daytime = Només pots dormir de nit
 bed.no_room = No hi ha lloc per a un llit
 bed.spawn_set = Et despertaràs aquí
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Canya de pescar
+item.sardine = Sardina
+item.salmon = Salmó
+item.shrimp = Gamba
+fish.cast = Llences el fil
+fish.no_worm = Necessites un cuc d'esquer
+fish.no_water = Llença-ho a l'aigua
+fish.caught = Pesques %s
+fish.too_soon = Encara no pica res
+fish.reeled = Reculls el fil

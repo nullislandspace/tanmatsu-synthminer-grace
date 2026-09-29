@@ -67,6 +67,7 @@ void player_reset(player_t* p) {
     p->mining     = false;
     p->mine_ticks = 0;
     p->hit_mob    = -1;
+    fishing_reset(&p->fish);
 
     // NOTHING. The starting kit is gone, the day a crafting table can
     // make what was in it (the user's call, 2026-09-23): punch a tree,
@@ -101,6 +102,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     p->needs_tool = 0;
     p->hit_mob    = -1;
     if (p->use_msg_ticks > 0 && --p->use_msg_ticks == 0) p->use_msg = USE_SAID_NOTHING;
+    if (p->fish_msg_ticks > 0 && --p->fish_msg_ticks == 0) p->fish_msg = FISH_NOTHING;
     if (p->mob_msg_ticks > 0 && --p->mob_msg_ticks == 0) p->mob_msg = MOB_USE_NOTHING;
 
     // --- The inventory screen ----------------------------------------
@@ -352,8 +354,72 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     // A block that OPENS something wins over placing against it, or a
     // table with planks in hand could never be opened at all -- which
     // is Minecraft's rule too, and the reason sneaking exists there.
+    // --- The line in the water --------------------------------------
+    //
+    // It fishes while the rod is in hand and comes straight back in
+    // when it is not: switching to a pickaxe with a float bobbing in
+    // the river would leave a thing in the world with nothing holding
+    // it.
+    if (p->fish.out && held != ITEM_ROD) fishing_reset(&p->fish);
+    if (p->fish.out) {
+        double const fdx = (double)p->fish.x + 0.5 - p->body.x;
+        double const fdz = (double)p->fish.z + 0.5 - p->body.z;
+        // Walked away from it: the same rule Minecraft has, and it
+        // stops a float being left across the map.
+        if (fdx * fdx + fdz * fdz > 14.0 * 14.0) fishing_reset(&p->fish);
+    }
+    p->fish_clock++;
+    if (fishing_tick(&p->fish)) {
+        // THE FLOAT DIPS. A splash, low and short, which is the only
+        // warning the strike window gives.
+        sfx_play_pitched(SFX_STEP_SPLASH, -4.0f);
+    }
+
     if (act_held(pressed, SM_USE)) {
         bool used_creature = false;
+
+        // THE ROD GETS THE KEY BEFORE ANYTHING ELSE, because a cast
+        // goes at water and water is the one thing the ordinary use
+        // path also wants (a bucket). A rod in hand means fishing.
+        if (held == ITEM_ROD) {
+            int32_t   wx = 0, wy = -1, wz = 0;
+            ray_hit_t wet;
+            if (ray_pick(ex, ey, ez, dx, dy, dz, RAY_REACH, RAY_FLUID, &wet) && block_liquid(wet.block)) {
+                wx = wet.x;
+                wy = wet.y;
+                wz = wet.z;
+            }
+            fish_use_t const fu = fishing_use(&p->fish, wx, wy, wz, inv_count(&p->inv, ITEM_WORM) > 0,
+                                              (uint32_t)p->fish_clock);
+            switch (fu.what) {
+                case FISH_CAST:
+                    // ONE WORM PER CAST (the user), and it goes now --
+                    // not when something bites.
+                    inv_take(&p->inv, ITEM_WORM, 1);
+                    sfx_play_pitched(SFX_STEP_SPLASH, 2.0f);
+                    break;
+                case FISH_CAUGHT: {
+                    int const left = inv_add(&p->inv, fu.item, 1, 0);
+                    if (left > 0) {
+                        item_entity_spawn((int32_t)floor(p->body.x), (int32_t)floor(p->body.y) + 1,
+                                          (int32_t)floor(p->body.z), fu.item, left, 0);
+                    }
+                    inv_mark_seen(&p->inv, fu.item);
+                    p->fish_caught = fu.item;
+                    sfx_play(SFX_PICKUP);
+                } break;
+                case FISH_NO_WORM:
+                case FISH_NO_WATER:
+                case FISH_TOO_SOON: sfx_play(SFX_DENY); break;
+                case FISH_REELED: sfx_play_pitched(SFX_STEP_SPLASH, 6.0f); break;
+                default: break;
+            }
+            if (fu.what != FISH_NOTHING) {
+                p->fish_msg       = fu.what;
+                p->fish_msg_ticks = USE_MSG_TICKS;
+            }
+            used_creature = true;  // the rod has answered; nothing else gets the key
+        }
         // A CREATURE IN FRONT OF EVERYTHING. Use on a cow with a bucket
         // is a milking and not a water bucket looking for a lake, and
         // use on a dog with a bone is a taming and not a bone being

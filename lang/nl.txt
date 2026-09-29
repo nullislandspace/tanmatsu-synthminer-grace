@@ -376,3 +376,15 @@ bed.slept = Je slaapt tot de ochtend
 bed.daytime = Slapen kan alleen 's nachts
 bed.no_room = Geen plek voor een bed
 bed.spawn_set = Hier word je wakker
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Hengel
+item.sardine = Sardine
+item.salmon = Zalm
+item.shrimp = Garnaal
+fish.cast = Je werpt de lijn uit
+fish.no_worm = Je hebt een worm als aas nodig
+fish.no_water = Werp hem in het water
+fish.caught = Je vangt %s
+fish.too_soon = Er bijt nog niets
+fish.reeled = Je haalt de lijn binnen

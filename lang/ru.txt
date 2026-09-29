@@ -385,3 +385,15 @@ bed.slept = Ты спишь до утра
 bed.daytime = Спать можно только ночью
 bed.no_room = Здесь нет места для кровати
 bed.spawn_set = Здесь ты проснёшься
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Удочка
+item.sardine = Сардина
+item.salmon = Лосось
+item.shrimp = Креветка
+fish.cast = Ты забрасываешь удочку
+fish.no_worm = Нужен червяк для наживки
+fish.no_water = Забрось в воду
+fish.caught = Ты ловишь %s
+fish.too_soon = Пока не клюёт
+fish.reeled = Ты сматываешь леску

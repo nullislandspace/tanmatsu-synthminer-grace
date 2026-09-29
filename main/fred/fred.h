@@ -29,6 +29,7 @@ typedef enum {
     FRED_HOLD_TORCH,  // a torch: the thin stick the world draws
     FRED_HOLD_ITEM,   // a small cube in the item's colour: coal, a stick
     FRED_HOLD_BUCKET, // a pail, with `argb` for whatever is in it
+    FRED_HOLD_ROD,    // the fishing rod: a long taper with a line off the end
 } fred_hold_kind_t;
 
 typedef struct {

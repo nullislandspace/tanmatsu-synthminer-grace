@@ -377,3 +377,15 @@ bed.slept = Спиш до сутринта
 bed.daytime = Може да спиш само нощем
 bed.no_room = Няма място за легло
 bed.spawn_set = Тук ще се събудиш
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Въдица
+item.sardine = Сардина
+item.salmon = Сьомга
+item.shrimp = Скарида
+fish.cast = Хвърляш въдицата
+fish.no_worm = Трябва ти червей за стръв
+fish.no_water = Хвърли във вода
+fish.caught = Хващаш %s
+fish.too_soon = Още нищо не кълве
+fish.reeled = Прибираш влакното

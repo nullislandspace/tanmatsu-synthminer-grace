@@ -385,3 +385,15 @@ bed.slept = Reggelig alszol
 bed.daytime = Csak éjjel lehet aludni
 bed.no_room = Nincs hely egy ágynak
 bed.spawn_set = Itt ébredsz fel
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Horgászbot
+item.sardine = Szardínia
+item.salmon = Lazac
+item.shrimp = Garnéla
+fish.cast = Bedobod a zsinórt
+fish.no_worm = Csalinak kell egy giliszta
+fish.no_water = Dobd a vízbe
+fish.caught = Kifogtál egy %s
+fish.too_soon = Még nem kap rá semmi
+fish.reeled = Visszatekered a zsinórt

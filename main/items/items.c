@@ -104,6 +104,17 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
                                       0xFFD8A870u, 0, 5, 2},
     [ITEM_KEBAB - BLK_COUNT]       = {"kebab", SM_STR_ITEM_KEBAB, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC07840u, 0,
                                       8, 7},
+
+    // --- Fishing -------------------------------------------------------
+    //
+    // The rod does not wear out (the user), so its durability is 0 like
+    // a bucket's rather than a tool's. It is wooden, so it burns.
+    [ITEM_ROD - BLK_COUNT]     = {"fishing_rod", SM_STR_ITEM_FISHING_ROD, 1, TOOL_NONE, 0, 0, 200, 0xFFB08848u},
+    // Raw fish, and none of it is food until a stove has been at it --
+    // the same as every other raw thing here except milk and tomatoes.
+    [ITEM_SARDINE - BLK_COUNT] = {"sardine", SM_STR_ITEM_SARDINE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFB8C0C8u},
+    [ITEM_SALMON - BLK_COUNT]  = {"salmon", SM_STR_ITEM_SALMON, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE08858u},
+    [ITEM_SHRIMP - BLK_COUNT]  = {"shrimp", SM_STR_ITEM_SHRIMP, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFF0A078u},
 };
 
 // A bucket and what is in it. Adding lava is this row plus a row in the

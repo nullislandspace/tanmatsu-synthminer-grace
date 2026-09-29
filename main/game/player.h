@@ -20,6 +20,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "game/fishing.h"
 #include "game/input.h"
 #include "game/mob.h"
 #include "game/physics.h"
@@ -145,6 +146,23 @@ typedef struct {
     // argument as use_msg above.
     uint8_t   mob_msg;
     uint16_t  mob_msg_ticks;
+
+    // THE LINE, if it is in the water (game/fishing.h). Not saved: a
+    // world reopened has the rod in hand and nothing in the river,
+    // which is the only state a player could not tell apart anyway.
+    fishing_t fish;
+    // What the last use of the rod did, and how long is left of saying
+    // so -- the same shape as use_msg, and for the same reason: a cast
+    // that went nowhere and a key that did not register look identical.
+    uint8_t   fish_msg;
+    uint16_t  fish_msg_ticks;
+    // ... and WHAT came up, so the line can name it.
+    uint16_t  fish_caught;
+    // A tick counter of its own, because player_tick is not told the
+    // world's clock -- and it must not reach for one: a count of ticks
+    // taken is exactly as reproducible in a replay as the world's is,
+    // and it is what seeds where the fish are (game/fishing.h).
+    uint32_t  fish_clock;
 
     // A full-screen UI is up -- the crafting book (ui/craft_ui.h).
     // Mirrored here once a frame by main.c rather than reached for,

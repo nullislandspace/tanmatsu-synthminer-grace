@@ -385,3 +385,15 @@ bed.slept = Tu guli līdz rītam
 bed.daytime = Gulēt var tikai naktī
 bed.no_room = Nav vietas gultai
 bed.spawn_set = Tu pamodīsies šeit
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Makšķere
+item.sardine = Sardīne
+item.salmon = Lasis
+item.shrimp = Garnele
+fish.cast = Tu izmet auklu
+fish.no_worm = Ēsmai vajag sliekas
+fish.no_water = Met to ūdenī
+fish.caught = Tu noķer %s
+fish.too_soon = Vēl neviens neķeras
+fish.reeled = Tu uztin auklu atpakaļ

@@ -42,6 +42,7 @@
 #include "world/blockupdate.h"
 #include "world/crops.h"
 #include "game/composter.h"
+#include "game/fishing.h"
 #include "game/maker.h"
 #include "game/mob.h"
 #include "game/daytime.h"
@@ -3251,6 +3252,128 @@ static void check_shoving(void) {
 //    * a bed is TWO CELLS and behaves like one thing: placed together,
 //      broken together, and only the foot pays out.
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+//  Fishing (step 12)
+//
+//  The claims are the user's own design, and two of them are the whole
+//  reason this step is not Minecraft's:
+//
+//    * ONE WORM PER CAST, not per catch. A cast that brings nothing up
+//      still costs one -- that is what makes the composter the throttle
+//      on fishing rather than the rod;
+//    * A MISSED BITE IS NOT A LOST WORM. The worm buys the cast, so the
+//      line stays out and another fish comes along;
+//    * the rod does not wear out (the user's call);
+//    * and everything random -- the wait, the bite, the fish -- is a
+//      hash of where the float landed and when, so a replay fishes the
+//      same river the same way (Part T).
+// ---------------------------------------------------------------------
+static void check_fishing(void) {
+    printf("fishing: a worm a cast, and what comes up\n");
+
+    fishing_t f;
+    fishing_reset(&f);
+
+    // --- Casting ------------------------------------------------------
+    CHECK(fishing_use(&f, 0, -1, 0, true, 100).what == FISH_NO_WATER, "the line went out over dry land");
+    CHECK(!f.out, "a refused cast left the line in the water");
+    CHECK(fishing_use(&f, 4, 20, 4, false, 100).what == FISH_NO_WORM, "the line went out with no bait");
+    CHECK(!f.out, "a cast with no worm left the line out");
+    // WATER IS ASKED ABOUT FIRST: a player pointing at a wall should not
+    // also be told they are out of worms, and must not lose one.
+    CHECK(fishing_use(&f, 0, -1, 0, false, 100).what == FISH_NO_WATER, "no water and no worm blamed the worm");
+
+    CHECK(fishing_use(&f, 4, 20, 4, true, 100).what == FISH_CAST, "the line would not go out");
+    CHECK(f.out, "casting did not put the line in the water");
+
+    // --- The wait, and the bite ---------------------------------------
+    int bite_at = -1;
+    for (int t = 0; t < 400 && bite_at < 0; t++) {
+        if (fishing_tick(&f)) bite_at = t;
+    }
+    CHECK(bite_at >= 0, "nothing bit in 400 ticks (20 seconds)");
+    CHECK(bite_at + 1 >= (int)FISH_WAIT_MIN, "a bite came after %d ticks, sooner than the minimum wait", bite_at);
+    CHECK(fishing_biting(&f), "the bite was not open on the tick it started");
+    printf("  the first bite came %d ticks in (%.1f s), and the window is %u ticks\n", bite_at,
+           (double)bite_at / 20.0, FISH_BITE_TICKS);
+
+    // STRIKING ON THE BITE LANDS A FISH, and it is one of the three.
+    fish_use_t const got = fishing_use(&f, 4, 20, 4, true, 200);
+    CHECK(got.what == FISH_CAUGHT, "striking on the bite caught nothing");
+    CHECK(got.item == ITEM_SARDINE || got.item == ITEM_SALMON || got.item == ITEM_SHRIMP,
+          "what came up was %s", item_def(got.item).name);
+    CHECK(!f.out, "landing a fish left the line in the water");
+
+    // --- A MISSED BITE IS NOT A LOST WORM ------------------------------
+    fishing_reset(&f);
+    CHECK(fishing_use(&f, 7, 20, 7, true, 500).what == FISH_CAST, "the second cast would not go out");
+    for (int t = 0; t < 400 && !fishing_biting(&f); t++) fishing_tick(&f);
+    CHECK(fishing_biting(&f), "nothing bit on the second cast");
+    for (uint32_t t = 0; t < FISH_BITE_TICKS + 1; t++) fishing_tick(&f);
+    CHECK(!fishing_biting(&f), "the bite window never closed");
+    CHECK(f.out, "a missed bite reeled the line in -- that would cost a worm");
+    int second = -1;
+    for (int t = 0; t < 400 && second < 0; t++) {
+        if (fishing_tick(&f)) second = t;
+    }
+    CHECK(second >= 0, "no second fish came after a missed bite");
+    printf("  a missed bite keeps the line out; the next one came %d ticks later\n", second);
+
+    // Striking with nothing on the line does not end the cast either,
+    // as long as it is soon after casting -- an impatient press.
+    fishing_reset(&f);
+    fishing_use(&f, 7, 20, 7, true, 900);
+    CHECK(fishing_use(&f, 7, 20, 7, true, 901).what == FISH_TOO_SOON, "an early strike was not called early");
+    CHECK(f.out, "an early strike lost the cast");
+    // ... but a player who keeps at it gets the line back on purpose.
+    for (int t = 0; t < 60; t++) fishing_tick(&f);
+    CHECK(fishing_use(&f, 7, 20, 7, true, 960).what == FISH_REELED, "the line could not be reeled in");
+    CHECK(!f.out, "reeling in left the line out");
+
+    // --- The same river, twice -----------------------------------------
+    //
+    // Determinism is the whole of Part T: two casts made in the same
+    // place on the same tick have to behave identically.
+    fishing_t a, b;
+    fishing_reset(&a);
+    fishing_reset(&b);
+    fishing_use(&a, 3, 20, 9, true, 4242);
+    fishing_use(&b, 3, 20, 9, true, 4242);
+    int ta = 0, tb = 0;
+    while (!fishing_biting(&a) && ta < 500) {
+        fishing_tick(&a);
+        ta++;
+    }
+    while (!fishing_biting(&b) && tb < 500) {
+        fishing_tick(&b);
+        tb++;
+    }
+    CHECK(ta == tb, "the same cast bit after %d ticks, then %d", ta, tb);
+    CHECK(fishing_use(&a, 3, 20, 9, true, 0).item == fishing_use(&b, 3, 20, 9, true, 0).item,
+          "the same cast landed two different fish");
+
+    // --- What a day's fishing looks like --------------------------------
+    int counts[3] = {0, 0, 0};
+    for (uint32_t n = 0; n < 600; n++) {
+        uint16_t const got_n = fishing_catch_for(12, 20, 12, 77u, n);
+        if (got_n == ITEM_SARDINE) counts[0]++;
+        if (got_n == ITEM_SHRIMP) counts[1]++;
+        if (got_n == ITEM_SALMON) counts[2]++;
+    }
+    printf("  600 fish: %d sardines, %d shrimp, %d salmon\n", counts[0], counts[1], counts[2]);
+    CHECK(counts[0] > 0 && counts[1] > 0 && counts[2] > 0, "600 casts never landed one of the three");
+    // The pizza wants TWO shrimp, so shrimp must not be the rare one.
+    CHECK(counts[1] > counts[2], "shrimp are rarer than salmon, and the pizza wants two of them");
+
+    // --- The rod itself ---------------------------------------------------
+    CHECK(item_def(ITEM_ROD).durability == 0, "the fishing rod wears out");
+    recipe_t const* rod = NULL;
+    for (int i = 0; i < recipe_count(); i++) {
+        if (recipe_at(i)->out == ITEM_ROD) rod = recipe_at(i);
+    }
+    CHECK(rod != NULL, "nothing makes a fishing rod");
+}
+
 static void check_sheep(void) {
     printf("sheep: the fleece, and what it becomes\n");
     chunk_store_clear();
@@ -6888,6 +7011,7 @@ int main(void) {
     check_pens();
     check_shoving();
     check_breeding();
+    check_fishing();
     check_sheep();
     check_bed();
     check_animals();

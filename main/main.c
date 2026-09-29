@@ -2423,6 +2423,7 @@ static void on_render(pax_buf_t* fb, void* user) {
     }
     hud_dropped_items();
     hud_creatures(s_player.body.x, s_player.body.z);
+    hud_float(&s_player.fish);
     // Fred: his arm and what it holds in first person, all of him in
     // third. Lit by the cell he is in, like the world round him.
     if (s_app == APP_PLAY && s_cam_effective == CAM_PLAYER) {
@@ -2545,6 +2546,21 @@ static void on_render(pax_buf_t* fb, void* user) {
             }
             char const* const line = T(key);
             hud_text_lines(fb, &line, 1);
+        } else if (s_player.fish_msg_ticks > 0) {
+            static char line[96];
+            char const* p = line;
+            switch (s_player.fish_msg) {
+                case FISH_CAST: p = T(SM_STR_FISH_CAST); break;
+                case FISH_NO_WORM: p = T(SM_STR_FISH_NO_WORM); break;
+                case FISH_NO_WATER: p = T(SM_STR_FISH_NO_WATER); break;
+                case FISH_TOO_SOON: p = T(SM_STR_FISH_TOO_SOON); break;
+                case FISH_REELED: p = T(SM_STR_FISH_REELED); break;
+                case FISH_CAUGHT:
+                    i18n_fmt(line, sizeof(line), SM_STR_FISH_CAUGHT, T(item_label(s_player.fish_caught)));
+                    break;
+                default: p = ""; break;
+            }
+            hud_text_lines(fb, &p, 1);
         } else if (s_player.hit_mob >= 0) {
             // WHAT IS UNDER THE CROSSHAIR, when it is alive. The block
             // outline says which block is aimed at; nothing said which

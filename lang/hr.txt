@@ -385,3 +385,15 @@ bed.slept = Spavaš do jutra
 bed.daytime = Spavati se može samo noću
 bed.no_room = Nema mjesta za krevet
 bed.spawn_set = Ovdje ćeš se probuditi
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Ribički štap
+item.sardine = Srdela
+item.salmon = Losos
+item.shrimp = Škamp
+fish.cast = Zabacuješ
+fish.no_worm = Treba ti glista za mamac
+fish.no_water = Zabaci u vodu
+fish.caught = Uhvatio si %s
+fish.too_soon = Još ništa ne grize
+fish.reeled = Namotavaš uzicu

@@ -55,6 +55,7 @@ set(APP_SOURCES
     main/game/composter.c
     main/game/maker.c
     main/game/mob.c
+    main/game/fishing.c
     main/game/input.c
     main/game/player.c
     main/game/tick.c

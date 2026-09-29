@@ -208,6 +208,10 @@ typedef enum {
     SM_STR_ITEM_STRING,                 // item.string
     SM_STR_ITEM_MUTTON_MASH,            // item.mutton_mash
     SM_STR_ITEM_KEBAB,                  // item.kebab
+    SM_STR_ITEM_FISHING_ROD,            // item.fishing_rod
+    SM_STR_ITEM_SARDINE,                // item.sardine
+    SM_STR_ITEM_SALMON,                 // item.salmon
+    SM_STR_ITEM_SHRIMP,                 // item.shrimp
     SM_STR_ITEM_FARMLAND,               // item.farmland
     SM_STR_ITEM_COMPOSTER,              // item.composter
     SM_STR_ITEM_CHEESE_MAKER,           // item.cheese_maker
@@ -306,6 +310,12 @@ typedef enum {
     SM_STR_MAKER_A_DAY,                 // maker.a_day
     SM_STR_MAKER_A_MINUTE,              // maker.a_minute
     SM_STR_MAKER_BUCKET_BACK,           // maker.bucket_back
+    SM_STR_FISH_CAST,                   // fish.cast
+    SM_STR_FISH_NO_WORM,                // fish.no_worm
+    SM_STR_FISH_NO_WATER,               // fish.no_water
+    SM_STR_FISH_CAUGHT,                 // fish.caught
+    SM_STR_FISH_TOO_SOON,               // fish.too_soon
+    SM_STR_FISH_REELED,                 // fish.reeled
     SM_STR_BED_SLEPT,                   // bed.slept
     SM_STR_BED_DAYTIME,                 // bed.daytime
     SM_STR_BED_NO_ROOM,                 // bed.no_room

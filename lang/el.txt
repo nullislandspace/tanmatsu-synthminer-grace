@@ -385,3 +385,15 @@ bed.slept = Κοιμάσαι ως το πρωί
 bed.daytime = Μπορείς να κοιμηθείς μόνο τη νύχτα
 bed.no_room = Δεν χωράει κρεβάτι εδώ
 bed.spawn_set = Εδώ θα ξυπνήσεις
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Καλάμι ψαρέματος
+item.sardine = Σαρδέλα
+item.salmon = Σολομός
+item.shrimp = Γαρίδα
+fish.cast = Ρίχνεις την πετονιά
+fish.no_worm = Χρειάζεσαι σκουλήκι για δόλωμα
+fish.no_water = Ρίξ' το στο νερό
+fish.caught = Πιάνεις %s
+fish.too_soon = Δεν τσιμπάει ακόμα
+fish.reeled = Μαζεύεις την πετονιά

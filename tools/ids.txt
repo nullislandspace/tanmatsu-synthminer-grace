@@ -104,3 +104,7 @@ item shears
 item string
 item mutton_mash
 item kebab
+item fishing_rod
+item sardine
+item salmon
+item shrimp

@@ -89,6 +89,19 @@ void fred_build_pick(mesh_t* m) {
 // picture of a lump. A bucket is a shape, and the user's original brief
 // asked for the model as well as the icon -- "the associated icons and
 // render models (when held in hand)".
+void fred_build_rod(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_rod";
+    // The shaft, tapering as it goes: three lengths, each thinner than
+    // the last, which reads as a taper without a single sloped face.
+    mesh_box(m, v3(-0.022f, -0.02f, 0.00f), v3(0.022f, 0.02f, 0.34f), FM_WOOD, 1.0f);
+    mesh_box(m, v3(-0.016f, -0.014f, 0.34f), v3(0.016f, 0.014f, 0.62f), FM_WOOD, 1.0f);
+    mesh_box(m, v3(-0.011f, -0.010f, 0.62f), v3(0.011f, 0.010f, 0.84f), FM_WOOD, 1.0f);
+    // The line, hanging off the tip. Thin, pale and straight down --
+    // a curve would need geometry nobody would see at this size.
+    mesh_box(m, v3(-0.004f, -0.30f, 0.82f), v3(0.004f, -0.008f, 0.826f), FM_FLUID, 1.0f);
+}
+
 void fred_build_bucket(mesh_t* m) {
     mesh_init(m);
     m->name = "fred_bucket";

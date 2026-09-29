@@ -385,3 +385,15 @@ bed.slept = Nukut aamuun asti
 bed.daytime = Nukkua voi vain yöllä
 bed.no_room = Ei tilaa sängylle
 bed.spawn_set = Heräät täällä
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Onki
+item.sardine = Sardiini
+item.salmon = Lohi
+item.shrimp = Katkarapu
+fish.cast = Heität siiman
+fish.no_worm = Tarvitset madon syötiksi
+fish.no_water = Heitä se veteen
+fish.caught = Saat %s
+fish.too_soon = Mikään ei vielä nyki
+fish.reeled = Kelaat siiman takaisin

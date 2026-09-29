@@ -385,3 +385,15 @@ bed.slept = Fle deri në mëngjes
 bed.daytime = Mund të flesh vetëm natën
 bed.no_room = S'ka vend për krevat
 bed.spawn_set = Këtu do të zgjohesh
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Grep peshkimi
+item.sardine = Sardele
+item.salmon = Salmon
+item.shrimp = Karkalec
+fish.cast = E hedh grepin
+fish.no_worm = Të duhet një krimb për karrem
+fish.no_water = Hidhe në ujë
+fish.caught = Kap %s
+fish.too_soon = Ende s'po kafshon gjë
+fish.reeled = E tërheq fillin

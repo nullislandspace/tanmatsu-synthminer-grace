@@ -385,3 +385,15 @@ bed.slept = Dormi până dimineața
 bed.daytime = Poți dormi doar noaptea
 bed.no_room = Nu e loc pentru un pat
 bed.spawn_set = Te vei trezi aici
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Undiță
+item.sardine = Sardină
+item.salmon = Somon
+item.shrimp = Crevete
+fish.cast = Arunci firul
+fish.no_worm = Ai nevoie de o râmă ca momeală
+fish.no_water = Aruncă în apă
+fish.caught = Prinzi %s
+fish.too_soon = Încă nu mușcă nimic
+fish.reeled = Strângi firul

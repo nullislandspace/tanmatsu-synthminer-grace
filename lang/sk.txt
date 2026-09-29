@@ -385,3 +385,15 @@ bed.slept = Spíš až do rána
 bed.daytime = Spať sa dá len v noci
 bed.no_room = Nie je tu miesto na posteľ
 bed.spawn_set = Tu sa zobudíš
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Rybársky prút
+item.sardine = Sardinka
+item.salmon = Losos
+item.shrimp = Kreveta
+fish.cast = Nahadzuješ
+fish.no_worm = Na návnadu potrebuješ dážďovku
+fish.no_water = Hoď to do vody
+fish.caught = Chytil si %s
+fish.too_soon = Zatiaľ nič neberie
+fish.reeled = Navíjaš späť

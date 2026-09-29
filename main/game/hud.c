@@ -14,6 +14,7 @@
 #include <stdio.h>
 
 #include "fred/beast.h"
+#include "game/fishing.h"
 #include "game/mob.h"
 #include "items/item_entity.h"
 #include "testkit/showtime.h"
@@ -164,6 +165,49 @@ void hud_creatures(double px, double pz) {
                                                       (float)(m->body.z - (double)oz)),
                                1.0f};
         beast_submit(&root, m->kind, m->baby, m->sitting, m->shorn, walk, stride, light);
+    }
+}
+
+void hud_float(fishing_t const* f) {
+    if (f == NULL || !f->out) return;
+    int32_t ox, oz;
+    chunk_render_origin(&ox, &oz);
+
+    // On the surface of the cell it landed in, and a third of a block
+    // under it while a fish has hold of it.
+    float const cx  = (float)(f->x - ox) + 0.5f;
+    float const cz  = (float)(f->z - oz) + 0.5f;
+    float const top = (float)f->y + 1.0f - (fishing_biting(f) ? 0.32f : 0.0f);
+    float const r   = 0.09f;
+
+    uint8_t const  light = world_light(f->x, f->y + 1, f->z);
+    uint32_t const lf    = SE_TRI_LIGHT(mesh_light_level(light));
+    // Red over white, like every float ever made, so it reads against
+    // both the water and the sky at the distance it is cast.
+    struct {
+        float    y0, y1;
+        uint32_t argb;
+    } const parts[2] = {{top - 0.06f, top + 0.06f, 0xFFD83028u}, {top - 0.16f, top - 0.06f, 0xFFEEEAE0u}};
+
+    for (int p = 0; p < 2; p++) {
+        float const x0 = cx - r, x1 = cx + r, z0 = cz - r, z1 = cz + r;
+        float const y0 = parts[p].y0, y1 = parts[p].y1;
+        uint32_t const c = parts[p].argb;
+        struct {
+            float a[3], b[3], c[3], d[3];
+        } const faces[5] = {
+            {{x1, y0, z0}, {x1, y0, z1}, {x1, y1, z1}, {x1, y1, z0}},
+            {{x0, y0, z1}, {x0, y0, z0}, {x0, y1, z0}, {x0, y1, z1}},
+            {{x0, y1, z0}, {x1, y1, z0}, {x1, y1, z1}, {x0, y1, z1}},
+            {{x1, y0, z1}, {x0, y0, z1}, {x0, y1, z1}, {x1, y1, z1}},
+            {{x0, y0, z0}, {x1, y0, z0}, {x1, y1, z0}, {x0, y1, z0}},
+        };
+        for (int i = 0; i < 5; i++) {
+            scene_tri(faces[i].a[0], faces[i].a[1], faces[i].a[2], faces[i].b[0], faces[i].b[1], faces[i].b[2],
+                      faces[i].c[0], faces[i].c[1], faces[i].c[2], c, lf);
+            scene_tri(faces[i].a[0], faces[i].a[1], faces[i].a[2], faces[i].c[0], faces[i].c[1], faces[i].c[2],
+                      faces[i].d[0], faces[i].d[1], faces[i].d[2], c, lf);
+        }
     }
 }
 

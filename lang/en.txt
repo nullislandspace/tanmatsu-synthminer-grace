@@ -291,6 +291,11 @@ item.string = String
 # Cooked on the stove, which does not exist yet
 item.mutton_mash = Mutton and mash
 item.kebab = Kebab
+# Fishing
+item.fishing_rod = Fishing rod
+item.sardine = Sardine
+item.salmon = Salmon
+item.shrimp = Shrimp
 # Tilled soil, wet or dry: one name for both, since it is one thing
 item.farmland = Farmland
 item.composter = Composter
@@ -440,6 +445,20 @@ maker.a_day = one cheese a day
 maker.a_minute = one sausage a minute
 # Said when a bucket of milk goes in and the empty pail comes back
 maker.bucket_back = The bucket comes straight back
+
+# --- Fishing ----------------------------------------------------------------
+# Said when the line goes out, which costs one worm
+fish.cast = You cast the line
+# ... when there is no worm to bait it with
+fish.no_worm = You need a worm for bait
+# ... when the rod is not pointed at water
+fish.no_water = Cast it into water
+# ... when the line comes back with something. %s is the fish
+fish.caught = You land a %s
+# ... when the player strikes with nothing on the line
+fish.too_soon = Nothing is biting yet
+# ... and when they give up on a cast
+fish.reeled = You reel the line back in
 
 # --- The bed ----------------------------------------------------------------
 # Said when the player sleeps, which also sets where they will wake up

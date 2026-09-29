@@ -385,3 +385,15 @@ bed.slept = Þú sefur til morguns
 bed.daytime = Bara hægt að sofa á nóttunni
 bed.no_room = Ekkert pláss fyrir rúm
 bed.spawn_set = Þú vaknar hér
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Veiðistöng
+item.sardine = Sardína
+item.salmon = Lax
+item.shrimp = Rækja
+fish.cast = Þú kastar línunni
+fish.no_worm = Þú þarft ánamaðk sem beitu
+fish.no_water = Kastaðu í vatnið
+fish.caught = Þú veiðir %s
+fish.too_soon = Ekkert bítur enn
+fish.reeled = Þú dregur línuna inn

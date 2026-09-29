@@ -385,3 +385,15 @@ bed.slept = Du sover till morgonen
 bed.daytime = Du kan bara sova på natten
 bed.no_room = Ingen plats för en säng
 bed.spawn_set = Du vaknar här
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Metspö
+item.sardine = Sardin
+item.salmon = Lax
+item.shrimp = Räka
+fish.cast = Du kastar ut linan
+fish.no_worm = Du behöver en mask som bete
+fish.no_water = Kasta i vattnet
+fish.caught = Du får %s
+fish.too_soon = Inget nappar än
+fish.reeled = Du vevar in linan

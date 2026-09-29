@@ -1935,6 +1935,52 @@ def sm_item_string():
     return img
 
 
+def sm_item_rod():
+    """A rod on the diagonal with a line hanging off the tip and a float
+    on the end of it. The float is what makes it a FISHING rod rather
+    than a stick."""
+    img = _icon()
+    wood = (176, 136, 72)
+    for i in range(12):
+        _dot(img, 2 + i, 13 - i, wood)
+        _dot(img, 3 + i, 13 - i, _shade(wood, -34))
+    for y in range(3, 11):
+        _dot(img, 14, y, (232, 228, 216))       # the line
+    _dot(img, 14, 11, (216, 56, 48))            # ... and the float
+    _dot(img, 14, 12, (238, 234, 226))
+    return img
+
+
+def sm_item_fish(body, belly):
+    """A fish from the side: a body, a paler belly, a tail fin and an
+    eye. The tail is the silhouette; without it this is a bean."""
+    img = _icon()
+    _blob(img, body, 4, 9, 8, squash=1.5)
+    for x in range(6, 13):
+        _dot(img, x, 10, belly)
+    for y, w in ((6, 1), (7, 2), (8, 3), (9, 2), (10, 1)):
+        for x in range(4 - w, 5):
+            _dot(img, x, y, _shade(body, -18))  # the tail
+    _dot(img, 11, 7, (32, 30, 30))              # the eye
+    _dot(img, 9, 5, _shade(body, 26))           # a dorsal highlight
+    return img
+
+
+def sm_item_shrimp():
+    """A shrimp: curled, segmented, with a fan of a tail."""
+    img = _icon()
+    body = (240, 158, 120)
+    path = ((5, 10), (5, 8), (6, 6), (8, 5), (10, 5), (11, 7), (11, 9))
+    for i, (x, y) in enumerate(path):
+        _dot(img, x, y, body if i % 2 == 0 else _shade(body, -26))
+        _dot(img, x + 1, y, _shade(body, 14))
+        _dot(img, x, y + 1, _shade(body, -38))
+    for x, y in ((11, 11), (12, 12), (10, 12)):
+        _dot(img, x, y, _shade(body, -14))      # the tail fan
+    _dot(img, 9, 4, (40, 34, 32))               # the eye
+    return img
+
+
 def sm_item_bed():
     """A bed from the side: a red mattress on a wooden frame with a
     white pillow at one end."""
@@ -2125,6 +2171,11 @@ TEXTURES = {
     "item_shears.png": sm_item_shears,
     "item_string.png": sm_item_string,
     "item_bed.png": sm_item_bed,
+    # Fishing (step 12).
+    "item_fishing_rod.png": sm_item_rod,
+    "item_sardine.png": lambda: sm_item_fish((186, 196, 206), (228, 234, 240)),
+    "item_salmon.png": lambda: sm_item_fish((222, 124, 78), (244, 186, 150)),
+    "item_shrimp.png": sm_item_shrimp,
 }
 
 

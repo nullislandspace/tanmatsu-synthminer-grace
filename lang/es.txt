@@ -385,3 +385,15 @@ bed.slept = Duermes hasta la mañana
 bed.daytime = Solo puedes dormir de noche
 bed.no_room = No hay sitio para una cama
 bed.spawn_set = Despertarás aquí
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Caña de pescar
+item.sardine = Sardina
+item.salmon = Salmón
+item.shrimp = Gamba
+fish.cast = Lanzas el sedal
+fish.no_worm = Necesitas un gusano de cebo
+fish.no_water = Lánzalo al agua
+fish.caught = Pescas %s
+fish.too_soon = Todavía no pica nada
+fish.reeled = Recoges el sedal

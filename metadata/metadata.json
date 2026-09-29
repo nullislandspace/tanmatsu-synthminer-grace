@@ -237,6 +237,10 @@
           "target_file": "textures/item_fence_gate.png"
         },
         {
+          "source_file": "textures/item_fishing_rod.png",
+          "target_file": "textures/item_fishing_rod.png"
+        },
+        {
           "source_file": "textures/item_hoe_iron.png",
           "target_file": "textures/item_hoe_iron.png"
         },
@@ -281,6 +285,14 @@
           "target_file": "textures/item_rice.png"
         },
         {
+          "source_file": "textures/item_salmon.png",
+          "target_file": "textures/item_salmon.png"
+        },
+        {
+          "source_file": "textures/item_sardine.png",
+          "target_file": "textures/item_sardine.png"
+        },
+        {
           "source_file": "textures/item_sausage.png",
           "target_file": "textures/item_sausage.png"
         },
@@ -303,6 +315,10 @@
         {
           "source_file": "textures/item_shovel_wood.png",
           "target_file": "textures/item_shovel_wood.png"
+        },
+        {
+          "source_file": "textures/item_shrimp.png",
+          "target_file": "textures/item_shrimp.png"
         },
         {
           "source_file": "textures/item_stick.png",

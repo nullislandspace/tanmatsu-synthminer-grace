@@ -385,3 +385,15 @@ bed.slept = Du sover til morgen
 bed.daytime = Du kan kun sove om natten
 bed.no_room = Ikke plads til en seng
 bed.spawn_set = Du vågner her
+
+# --- Fishing (step 12) ------------------------------------------------------
+item.fishing_rod = Fiskestang
+item.sardine = Sardin
+item.salmon = Laks
+item.shrimp = Reje
+fish.cast = Du kaster ud
+fish.no_worm = Du mangler en orm som madding
+fish.no_water = Kast den i vandet
+fish.caught = Du fanger %s
+fish.too_soon = Der bider ikke noget endnu
+fish.reeled = Du haler snøren ind

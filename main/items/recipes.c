@@ -226,6 +226,18 @@ static recipe_t const RECIPES[] = {
      .n_in    = 1,
      .in      = {{ITEM_BEANS, 2}}},
 
+    // --- The fishing rod ----------------------------------------------
+    //
+    // THREE STICKS, WHICH IS STILL A PLACEHOLDER. The user reserved the
+    // real recipe -- "i tell you the final recipe of the fishing rod
+    // another day when i have decided" -- and the one thing they had
+    // decided was that string would not come from spiders. It comes
+    // from a sheep now (D-126), so the material this was waiting for
+    // exists; the decision is still theirs and this is still one line.
+    {.out     = ITEM_ROD, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 1,
+     .in      = {{ITEM_STICK, 3}}},
+
     // --- Sheep, wool, and what wool is for ---------------------------
     //
     // SHEARS ARE TWO IRON INGOTS (the user). They are the only way to

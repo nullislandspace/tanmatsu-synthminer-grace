@@ -71,3 +71,9 @@ void fred_build_bucket(mesh_t* m);
 void fred_build_axe(mesh_t* m);
 void fred_build_shovel(mesh_t* m);
 void fred_build_hoe(mesh_t* m);
+
+// THE FISHING ROD, which is not a tool: no head, a much longer shaft
+// than any of them, and a line hanging off the tip. It is the thing a
+// player looks at for minutes at a time while waiting for a bite, so
+// it is worth more than a cube in the fist.
+void fred_build_rod(mesh_t* m);
