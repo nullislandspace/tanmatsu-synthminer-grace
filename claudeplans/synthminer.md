@@ -1556,6 +1556,27 @@ The one thing to hold onto meanwhile: a rod bought for three sticks is
 nearly free, so **the scarce thing in fishing is the worms**, not the
 tackle -- and the final recipe should not change that.
 
+### What a crop is worth, and how long it takes (D-117)
+
+Every number here is the user's.
+
+| crop | ripe yield | seeds back | seed to harvest |
+|---|---|---|---|
+| Wheat | 1-3 wheat | 1-2 | one in-game day |
+| Tomato | 2-4 tomatoes | none (the crafting table: 1 fruit -> 2 seeds) | one in-game day |
+| Potato | 1-3 potatoes | it is its own seed | two days |
+| Beans | 1-3 beans | it is its own seed | two days |
+| Rice | 1-3 rice | it is its own seed | two days |
+
+An unripe crop gives back **one seed** and nothing else, so pulling a
+sprout up by mistake costs the time and not the seed. Tall grass gives a
+wheat seed about half the time, which is where a farm starts.
+
+An in-game day is 20 minutes of playing (DAY_TICKS is 24000), so the
+fast crops are a day's work and the slow ones are something to come back
+to. **The count is rolled at every harvest**, not baked into the cell --
+otherwise a given square would give the same number for ever.
+
 ### The food table
 
 Everything here is the user's number. Raw, and drunk or eaten as found:
@@ -1734,7 +1755,7 @@ types the code:
 | 31 | **How many to move, and a cheat console** | done | 2026-09-23, asked for by the user. `ui/amount_ui.{c,h}`: moving a stack of more than one into or out of a chest, or into a furnace, asks first -- a slider AND a number, because one answers "about half" and the other answers "exactly seventeen" and neither answers both. It starts at everything, which is what the key did before it asked, and a stack of ONE never asks: there is nothing to decide and the modal would be a keypress added to every move. Taking a furnace's output never asks either (the user's rule: there is no reason to leave half a smelt behind). `ui/cheat_ui.{c,h}` on the backtick: every item in the game, searched by its STABLE name -- "pickaxe_wood", "iron_ore" -- which is English already, is what the save format keys on, is unambiguous, and needs no translation, which is exactly what the user asked for. |
 | 8.6 | The 8.4 screens in all 32 languages | done | 2026-09-23: 24 more keys each. Three languages spell "disassembly bench" wider than the column that holds an item name (Portuguese, Greek, Bulgarian) and were shortened rather than the column widened -- it is already the widest layout in the game. F-83. |
 | 8.5 | Item names and the crafting UI in all 32 languages | done | 2026-09-23: 63 keys x 31 languages -- every block and item a player can carry, the crafting book, the furnace and its picker. **Six overflowed and the check caught all six** before the badge did (French, Irish, Albanian, Greek, Bulgarian, Serbian), and widening the two crafting panels to hold them exposed something nothing had been measuring: **the book's row labels are ITEM NAMES**, and Russian "Деревянная лопата" is half as wide again as "Wooden shovel". `item.` joined `LABEL_COLUMNS`, the panels went to the wide layout, and the fold table grew to cover 82978 characters across the 32 languages. |
-| 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | done | 2026-09-29, built from Part A and D-104 to D-110. **Eight permanent block ids** (31-38, D-74): farmland dry and wet, the composter, and five crops; twelve items, three of them hoes. The hoe tills grass or dirt and the soil comes out **wet or dry by a water search done on that keypress and never again** (D-106) -- dry soil then REFUSES the seed, which is the failure worth having: a refusal a player learns from instead of a plot that silently never sprouts. **Crops cost almost nothing to draw**: `BF_CROP` and `growth_max` had been sitting in the block table unused since step 0.3, and the stage-to-texture step rides on the data plane the fluids already paid for (D-101), so a crop is `mat[VF_TOP] + stage` and four textures in a run. **The real cost was time, and it is D-111**: a crop is a block, so there is nowhere in a cell to write when it last grew -- `chunk_t.stamp` is now saved in a nine-byte section of its own, no version bump, and a chunk that arrives without one is stamped *now* (which is what stops every field in an upgraded world ripening on sight; the host check caught exactly that). Growth runs on a **round-robin sweep, one chunk slot a tick** and a flag test for a chunk with nothing growing (D-112), plus the full catch-up when a chunk lands -- the user's *"advance events in one go to where they would be now"*. **Rice is the interesting one**: it stands IN the water, so its cell is a plant and a full water source at once (`BF2_WATERLOGGED`), which is safe only because the user's own rule puts it in water exactly one block deep. The **composter** is the furnace's record with a longer number: a day a unit, 0-2 worms from the world's hash and never `rand()`, and **an empty box banks nothing** so a week of standing idle does not turn the next scrap into instant compost. Wild potatoes, beans and tomatoes generate ripe in their biomes and rice in the shallows (D-107) -- measured at 54, 23, 10 and 37 in a 700 x 700 block world, which is a find rather than a crop. **Measured, not assumed: a field grown from seed to ripe leaves 0 cells in the physics queue**, so crops never touch tier 1. Two checks caught real bugs before the badge did: a hand-built test world ripened everything instantly (the zero-clock case, now D-111's rule) and `check_label_widths` caught French and Russian potato-plant labels overflowing the crafting book. 39 new strings x 32 languages. **Then the user played it, and three of their complaints were one bug** (F-120): `TEXCACHE_MAX` had been 48 since the showreel and this round took the material count to 64, so potato, tomato, bean and rice textures, `water_blend.png` and every item icon failed to load and fell back to their flat average colour -- which is what read as *"stand-ins"*, as plants that *"only slightly change color"* instead of growing, and as transparent water that would not switch on. The badge had logged `cache full` about twenty times a boot and nobody read it. Now 128, with a **static assert** so the next material fails the build rather than the picture. In the same round rice became **two blocks tall** (D-115), ripe wheat went **gold all over** (D-116), and every stage got a different silhouette rather than a different shade. Not yet: eating any of it, which is step 10. |
+| 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | done | 2026-09-29, built from Part A and D-104 to D-110. **Eight permanent block ids** (31-38, D-74): farmland dry and wet, the composter, and five crops; twelve items, three of them hoes. The hoe tills grass or dirt and the soil comes out **wet or dry by a water search done on that keypress and never again** (D-106) -- dry soil then REFUSES the seed, which is the failure worth having: a refusal a player learns from instead of a plot that silently never sprouts. **Crops cost almost nothing to draw**: `BF_CROP` and `growth_max` had been sitting in the block table unused since step 0.3, and the stage-to-texture step rides on the data plane the fluids already paid for (D-101), so a crop is `mat[VF_TOP] + stage` and four textures in a run. **The real cost was time, and it is D-111**: a crop is a block, so there is nowhere in a cell to write when it last grew -- `chunk_t.stamp` is now saved in a nine-byte section of its own, no version bump, and a chunk that arrives without one is stamped *now* (which is what stops every field in an upgraded world ripening on sight; the host check caught exactly that). Growth runs on a **round-robin sweep, one chunk slot a tick** and a flag test for a chunk with nothing growing (D-112), plus the full catch-up when a chunk lands -- the user's *"advance events in one go to where they would be now"*. **Rice is the interesting one**: it stands IN the water, so its cell is a plant and a full water source at once (`BF2_WATERLOGGED`), which is safe only because the user's own rule puts it in water exactly one block deep. The **composter** is the furnace's record with a longer number: a day a unit, 0-2 worms from the world's hash and never `rand()`, and **an empty box banks nothing** so a week of standing idle does not turn the next scrap into instant compost. Wild potatoes, beans and tomatoes generate ripe in their biomes and rice in the shallows (D-107) -- measured at 54, 23, 10 and 37 in a 700 x 700 block world, which is a find rather than a crop. **Measured, not assumed: a field grown from seed to ripe leaves 0 cells in the physics queue**, so crops never touch tier 1. Two checks caught real bugs before the badge did: a hand-built test world ripened everything instantly (the zero-clock case, now D-111's rule) and `check_label_widths` caught French and Russian potato-plant labels overflowing the crafting book. 39 new strings x 32 languages. **Then the user played it, and three of their complaints were one bug** (F-120): `TEXCACHE_MAX` had been 48 since the showreel and this round took the material count to 64, so potato, tomato, bean and rice textures, `water_blend.png` and every item icon failed to load and fell back to their flat average colour -- which is what read as *"stand-ins"*, as plants that *"only slightly change color"* instead of growing, and as transparent water that would not switch on. The badge had logged `cache full` about twenty times a boot and nobody read it. Now 128, with a **static assert** so the next material fails the build rather than the picture. In the same round rice became **two blocks tall** (D-115), ripe wheat went **gold all over** (D-116), and every stage got a different silhouette rather than a different shade. **The yields and the clock were the user's next round** (D-117): wheat 1-3 grain and 1-2 seeds so a field can grow at all, tomatoes 2-4 fruit and no seeds since the crafting table makes those, the count rolled at every harvest rather than baked into the cell, and growth slowed from 7.5 minutes to **an in-game day** for wheat and tomatoes and **two** for potatoes, beans and rice -- which rebuilt the clock as absolute stage boundaries with a per-plant phase, and is a better shape than what it replaced. Not yet: eating any of it, which is step 10. |
 | 10 | **Food, hunger, and the kitchen stove** | todo | Designed 2026-09-29, and the user's verdict on the alternative was blunt: cooking on a crafting table or in a furnace *"makes absolutely no sense"*. So food is made on a **stove that reads its ingredients out of the chest beside it** (D-105) -- and the chest is not one a player has to supply: **the recipe includes it, the item places two blocks, and each holds the other's coordinates** (D-110, the user's refinement, which kills the "which chest?" question by making it unaskable and makes a row of stoves possible). Breaking either half takes both, contents drop as every container in this game already does, and a pair that straddles a chunk border repairs itself on load the way D-99 repairs fluids at a seam -- the broken half drops the item, an orphan drops only its contents, so nothing duplicates -- a recipe selector, a fuel slot, an output slot, one in-game minute a dish, and **a message naming what is missing** when a recipe is short or no chest touches it, for the same reason iron refusing a wooden pick needed a line on the HUD. Eleven dishes, every number the user's, with **pizza as the superfood** at 10 hunger and 8 saturation because it needs a crop, a fish, a cow and a pig -- all four systems at once. `item_def_t` gains `hunger` and `saturation`, so a food is a table row. The hunger loop is Minecraft's model, which D-08 committed to on day one; the HUD has drawn both bars since 4.3 with nothing moving them. |
 | 11 | **Animals: pigs, cows, chickens; milk, cheese and sausages; dogs** | todo | Pigs give pork, cows give beef, and **a cow used with a bucket gives milk** -- which D-100 already paid for: a filled bucket is its own item id, so `ITEM_BUCKET_MILK` is one row in `BUCKETS[]` and the held model colours its own contents from the block table. Two slow machines of their own (D-108): the **cheese maker**, 7 planks, an open square barrel that shows white, then yellow-orange, then empty, takes a bucket of milk (**returning the bucket at once**) and an in-game day; and the **sausage maker**, which turns pork and a flower into a sausage in a minute, or **two beans into a vegetarian one with identical stats**. Breeding, and dogs found wild and tamed with steak, are unchanged from the original requirement. |
 | 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, **one per cast and not per catch**, which is why the composter in step 9 has two output slots and why its 0-2 worms a day is the dial that sets how much fishing anyone does. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. The rod is **three sticks for now**, with the final recipe still the user's to give -- and the thing they have decided is that **string will not come from spiders**, which means this step never depended on step 13 in the first place. **No rod durability** either, their call and the right one: fishing is already paid for in worms, and charging twice for the same activity is how a system stops being worth using. |
@@ -5336,6 +5357,59 @@ types the code:
   that got taller. Now every stage differs in three ways at once: how
   tall it is, how many stems it has, and what it is carrying -- two
   sprouts, three stems, four with buds, five heavy with the harvest.
+
+- **D-117** 2026-09-29, **the user**, on being shown the yields and the
+  growth time: **what a crop is worth and how long it takes are both
+  properties of the crop.**
+
+  Three numbers, all theirs:
+
+  | crop | ripe yield | seeds back | seed to harvest |
+  |---|---|---|---|
+  | Wheat | 1-3 wheat | **1-2** | **one in-game day** |
+  | Tomato | **2-4** tomatoes | **none** -- the crafting table makes them | one in-game day |
+  | Potato | 1-3 potatoes | -- (a potato is its own seed) | **two days** |
+  | Beans | 1-3 beans | -- | two days |
+  | Rice | 1-3 rice | -- | two days |
+
+  An unripe crop still gives back exactly one seed, whatever it is.
+
+  **Wheat had to give back more seed than it took.** At one seed a
+  harvest a field could never be larger than the tall grass somebody had
+  cut, and bread costs three wheat. The tomato is the mirror image: no
+  seed at all when picked, because its seeds come off the crafting
+  table one fruit into two, and 2-4 fruit rather than 1-3 to pay for the
+  extra step.
+
+  **The yield is rolled at every harvest.** It was a hash of the cell
+  alone -- right for an ore vein, which is mined once, and wrong for a
+  field, where it meant a given square gave the same number for ever and
+  a player who noticed could farm the good squares. The roll now mixes
+  in the world's tick count, which moves and which a replay reproduces
+  exactly, so it stays deterministic in the only sense Part T asks for.
+
+  **And it was all far too fast**: 2.5 minutes a stage, 7.5 minutes from
+  seed to harvest. An in-game day is 20 minutes of playing, so the new
+  numbers are a day for wheat and tomatoes and two for the rest, which
+  makes a farm a thing you come back to rather than a thing you watch.
+
+  That needed the clock rebuilt, and the new shape is better than the
+  one it replaces (D-111 amended):
+
+  - the chunk's stamp is now **the absolute tick of its last sweep**,
+    not a quantised accumulator, and growth counts the **stage
+    boundaries** that fall between two sweeps. That is what lets one
+    shared clock serve crops that grow at different speeds, and it needs
+    no remainder anywhere;
+  - a plant keeps its own **phase** in four state bits that were free
+    (`CROP_PHASES`, sixteenths of a stage), so it ripens a day after IT
+    was sown rather than when the chunk's clock next crosses a boundary;
+  - **sowing sweeps the chunk to now first.** Without that, the window
+    between two sweeps reaches into the past and a fresh seed is
+    credited with time that passed before it existed -- a host check
+    measured one ripening in 15360 ticks instead of 24000, which is a
+    whole free stage. That check is the one to keep: it plants at two
+    deliberately awkward moments and demands both take a day.
 
 - **D-96** 2026-09-26, out of the user's question and then their
   instruction: **the audio codec is ours, and it is public domain.**

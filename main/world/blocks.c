@@ -17,6 +17,7 @@
 
 #include "items/items.h"    // the ITEM_* ids the drop column names
 #include "world/blockent.h"  // the BE_* kinds the record column names
+#include "world/crops.h"    // CROP_TICKS_*: how long a stage takes
 
 #define M3(t, s, b) \
     { (t), (s), (b) }
@@ -304,32 +305,40 @@ block_def_t const BLOCKS[BLK_COUNT] = {
     // They are not REPLACEABLE: water must not wash a field away, and a
     // block placed against one must not eat it. Breaking one is
     // instant, as picking a plant should be.
-    [BLK_WHEAT_CROP] = {.name     = "wheat_crop", .drop_item = ITEM_WHEAT, .drop_min = 1, .drop_max = 1,
+    // Wheat: 1-3 grain and 1-2 seeds (the user). The seeds are what
+    // matter -- at one seed back a field could never be bigger than the
+    // tall grass a player had cut, and bread costs three wheat.
+    [BLK_WHEAT_CROP] = {.name     = "wheat_crop", .drop_item = ITEM_WHEAT, .drop_min = 1, .drop_max = 3,
                         .kind     = K_PLANT,
                         .mat      = M3(VM_WHEAT_0, VM_WHEAT_3, VM_WHEAT_0),
                         .hardness = 1,
-                        .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_WHEAT_SEEDS,
+                        .flags    = BF_CROP, .growth_max = 3, .grow_ticks = CROP_TICKS_DAY, .seed_item = ITEM_WHEAT_SEEDS,
+                        .seed_min = 1, .seed_max = 2,
                         .sound    = SND_SOFT},
 
     [BLK_POTATO_CROP] = {.name     = "potato_crop", .drop_item = ITEM_POTATO, .drop_min = 1, .drop_max = 3,
                          .kind     = K_PLANT,
                          .mat      = M3(VM_POTATO_0, VM_POTATO_3, VM_POTATO_0),
                          .hardness = 1,
-                         .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_POTATO,
+                         .flags    = BF_CROP, .growth_max = 3, .grow_ticks = CROP_TICKS_TWO_DAYS, .seed_item = ITEM_POTATO,
                          .sound    = SND_SOFT},
 
-    [BLK_TOMATO_CROP] = {.name     = "tomato_crop", .drop_item = ITEM_TOMATO, .drop_min = 1, .drop_max = 3,
+    // Tomatoes give NO seeds when picked (the user): the seeds come off
+    // the crafting table, one fruit into two. The fruit count is 2-4
+    // rather than 1-3 to pay for it, so a tomato plant is worth the
+    // extra step rather than punished for it.
+    [BLK_TOMATO_CROP] = {.name     = "tomato_crop", .drop_item = ITEM_TOMATO, .drop_min = 2, .drop_max = 4,
                          .kind     = K_PLANT,
                          .mat      = M3(VM_TOMATO_0, VM_TOMATO_3, VM_TOMATO_0),
                          .hardness = 1,
-                         .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_TOMATO_SEEDS,
+                         .flags    = BF_CROP, .growth_max = 3, .grow_ticks = CROP_TICKS_DAY, .seed_item = ITEM_TOMATO_SEEDS,
                          .sound    = SND_SOFT},
 
     [BLK_BEAN_CROP] = {.name     = "bean_crop", .drop_item = ITEM_BEANS, .drop_min = 1, .drop_max = 3,
                        .kind     = K_PLANT,
                        .mat      = M3(VM_BEANS_0, VM_BEANS_3, VM_BEANS_0),
                        .hardness = 1,
-                       .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_BEANS,
+                       .flags    = BF_CROP, .growth_max = 3, .grow_ticks = CROP_TICKS_TWO_DAYS, .seed_item = ITEM_BEANS,
                        .sound    = SND_SOFT},
 
     // Rice stands IN water, so the cell is both (BF2_WATERLOGGED). It is
@@ -339,7 +348,7 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                        .kind     = K_PLANT,
                        .mat      = M3(VM_RICE_0, VM_RICE_3, VM_RICE_0),
                        .hardness = 1,
-                       .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_RICE,
+                       .flags    = BF_CROP, .growth_max = 3, .grow_ticks = CROP_TICKS_TWO_DAYS, .seed_item = ITEM_RICE,
                        .tall_other = BLK_RICE_TOP,
                        .sound    = SND_SOFT,
                        .flags2   = BF2_WATERLOGGED},
@@ -353,7 +362,7 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                       .kind     = K_PLANT,
                       .mat      = M3(VM_RICE_TOP_0, VM_RICE_TOP_3, VM_RICE_TOP_0),
                       .hardness = 1,
-                      .flags    = BF_CROP, .growth_max = 3,
+                      .flags    = BF_CROP, .growth_max = 3, .grow_ticks = CROP_TICKS_TWO_DAYS,
                       .tall_other = BLK_RICE_CROP,
                       .sound    = SND_SOFT,
                       .flags2   = BF2_TALL_TOP},

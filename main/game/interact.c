@@ -27,6 +27,24 @@ static bool grown_tree(int32_t x, int32_t y, int32_t z) {
     return (world_state(x, y, z) & ST_PLACED) == 0;
 }
 
+// HOW MANY, between `lo` and `hi` inclusive.
+//
+// The cell AND THE CLOCK. A hash of the position alone is right for an
+// ore vein, which is mined once, and wrong for a field: it would give
+// the same plot the same number for ever, so a player who noticed could
+// farm the good squares and leave the bad ones (the user, on seeing the
+// yields written out: "the yield should be randomized at every
+// harvest"). The world's tick count is the thing that moves, and it is
+// the RIGHT thing to move by -- a replay reproduces the tick count
+// exactly, so this stays deterministic in the only sense Part T asks
+// for.
+static int roll(int32_t x, int32_t y, int32_t z, uint32_t salt, int lo, int hi) {
+    if (hi <= lo) return lo;
+    float const r = sm_rand3(x, y, z, salt ^ crops_now());
+    int const   n = lo + (int)(r * (float)(hi - lo + 1));
+    return n > hi ? hi : n;
+}
+
 // Drop what a block yields, on the ground where it stood. `state` is the
 // state byte it had BEFORE it was cleared, which for a crop is the
 // difference between a harvest and a handful of seeds.
@@ -35,40 +53,28 @@ static int drop_for(uint8_t block, uint8_t state, int32_t x, int32_t y, int32_t 
     if (!item_can_harvest(block, tool_item)) return 0;
 
     // A CROP YIELDS BY HOW GROWN IT IS, which is the one drop in the
-    // game that is not a straight read of the table. Unripe gives the
+    // game that is not a straight read of the table. Unripe gives ONE
     // seed back -- pulling up a sprout by mistake costs the time, not
-    // the seed -- and ripe gives the harvest, plus a seed of its own
-    // where the seed and the harvest are different things (blocks.h,
-    // seed_item). A potato is its own seed, so it simply gives potatoes.
+    // the seed -- and ripe gives the harvest plus however many seeds the
+    // table says (blocks.h, seed_min / seed_max): wheat 1-2, a tomato
+    // none at all, and a potato none because a potato IS its seed.
     if (block_crop(block)) {
         if (!crop_is_ripe(block, state)) {
             return d->seed_item == ITEM_NONE ? 0 : item_entity_spawn(x, y, z, d->seed_item, 1, 0);
         }
         int n = 0;
-        if (d->seed_item != ITEM_NONE && d->seed_item != d->drop_item) {
-            n += item_entity_spawn(x, y, z, d->seed_item, 1, 0);
+        if (d->seed_item != ITEM_NONE && d->seed_max > 0) {
+            int const seeds = roll(x, y, z, 0x0C40Du, d->seed_min, d->seed_max);
+            if (seeds > 0) n += item_entity_spawn(x, y, z, d->seed_item, seeds, 0);
         }
-        // and then the harvest itself, through the ordinary path below.
-        if (d->drop_item == ITEM_NONE || d->drop_max == 0) return n;
-        int h = d->drop_min;
-        if (d->drop_max > d->drop_min) {
-            float const r = sm_rand3(x, y, z, 0x0C40Du);
-            h += (int)(r * (float)(d->drop_max - d->drop_min + 1));
-            if (h > d->drop_max) h = d->drop_max;
-        }
-        return n + (h > 0 ? item_entity_spawn(x, y, z, d->drop_item, h, 0) : 0);
+        int const h = roll(x, y, z, 0x0C41Fu, d->drop_min, d->drop_max);
+        if (d->drop_item == ITEM_NONE || h <= 0) return n;
+        return n + item_entity_spawn(x, y, z, d->drop_item, h, 0);
     }
 
     if (d->drop_item == ITEM_NONE || d->drop_max == 0) return 0;
 
-    int n = d->drop_min;
-    if (d->drop_max > d->drop_min) {
-        // Deterministic from the cell, so a replay drops the same
-        // number and two players breaking the same block agree.
-        float const r = sm_rand3(x, y, z, 0x0D40Fu);
-        n += (int)(r * (float)(d->drop_max - d->drop_min + 1));
-        if (n > d->drop_max) n = d->drop_max;
-    }
+    int const n = roll(x, y, z, 0x0D40Fu, d->drop_min, d->drop_max);
     // A drop_min of 0 is a CHANCE, not a promise: tall grass gives up a
     // wheat seed about half the time (blocks.c), and a roll of nothing
     // has to spawn nothing rather than a stack of zero.

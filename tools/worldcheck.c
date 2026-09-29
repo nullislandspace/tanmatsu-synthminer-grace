@@ -42,6 +42,7 @@
 #include "world/blockupdate.h"
 #include "world/crops.h"
 #include "game/composter.h"
+#include "game/daytime.h"
 #include "world/fluid.h"
 #include "world/light.h"
 #include "world/worldstore.h"
@@ -5375,14 +5376,26 @@ static void check_farming(void) {
     CHECK(crop_stage(world_state(4, 20, 2)) == 0, "a seedling grew in fifteen seconds");
 
     // A full stage's worth of ticks, plus a round of the sweep so the
-    // chunk is actually visited.
-    crop_run(&clock, (int)CROP_STAGE_TICKS + 512);
+    // chunk is actually visited. Wheat is an in-game DAY from seed to
+    // harvest (the user), which is three stages of CROP_TICKS_DAY.
+    uint32_t const wheat_stage = block_def(BLK_WHEAT_CROP)->grow_ticks;
+    CHECK(wheat_stage == CROP_TICKS_DAY, "wheat grows a stage every %u ticks, expected %u", wheat_stage,
+          CROP_TICKS_DAY);
+    CHECK((uint32_t)block_def(BLK_WHEAT_CROP)->growth_max * wheat_stage == DAY_TICKS,
+          "wheat takes %u ticks from seed to harvest, expected one in-game day (%u)",
+          (unsigned)block_def(BLK_WHEAT_CROP)->growth_max * wheat_stage, DAY_TICKS);
+    CHECK((uint32_t)block_def(BLK_POTATO_CROP)->growth_max * block_def(BLK_POTATO_CROP)->grow_ticks == 2u * DAY_TICKS,
+          "a potato does not take two in-game days");
+    CHECK((uint32_t)block_def(BLK_RICE_CROP)->growth_max * block_def(BLK_RICE_CROP)->grow_ticks == 2u * DAY_TICKS,
+          "rice does not take two in-game days");
+
+    crop_run(&clock, (int)wheat_stage + 512);
     CHECK(crop_stage(world_state(4, 20, 2)) == 1, "a crop did not gain a stage in %u ticks (it is at %u)",
-          CROP_STAGE_TICKS, crop_stage(world_state(4, 20, 2)));
+          wheat_stage, crop_stage(world_state(4, 20, 2)));
 
     // ... and it stops at ripe rather than running off the end of its
     // three bits.
-    crop_run(&clock, (int)CROP_STAGE_TICKS * 8 + 512);
+    crop_run(&clock, (int)wheat_stage * 8 + 512);
     {
         int ripe = 0;
         int const n = crop_count(&ripe);
@@ -5403,10 +5416,52 @@ static void check_farming(void) {
     CHECK(crop_stage(world_state(6, 20, 2)) == 0, "the second seedling did not start at 0");
 
     c->stamp = clock;               // up to date as of now
-    clock += CROP_STAGE_TICKS * 2;  // ... and then two stages go by with nobody there
+    clock += wheat_stage * 2;  // ... and then two stages go by with nobody there
     crops_chunk_join(c, clock);
     CHECK(crop_stage(world_state(6, 20, 2)) == 2, "a chunk away for two stages came back at stage %u",
           crop_stage(world_state(6, 20, 2)));
+
+    // --- A DAY AFTER IT WAS SOWN, NOT AFTER THE CHUNK'S CLOCK --------
+    //
+    // The whole point of the phase (crops.h). The chunk keeps ONE clock
+    // and growth happens on absolute boundaries, so without it every
+    // plant in a chunk would ripen at the same instant whenever it went
+    // in -- and a seed sown just before a boundary would gain a free
+    // stage worth a third of its life.
+    //
+    // Two seeds, sown a third of a stage apart, and both have to take
+    // the same time.
+    {
+        uint32_t const iv = block_def(BLK_WHEAT_CROP)->grow_ticks;
+        uint32_t const want = iv * block_def(BLK_WHEAT_CROP)->growth_max;  // an in-game day
+        int            measured[2];
+        for (int k = 0; k < 2; k++) {
+            // Start each one at a deliberately awkward moment.
+            clock += (uint32_t)k * (iv / 3u) + 137u;
+            crops_tick(clock);  // so planted_state sees this moment
+            int32_t const px = 11 + k;
+            set_block(px, 19, 11, BLK_FARMLAND_WET, ST_PLACED);
+            CHECK(crops_plant(px, 19, 11, ITEM_WHEAT_SEEDS) == PLANT_OK, "the timing seed would not go in");
+            uint32_t const sown = clock;
+            int            guard = 0;
+            while (!crop_is_ripe(BLK_WHEAT_CROP, world_state(px, 20, 11)) && guard++ < 200) {
+                crop_run(&clock, 512);  // two full rounds of the sweep
+            }
+            measured[k] = (int)(clock - sown);
+            CHECK(crop_is_ripe(BLK_WHEAT_CROP, world_state(px, 20, 11)), "the timing seed never ripened");
+            set_block(px, 20, 11, BLK_AIR, 0);
+        }
+        // The sweep visits a chunk every 256 ticks and a stage boundary
+        // can fall anywhere between two visits, so the slack is one
+        // round of the sweep plus a sixteenth of a stage.
+        int const slack = 512 + (int)(iv / CROP_PHASES);
+        printf("  wheat sown at two different moments ripened in %d and %d ticks (a day is %u)\n", measured[0],
+               measured[1], want);
+        for (int k = 0; k < 2; k++) {
+            CHECK(measured[k] >= (int)want - slack && measured[k] <= (int)want + slack,
+                  "wheat took %d ticks to ripen, expected about %u (+/- %d)", measured[k], want, slack);
+        }
+    }
 
     // --- Nothing grows in a chunk with nothing in it -----------------
     chunk_t* empty = chunk_find(1, 1);
@@ -5420,7 +5475,7 @@ static void check_farming(void) {
     // A harvested field stops being swept: the flag clears itself.
     set_block(6, 20, 2, BLK_AIR, 0);
     set_block(4, 20, 2, BLK_AIR, 0);
-    crop_run(&clock, (int)CROP_STAGE_TICKS + 600);
+    crop_run(&clock, (int)wheat_stage + 600);
     CHECK((chunk_find(0, 0)->flags & CF_CROPS) == 0, "a harvested chunk is still marked as having crops");
 
     // --- FARMING WAKES NO PHYSICS ------------------------------------
@@ -5432,7 +5487,7 @@ static void check_farming(void) {
     blockupdate_clear();
     set_block(7, 19, 7, BLK_FARMLAND_WET, ST_PLACED);
     CHECK(crops_plant(7, 19, 7, ITEM_POTATO) == PLANT_OK, "a potato would not go in");
-    crop_run(&clock, (int)CROP_STAGE_TICKS * 4 + 600);
+    crop_run(&clock, (int)block_def(BLK_POTATO_CROP)->grow_ticks * 4 + 600);
     blockupdate_stats_t const bst = blockupdate_stats();
     printf("  a field grown from seed to ripe left %d cells in the physics queue\n", bst.pending);
     CHECK(bst.pending == 0, "growing crops put %d cells in the tick wheel", bst.pending);
@@ -5452,6 +5507,74 @@ static void check_farming(void) {
     item_entity_reset();
     interact_break(3, 20, 7, 0);
     CHECK(item_entity_live() == 1, "an unripe crop dropped %d stacks, not one seed", item_entity_live());
+
+    // --- WHAT EACH CROP IS WORTH RIPE (the user's numbers) -----------
+    //
+    // Wheat has to give back MORE SEED THAN IT TOOK or a field can never
+    // be bigger than the tall grass somebody cut; a tomato gives no seed
+    // at all, because its seeds come off the crafting table, and is
+    // worth more fruit instead.
+    {
+        struct {
+            uint8_t  crop;
+            uint16_t seed, fruit;
+            int      fruit_lo, fruit_hi, seed_lo, seed_hi;
+        } const want[] = {
+            {BLK_WHEAT_CROP, ITEM_WHEAT_SEEDS, ITEM_WHEAT, 1, 3, 1, 2},
+            {BLK_POTATO_CROP, ITEM_POTATO, ITEM_POTATO, 1, 3, 0, 0},
+            {BLK_TOMATO_CROP, ITEM_TOMATO_SEEDS, ITEM_TOMATO, 2, 4, 0, 0},
+            {BLK_BEAN_CROP, ITEM_BEANS, ITEM_BEANS, 1, 3, 0, 0},
+        };
+        for (size_t k = 0; k < sizeof want / sizeof want[0]; k++) {
+            block_def_t const* bd = block_def(want[k].crop);
+            CHECK(bd->drop_min == want[k].fruit_lo && bd->drop_max == want[k].fruit_hi,
+                  "%s yields %u-%u fruit, expected %d-%d", bd->name, bd->drop_min, bd->drop_max, want[k].fruit_lo,
+                  want[k].fruit_hi);
+            CHECK(bd->seed_min == want[k].seed_lo && bd->seed_max == want[k].seed_hi,
+                  "%s yields %u-%u seeds, expected %d-%d", bd->name, bd->seed_min, bd->seed_max, want[k].seed_lo,
+                  want[k].seed_hi);
+
+            // And what actually comes out of the ground, over enough
+            // harvests to see the whole range.
+            int lo_f = 99, hi_f = 0, lo_s = 99, hi_s = 0, saw_seed_stack = 0;
+            for (int t = 0; t < 60; t++) {
+                crops_tick(300000u + (uint32_t)t * 37u);  // a different moment each time
+                set_block(9, 19, 9, BLK_FARMLAND_WET, ST_PLACED);
+                set_block(9, 20, 9, want[k].crop, crop_state_with(ST_PLACED, bd->growth_max));
+                item_entity_reset();
+                interact_break(9, 20, 9, 0);
+                int fruit = 0, seed = 0, stacks = 0;
+                for (int i = 0; i < ITEM_ENTITY_MAX; i++) {
+                    item_entity_t const* e = item_entity_at(i);
+                    if (e == NULL || !e->alive) continue;
+                    stacks++;
+                    if (e->item == want[k].fruit) fruit += e->count;
+                    else if (e->item == want[k].seed) seed += e->count;
+                }
+                if (want[k].seed == want[k].fruit) seed = 0;  // a potato is its own seed
+                if (seed > 0) saw_seed_stack++;
+                if (fruit < lo_f) lo_f = fruit;
+                if (fruit > hi_f) hi_f = fruit;
+                if (seed < lo_s) lo_s = seed;
+                if (seed > hi_s) hi_s = seed;
+                (void)stacks;
+            }
+            printf("  %-12s 60 harvests: %d-%d fruit, %d-%d seeds\n", bd->name, lo_f, hi_f, lo_s, hi_s);
+            CHECK(lo_f == want[k].fruit_lo && hi_f == want[k].fruit_hi,
+                  "%s dropped %d-%d fruit over 60 harvests, expected the full %d-%d", bd->name, lo_f, hi_f,
+                  want[k].fruit_lo, want[k].fruit_hi);
+            CHECK(lo_s == want[k].seed_lo && hi_s == want[k].seed_hi,
+                  "%s dropped %d-%d seeds over 60 harvests, expected the full %d-%d", bd->name, lo_s, hi_s,
+                  want[k].seed_lo, want[k].seed_hi);
+            // THE SAME PLOT, SIXTY TIMES, and the count moved: the yield
+            // is rolled at harvest and not baked into the cell.
+            if (want[k].fruit_hi > want[k].fruit_lo) {
+                CHECK(hi_f > lo_f, "%s gave the same %d fruit every time from the same plot", bd->name, lo_f);
+            }
+            CHECK(want[k].seed_hi == 0 || saw_seed_stack > 0, "%s never gave a seed back", bd->name);
+        }
+        set_block(9, 20, 9, BLK_AIR, 0);
+    }
 
     // --- A CROP CANNOT STAND ON NOTHING ------------------------------
     set_block(3, 19, 8, BLK_FARMLAND_WET, ST_PLACED);

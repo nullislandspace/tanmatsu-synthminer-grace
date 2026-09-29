@@ -57,11 +57,41 @@
 
 #include "world/chunk.h"
 
-// Ticks a crop takes to gain one stage: 2.5 minutes at 20 Hz, so four
-// stages is about seven and a half minutes of playing from seed to
-// harvest -- long enough to be worth waiting for, short enough that a
-// field is worth planting in the first place.
-#define CROP_STAGE_TICKS 3000u
+// HOW LONG A STAGE TAKES, per crop (block_def_t.grow_ticks). A crop has
+// growth_max + 1 stages, so the wait from seed to harvest is growth_max
+// of these -- three, for all five crops.
+//
+// The user's numbers: an in-game day for wheat and tomatoes, two days
+// for potatoes, beans and rice. DAY_TICKS is 24000 (game/daytime.h), so
+// a day's worth of growing is three stages of 8000.
+#define CROP_TICKS_DAY      8000u
+#define CROP_TICKS_TWO_DAYS 16000u
+
+// WHERE IN ITS OWN CYCLE A PLANT SITS, in sixteenths of a stage, kept in
+// the state byte's bits 4..7 -- which were free, and are the reason this
+// needs no extra storage anywhere.
+//
+// It exists because the chunk's clock is SHARED (D-111) and the crops in
+// it are not: growth happens on absolute boundaries, one stage every
+// grow_ticks since the world began, so without a phase every plant in a
+// chunk would ripen on the same instant however long after it was sown,
+// and a seed put in just before a boundary would gain a free stage worth
+// up to a third of its whole life. The phase is set when the seed goes
+// in, so a plant's boundaries are ITS OWN, to within a sixteenth of a
+// stage -- 25 seconds for wheat, 50 for a potato.
+#define CROP_PHASES 16u
+
+static inline uint8_t crop_phase(uint8_t state) {
+    return (uint8_t)((st_data(state) >> 3) & 0x0Fu);
+}
+static inline uint8_t crop_state_with_phase(uint8_t state, uint8_t phase) {
+    uint8_t const d = (uint8_t)((st_data(state) & 0x07u) | ((phase & 0x0Fu) << 3));
+    return st_with_data(state, d);
+}
+
+// How many stages the crop at (block, state) owes for the time between
+// `prev` and `now`, capped so a chunk left for a month is not a loop.
+int crop_steps_between(uint8_t block, uint8_t state, uint32_t prev, uint32_t now);
 
 // How far a water block may be and still wet the soil, on the same
 // level: the user's "within 4 blocks". Measured as a box, which is

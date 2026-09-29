@@ -49,7 +49,7 @@ int crops_advance(int32_t x, int32_t y, int32_t z, int steps) {
 
     int want = (int)was + steps;
     if (want > (int)max) want = (int)max;
-    world_set(x, y, z, b, crop_state_with(st, (uint8_t)want));
+    world_set(x, y, z, b, crop_state_with(st, (uint8_t)want));  // keeps the phase bits
 
     // A TWO-BLOCK PLANT GROWS AS ONE. Both halves are crops and the
     // sweep would reach them separately, but compost reaches only the
@@ -75,7 +75,7 @@ int crops_advance(int32_t x, int32_t y, int32_t z, int steps) {
 // Returns how many crop cells were found -- which is how the CF_CROPS
 // flag gets CLEARED again once a field is harvested, so an empty chunk
 // stops being walked at all.
-static int walk_chunk(chunk_t* c, int steps, int* ripe_out) {
+static int walk_chunk(chunk_t* c, uint32_t prev, uint32_t now, int* ripe_out) {
     int found = 0, ripe = 0;
     for (int lz = 0; lz < CH_D; lz++) {
         for (int lx = 0; lx < CH_W; lx++) {
@@ -89,7 +89,10 @@ static int walk_chunk(chunk_t* c, int steps, int* ripe_out) {
                 // Through world_set (crops_advance), not by poking the
                 // plane: a stage is a visible change, so the mesh has to
                 // be marked stale and the chunk has to be marked edited.
-                if (steps > 0) crops_advance(wx, y, wz, steps);
+                if (now > prev) {
+                    uint8_t const st = c->st[CH_IDX(lx, y, lz)];
+                    crops_advance(wx, y, wz, crop_steps_between(col[y], st, prev, now));
+                }
                 if (crop_is_ripe(col[y], c->st[CH_IDX(lx, y, lz)])) ripe++;
             }
         }
@@ -98,38 +101,33 @@ static int walk_chunk(chunk_t* c, int steps, int* ripe_out) {
     return found;
 }
 
-// How many whole stages the chunk owes, and move its clock on by exactly
-// that much -- the remainder is KEPT, so growth does not drift and a
-// chunk visited often grows at the same rate as one visited rarely.
-static int steps_due(chunk_t* c, uint32_t now) {
-    // A CLOCK OF ZERO MEANS "NEVER SET", not "the first tick of the
-    // world". A chunk that reached CS_READY without going through
-    // crops_chunk_join -- a test harness, a title world, anything built
-    // by hand -- would otherwise be told that a hundred thousand ticks
-    // had passed and would ripen every seed in it on the spot.
-    //
-    // Zero is safe to spend on this: a new world's clock starts at
-    // DAY_START (worldstore.c), never at 0.
-    if (c->stamp == 0u) {
-        c->stamp = now;
-        return 0;
-    }
+// Floor division that is right for negative numerators, which C's / is
+// not: -1 / 8000 is 0 and this has to be -1, or a plant whose phase puts
+// its origin after the epoch gains a stage it has not earned.
+static int64_t floor_div(int64_t a, int64_t b) {
+    int64_t const q = a / b;
+    return (a % b != 0 && ((a < 0) != (b < 0))) ? q - 1 : q;
+}
 
-    // Time only runs forward. A stamp from the future means the world's
-    // clock went back under it (a restored save, a test that rewinds);
-    // treat it as no time at all rather than as four billion ticks of
-    // free growth -- the same rule furnace_catch_up() uses.
-    uint32_t const elapsed = now >= c->stamp ? now - c->stamp : 0u;
-    uint32_t const steps   = elapsed / CROP_STAGE_TICKS;
-    if (steps == 0) {
-        if (now < c->stamp) c->stamp = now;
-        return 0;
-    }
-    c->stamp += steps * CROP_STAGE_TICKS;
-    // A chunk that has been away for a week owes more stages than any
-    // crop has. Cap it: the arithmetic below is per cell, and 400000 is
-    // as ripe as 4.
-    return steps > 8u ? 8 : (int)steps;
+// HOW MANY STAGES A PLANT OWES between two moments. Growth happens on
+// absolute boundaries -- one stage every grow_ticks since the world's
+// clock began, offset by the plant's own phase -- so the answer depends
+// only on the two times and not on how often anybody looked. That is
+// what lets the chunk keep ONE clock for crops that grow at different
+// speeds (blocks.h, grow_ticks), and it is why this needs no remainder
+// and no per-cell timer.
+int crop_steps_between(uint8_t block, uint8_t state, uint32_t prev, uint32_t now) {
+    uint32_t const iv = block_def(block)->grow_ticks;
+    if (iv == 0u || now <= prev) return 0;
+
+    int64_t const off = (int64_t)crop_phase(state) * (int64_t)(iv / CROP_PHASES);
+    int64_t const ka  = floor_div((int64_t)prev - off, (int64_t)iv);
+    int64_t const kb  = floor_div((int64_t)now - off, (int64_t)iv);
+    int64_t const d   = kb - ka;
+    if (d <= 0) return 0;
+    // A chunk away for a month owes more stages than any crop has, and
+    // the arithmetic below is per cell: cap it.
+    return d > 8 ? 8 : (int)d;
 }
 
 void crops_tick(uint32_t now) {
@@ -140,11 +138,13 @@ void crops_tick(uint32_t now) {
     s_sweep    = (s_sweep + 1) % SLOT_COUNT;
     if (c == NULL || c->cstate != CS_READY || c->id == NULL) return;
 
-    int const steps = steps_due(c, now);
+    uint32_t const prev = c->stamp;
+    // A clock of zero means "never set" -- see crops_chunk_join.
+    c->stamp = now;
+    if (prev == 0u || now <= prev) return;
     if ((c->flags & CF_CROPS) == 0) return;  // the clock still moves; nothing grows
-    if (steps <= 0) return;
 
-    if (walk_chunk(c, steps, NULL) == 0) c->flags &= (uint8_t)~CF_CROPS;
+    if (walk_chunk(c, prev, now, NULL) == 0) c->flags &= (uint8_t)~CF_CROPS;
 }
 
 void crops_chunk_join(chunk_t* c, uint32_t now) {
@@ -155,10 +155,10 @@ void crops_chunk_join(chunk_t* c, uint32_t now) {
     // 9. Either way "now" is the only honest answer: pretending it was
     // stamped at tick 0 would ripen every field in an old world the
     // moment it was walked into.
-    if (c->stamp == 0u) c->stamp = now;
+    uint32_t const prev = c->stamp == 0u ? now : c->stamp;
+    c->stamp            = now;
 
-    int const steps = steps_due(c, now);
-    int const found = walk_chunk(c, steps, NULL);
+    int const found = walk_chunk(c, prev, now, NULL);
     if (found > 0) c->flags |= CF_CROPS;
     else c->flags &= (uint8_t)~CF_CROPS;
 }
@@ -211,9 +211,48 @@ bool crops_till(int32_t x, int32_t y, int32_t z) {
     return true;
 }
 
+// THE STATE A SEED GOES IN WITH: stage 0, and the plant's own phase --
+// where in its growth cycle this particular plant sits, so that it
+// ripens grow_ticks x growth_max after IT was sown rather than on
+// whatever boundary the chunk happens to cross next (crops.h).
+static uint8_t planted_state(uint8_t crop) {
+    uint32_t const iv = block_def(crop)->grow_ticks;
+    if (iv == 0u) return ST_PLACED;
+
+    // Where in the cycle this moment falls, in sixteenths. The plant's
+    // boundaries run from here, so it ripens grow_ticks x growth_max
+    // after IT was sown, to within a sixteenth of a stage -- 25 seconds
+    // for wheat.
+    uint8_t const phase = (uint8_t)(((uint64_t)(s_now % iv) * CROP_PHASES) / iv);
+    return crop_state_with_phase(ST_PLACED, phase);
+}
+
+// BRING THE CHUNK'S CLOCK UP TO DATE BEFORE SOWING INTO IT.
+//
+// Growth counts the stage boundaries between the chunk's last sweep and
+// its next one, and that window reaches into the past -- 256 ticks in
+// ordinary play, and as far as you like after the debug key that jumps
+// the clock or a chunk that has just been sitting. A seed dropped into
+// that window is credited with time that passed before it existed: a
+// host check measured one ripening in 15360 ticks instead of 24000,
+// which is a whole free stage.
+//
+// So the chunk is swept to NOW first. Everything already growing there
+// gets exactly the time it earned, the clock is left at this moment, and
+// the new seed starts from a window of zero.
+static void catch_up_for_planting(int32_t x, int32_t z) {
+    chunk_t* c = chunk_find(chunk_of(x), chunk_of(z));
+    if (c == NULL || c->cstate != CS_READY || c->id == NULL) return;
+    uint32_t const prev = c->stamp;
+    c->stamp            = s_now;
+    if (prev == 0u || s_now <= prev) return;
+    if ((c->flags & CF_CROPS) != 0) walk_chunk(c, prev, s_now, NULL);
+}
+
 plant_result_t crops_plant(int32_t x, int32_t y, int32_t z, uint16_t seed) {
     uint8_t const crop = crops_block_for_seed(seed);
     if (crop == BLK_AIR) return PLANT_NOT_SEED;
+    catch_up_for_planting(x, z);
 
     uint8_t const at = world_block(x, y, z);
 
@@ -233,8 +272,12 @@ plant_result_t crops_plant(int32_t x, int32_t y, int32_t z, uint16_t seed) {
         uint8_t const above = world_block(x, y + 1, z);
         if (block_liquid(above)) return PLANT_NEEDS_WATER;  // deeper than one block
         if (above_id != BLK_AIR && above != BLK_AIR && !block_replaceable(above)) return PLANT_BLOCKED;
-        world_set(x, y, z, crop, ST_PLACED);
-        if (above_id != BLK_AIR) world_set(x, y + 1, z, above_id, ST_PLACED);
+        // ONE PHASE FOR BOTH HALVES, or the two would cross their
+        // boundaries at different moments and the plant would spend half
+        // its life with its top and bottom a stage apart.
+        uint8_t const st = planted_state(crop);
+        world_set(x, y, z, crop, st);
+        if (above_id != BLK_AIR) world_set(x, y + 1, z, above_id, st);
         return PLANT_OK;
     }
 
@@ -246,7 +289,7 @@ plant_result_t crops_plant(int32_t x, int32_t y, int32_t z, uint16_t seed) {
     if (above != BLK_AIR && !block_replaceable(above)) return PLANT_BLOCKED;
     if (block_liquid(above)) return PLANT_BLOCKED;  // a flooded plot is not a field
 
-    world_set(x, y + 1, z, crop, ST_PLACED);
+    world_set(x, y + 1, z, crop, planted_state(crop));
     return PLANT_OK;
 }
 
@@ -278,7 +321,7 @@ int crops_count_in(chunk_t const* c, int* ripe_out) {
         if (ripe_out != NULL) *ripe_out = 0;
         return 0;
     }
-    // Counting only: walk_chunk with no steps changes nothing, and the
-    // cast is safe because that path never writes.
-    return walk_chunk((chunk_t*)c, 0, ripe_out);
+    // Counting only: prev == now means no time has passed, so nothing is
+    // written, and the cast is safe because that path never writes.
+    return walk_chunk((chunk_t*)c, 0u, 0u, ripe_out);
 }

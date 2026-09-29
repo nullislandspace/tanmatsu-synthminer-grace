@@ -184,13 +184,32 @@ typedef struct {
     uint8_t     growth_max;  // BF_CROP: the highest growth stage
 
     // BF_CROP: THE ITEM THAT PLANTS THIS, and what an unripe one drops
-    // when it is broken. ITEM_NONE for anything that is not a crop.
-    //
-    // A ripe crop drops `drop_item` x (drop_min..drop_max) as usual, and
-    // its seed as well when the two differ -- so wheat gives grain and a
-    // seed, while a potato, whose seed IS a potato, simply gives
-    // potatoes (world/crops.h).
+    // when it is broken -- exactly one of them. ITEM_NONE for anything
+    // that is not a crop.
     uint16_t    seed_item;
+
+    // ... AND HOW MANY SEEDS A RIPE ONE GIVES BACK, on top of the
+    // harvest. Wheat gives 1-2 and so grows a field; a tomato gives NONE
+    // and is worth more fruit instead, because its seeds come off the
+    // crafting table (the user, 2026-09-29).
+    //
+    // A COLUMN RATHER THAN A RULE. This was inferred at first -- a ripe
+    // crop gave a seed whenever its seed and its harvest were different
+    // items -- which is the sort of cleverness that reads well and
+    // cannot express what somebody actually wants. Both are 0 for a crop
+    // whose seed IS its harvest (a potato, a bean, a grain of rice).
+    uint8_t     seed_min, seed_max;
+
+    // BF_CROP: TICKS PER GROWTH STAGE. A crop has growth_max + 1 stages,
+    // so seed to harvest is growth_max of these -- 8000 is an in-game
+    // day (DAY_TICKS is 24000 and there are three transitions), 16000 is
+    // two days (the user, 2026-09-29).
+    //
+    // Per crop rather than one constant, because the user wants wheat
+    // and tomatoes at a day and potatoes, beans and rice at two: what a
+    // crop is worth and how long it takes are the two halves of the same
+    // decision and both belong in its row.
+    uint16_t    grow_ticks;
 
     // THE OTHER HALF of a two-block plant, or BLK_AIR. On the lower half
     // this is the block that stands above it; on the upper half (which
