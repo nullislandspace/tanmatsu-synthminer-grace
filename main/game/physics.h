@@ -52,6 +52,28 @@
 #define PHYS_STEP 1.0f
 #define PHYS_SKIN    0.001 // gap left at a contact face, so "touching" is never "inside"
 
+// SNEAKING, as far as a body is concerned: two rules, both off by
+// default, and neither of them knows that a player is what turns them
+// on (game/player.c).
+//
+//   step_up == 0   it climbs nothing without jumping
+//   edge_stop      it will not walk off what is holding it up
+//
+// The second is Minecraft's, and it is the one that makes building out
+// over a drop possible at all: you walk backwards to the lip, stop
+// dead, and place the next block under your own feet. Implemented as a
+// question asked BEFORE each sub-step rather than a position undone
+// afterwards -- undoing it puts the body back where it started, which
+// at a walk is a quarter of a block short of the edge, and the whole
+// point is to be able to stand ON the edge.
+//
+// How close to the lip you end up is how finely that question is asked:
+// the sub-step is halved PHYS_EDGE_HALVINGS times before the move is
+// given up, so the gap left is the tick's move over eight -- under a
+// hundredth of a block at a sneak, which is less than the skin.
+#define PHYS_EDGE_PROBE    0.05  // how far below the feet "something to stand on" is
+#define PHYS_EDGE_HALVINGS 4
+
 // A body. Position is the CENTRE of the box in x and z and its BOTTOM
 // in y -- the feet -- because that is what the ground query, the
 // spawn point and the save format all want to talk about.
@@ -61,6 +83,13 @@ typedef struct {
     float  w, h;        // the box: w across in both x and z, h tall
     bool   on_ground;   // resting on something as of the last move
     bool   hit_x, hit_z, hit_head;  // what stopped it, for step-up and for sound later
+
+    // How high it walks up without jumping, and whether it refuses to
+    // leave the ground it is standing on. PHYS_STEP and false out of
+    // phys_body_init; the player changes both while sneaking, and
+    // nothing else touches them.
+    float  step_up;
+    bool   edge_stop;
 } phys_body_t;
 
 // Start a body at (x, y, z) with the player's dimensions.

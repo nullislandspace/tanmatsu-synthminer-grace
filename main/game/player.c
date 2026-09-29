@@ -23,6 +23,13 @@
 // 20 Hz), so the sound lands with the arm rather than beside it.
 #define SWING_TICKS 11
 
+// The eye above the feet AS OF THIS TICK -- lowered by the crouch
+// (player.h). The frame's version, which interpolates between two
+// ticks so the drop is a movement and not a cut, is player_crouch().
+static inline float player_eye_h(player_t const* p) {
+    return PHYS_PLAYER_EYE - PL_SNEAK_DROP * p->crouch;
+}
+
 void player_spawn(player_t* p, double x, double z, float yaw) {
     int const g = world_ground((int32_t)floor(x), (int32_t)floor(z));
     phys_body_init(&p->body, x, (double)(g > 0 ? g : CH_SEA_LEVEL), z);
@@ -33,6 +40,9 @@ void player_spawn(player_t* p, double x, double z, float yaw) {
     p->prev_z     = p->body.z;
     p->prev_yaw   = yaw;
     p->prev_pitch = 0.0f;
+    p->sneaking    = false;
+    p->crouch      = 0.0f;
+    p->prev_crouch = 0.0f;
     p->in_air_last = false;
     p->aim_valid   = false;
     p->mining      = false;
@@ -48,6 +58,12 @@ bool player_place(player_t* p, double x, double y, double z, float yaw, float pi
     p->body = probe;
     p->yaw        = yaw;
     p->pitch      = pitch;
+    // Put anywhere -- a respawn, a load, a bed -- and you are standing
+    // up. A toggle that survived being moved across the world would be
+    // one nobody remembers turning on.
+    p->sneaking    = false;
+    p->crouch      = 0.0f;
+    p->prev_crouch = 0.0f;
     p->prev_x     = x;
     p->prev_y     = y;
     p->prev_z     = z;
@@ -67,6 +83,9 @@ void player_reset(player_t* p) {
     p->mining     = false;
     p->mine_ticks = 0;
     p->hit_mob    = -1;
+    p->sneaking    = false;
+    p->crouch      = 0.0f;
+    p->prev_crouch = 0.0f;
     fishing_reset(&p->fish);
 
     // NOTHING. The starting kit is gone, the day a crafting table can
@@ -122,11 +141,12 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     // him still and let him fall.
     if (p->ui_open) p->mining = false;
     if (p->inv.open || p->ui_open) {
-        p->prev_x     = p->body.x;
-        p->prev_y     = p->body.y;
-        p->prev_z     = p->body.z;
-        p->prev_yaw   = p->yaw;
-        p->prev_pitch = p->pitch;
+        p->prev_x      = p->body.x;
+        p->prev_y      = p->body.y;
+        p->prev_z      = p->body.z;
+        p->prev_yaw    = p->yaw;
+        p->prev_pitch  = p->pitch;
+        p->prev_crouch = p->crouch;
 
         int const dx = (act_held(pressed, SM_RIGHT) || act_held(pressed, SM_LOOK_RIGHT) ? 1 : 0) -
                        (act_held(pressed, SM_LEFT) || act_held(pressed, SM_LOOK_LEFT) ? 1 : 0);
@@ -160,11 +180,12 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         return;
     }
 
-    p->prev_x     = p->body.x;
-    p->prev_y     = p->body.y;
-    p->prev_z     = p->body.z;
-    p->prev_yaw   = p->yaw;
-    p->prev_pitch = p->pitch;
+    p->prev_x      = p->body.x;
+    p->prev_y      = p->body.y;
+    p->prev_z      = p->body.z;
+    p->prev_yaw    = p->yaw;
+    p->prev_pitch  = p->pitch;
+    p->prev_crouch = p->crouch;
 
     // --- Looking ------------------------------------------------------
     float dyaw = 0.0f, dpitch = 0.0f;
@@ -182,6 +203,34 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     bool const in_water = block_liquid(world_block((int32_t)floor(p->body.x), (int32_t)floor(p->body.y + PL_WADE_Y),
                                                    (int32_t)floor(p->body.z)));
 
+    // --- Sneaking, which is a TOGGLE ----------------------------------
+    //
+    // One press, one change of state (player.h). Read from `pressed`,
+    // so holding the key does nothing after the first tick, and read
+    // here rather than above so the key does not toggle anything while
+    // the inventory or the crafting book has the screen.
+    if (act_held(pressed, SM_SNEAK)) p->sneaking = !p->sneaking;
+
+    // The crouch the camera and the figure are drawn at: a fixed step a
+    // tick, so it takes the same four ticks down and back up and the
+    // number in player.h is the number it takes. Advanced in the TICK,
+    // so a replay sees the same eye height and therefore the same ray.
+    if (p->sneaking) {
+        p->crouch += PL_CROUCH_RATE;
+        if (p->crouch > 1.0f) p->crouch = 1.0f;
+    } else {
+        p->crouch -= PL_CROUCH_RATE;
+        if (p->crouch < 0.0f) p->crouch = 0.0f;
+    }
+
+    // THE TWO RULES, handed to the body (game/physics.h). NOT IN THE
+    // WATER, where sneak already means dive and nothing else: there is
+    // no ledge to fall off in a lake, and swimming into the bank has to
+    // get you out of it.
+    bool const creeping = p->sneaking && !in_water;
+    p->body.step_up     = creeping ? 0.0f : PHYS_STEP;
+    p->body.edge_stop   = creeping;
+
     // --- Walking ------------------------------------------------------
     //
     // Flattened: forward is where the player is facing, not where they
@@ -189,7 +238,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     float const fwd = (act_held(mask, SM_FORWARD) ? 1.0f : 0.0f) - (act_held(mask, SM_BACK) ? 1.0f : 0.0f);
     float const str = (act_held(mask, SM_RIGHT) ? 1.0f : 0.0f) - (act_held(mask, SM_LEFT) ? 1.0f : 0.0f);
     // In water there is one speed: sneak means dive, not creep.
-    float const speed = in_water ? PL_SWIM : act_held(mask, SM_SNEAK) ? PL_SNEAK : PL_WALK;
+    float const speed = in_water ? PL_SWIM : p->sneaking ? PL_SNEAK : PL_WALK;
 
     float wish_x = 0.0f, wish_z = 0.0f;
     if (fwd != 0.0f || str != 0.0f) {
@@ -227,7 +276,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         // the water's drag turns into a steady rise (player.h). Jump
         // goes up, sneak goes down; let go and you sink slowly.
         if (act_held(mask, SM_JUMP)) p->body.vy += PL_SWIM_UP;
-        else if (act_held(mask, SM_SNEAK)) p->body.vy -= PL_SWIM_UP;
+        else if (p->sneaking) p->body.vy -= PL_SWIM_UP;
     } else if (act_held(mask, SM_JUMP) && p->body.on_ground) {
         p->body.vy = PL_JUMP;
     }
@@ -258,7 +307,10 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     }
 
     // --- What the crosshair is on ------------------------------------
-    double const ex = p->body.x, ey = p->body.y + (double)PHYS_PLAYER_EYE, ez = p->body.z;
+    // THE EYE, crouch and all: what you can reach is what you can see
+    // from, so the ray starts where the camera is and not where the
+    // camera would be standing up.
+    double const ex = p->body.x, ey = p->body.y + (double)player_eye_h(p), ez = p->body.z;
     float        dx, dy, dz;
     ray_forward(p->yaw, p->pitch, &dx, &dy, &dz);
     // Anything that can be pointed at, not only solids: torches, flowers
@@ -522,7 +574,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         inv_slot_t* s = inv_held(&p->inv);
         if (s->item != 0) {
             double const ox = p->body.x + (double)(dx * 0.4f);
-            double const oy = p->body.y + (double)PHYS_PLAYER_EYE - 0.3;
+            double const oy = p->body.y + (double)player_eye_h(p) - 0.3;
             double const oz = p->body.z + (double)(dz * 0.4f);
             if (item_entity_throw(ox, oy, oz, s->item, 1, s->wear, dx * 0.22f, 0.12f, dz * 0.22f, ITEM_THROW_DELAY) >
                 0) {
@@ -535,12 +587,20 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     if (item_entity_tick(&p->inv, p->body.x, p->body.y, p->body.z) > 0) sfx_play(SFX_PICKUP);
 }
 
+float player_crouch(player_t const* p, float alpha) {
+    if (alpha < 0.0f) alpha = 0.0f;
+    if (alpha > 1.0f) alpha = 1.0f;
+    return p->prev_crouch + (p->crouch - p->prev_crouch) * alpha;
+}
+
 void player_eye(player_t const* p, float alpha, double* x, double* y, double* z, float* yaw, float* pitch) {
     if (alpha < 0.0f) alpha = 0.0f;
     if (alpha > 1.0f) alpha = 1.0f;
     double const a = (double)alpha;
+    float const  c = player_crouch(p, alpha);
     if (x != NULL) *x = p->prev_x + (p->body.x - p->prev_x) * a;
-    if (y != NULL) *y = p->prev_y + (p->body.y - p->prev_y) * a + (double)PHYS_PLAYER_EYE;
+    if (y != NULL)
+        *y = p->prev_y + (p->body.y - p->prev_y) * a + (double)PHYS_PLAYER_EYE - (double)(PL_SNEAK_DROP * c);
     if (z != NULL) *z = p->prev_z + (p->body.z - p->prev_z) * a;
     // The view angles interpolate too, or turning is visibly steppy at
     // 20 Hz however smooth the position is.

@@ -24,6 +24,8 @@ void phys_body_init(phys_body_t* b, double x, double y, double z) {
     b->h         = PHYS_PLAYER_H;
     b->on_ground = false;
     b->hit_x = b->hit_z = b->hit_head = false;
+    b->step_up   = PHYS_STEP;
+    b->edge_stop = false;
 }
 
 // Is anything solid inside the box lo..hi?
@@ -112,6 +114,16 @@ bool phys_fits(phys_body_t const* b, double x, double y, double z) {
     return !body_overlaps(b, x, y, z);
 }
 
+// IS THERE ANYTHING TO STAND ON under the box at (x, y, z)?
+//
+// The same box, dropped PHYS_EDGE_PROBE. Everything it covered before
+// it is known not to be solid -- the body is standing there -- so the
+// only cells this can find are the ones under the feet, which is
+// exactly the question. (phys_settle asks it the same way.)
+static bool supported(phys_body_t const* b, double x, double y, double z) {
+    return body_overlaps(b, x, y - PHYS_EDGE_PROBE, z);
+}
+
 // One axis, one sub-step. Returns true if it moved the whole way.
 //
 // On a block, the body is placed against the face rather than left
@@ -153,12 +165,40 @@ static bool step_axis(phys_body_t* b, int axis, double d) {
 }
 
 // A whole axis, cut into sub-steps so nothing is crossed untested.
-static bool move_axis(phys_body_t* b, int axis, double d) {
+//
+// `edge` is the sneaking body's rule (physics.h): before each sub-step,
+// ask whether the place it would land on is still over something solid,
+// and halve the step until it is or until there is nothing left to
+// halve. Horizontal only -- a body that may not walk off a ledge may
+// still fall, be pushed, or jump off it.
+static bool move_axis(phys_body_t* b, int axis, double d, bool edge) {
     bool whole = true;
     while (d != 0.0) {
         double step = d;
         if (step > PHYS_SUBSTEP) step = PHYS_SUBSTEP;
         if (step < -PHYS_SUBSTEP) step = -PHYS_SUBSTEP;
+
+        if (edge && axis != 1) {
+            double t = step;
+            int    i = 0;
+            for (; i < PHYS_EDGE_HALVINGS; i++) {
+                if (supported(b, b->x + (axis == 0 ? t : 0.0), b->y, b->z + (axis == 2 ? t : 0.0))) break;
+                t *= 0.5;
+            }
+            if (i == PHYS_EDGE_HALVINGS) {
+                // Nothing under any of it: stop at the lip, and report
+                // it the way a wall is reported so the caller drops the
+                // velocity it cannot use.
+                if (axis == 0) b->hit_x = true;
+                else b->hit_z = true;
+                return false;
+            }
+            if (t != step) {
+                step = t;  // up to the edge, and no further this tick
+                d    = t;
+            }
+        }
+
         if (!step_axis(b, axis, step)) return false;  // stopped; the rest of d is gone
         d -= step;
         // Guard against a step so small the subtraction does not change
@@ -176,18 +216,22 @@ void phys_move(phys_body_t* b, double dx, double dy, double dz) {
     // Vertical first, so `on_ground` is true before the horizontal move
     // asks whether it may step up. A body that has just walked off a
     // ledge should not get a free step in mid-air.
-    move_axis(b, 1, dy);
+    move_axis(b, 1, dy, false);
 
     if (dx == 0.0 && dz == 0.0) return;
 
     // Remember where we were, in case the step-up has to be undone.
     double const ox = b->x, oy = b->y, oz = b->z;
     bool const   was_on_ground = b->on_ground;
+    // The ledge rule only applies to a body that HAS ground to leave.
+    bool const   edge = b->edge_stop && was_on_ground;
 
-    move_axis(b, 0, dx);
-    move_axis(b, 2, dz);
+    move_axis(b, 0, dx, edge);
+    move_axis(b, 2, dz, edge);
 
     if (!(b->hit_x || b->hit_z) || !was_on_ground) return;
+    // A body that climbs nothing (a sneaking player) never tries.
+    if (b->step_up <= 0.0f) return;
 
     // Blocked at foot level while standing on something: try the same
     // move from a step higher. Only keep it if the body can then settle
@@ -205,7 +249,7 @@ void phys_move(phys_body_t* b, double dx, double dy, double dz) {
     b->z = oz;
     b->hit_x = b->hit_z = false;
 
-    if (!move_axis(b, 1, (double)PHYS_STEP)) {
+    if (!move_axis(b, 1, (double)b->step_up, false)) {
         // No headroom to lift into: keep the blocked result.
         b->x = blocked_x;
         b->y = blocked_y;
@@ -214,14 +258,14 @@ void phys_move(phys_body_t* b, double dx, double dy, double dz) {
         b->hit_z = blocked_hit_z;
         return;
     }
-    move_axis(b, 0, dx);
-    move_axis(b, 2, dz);
+    move_axis(b, 0, dx, edge);
+    move_axis(b, 2, dz, edge);
 
     // Settle back down onto the step. Not more than we lifted, or a
     // body could gain height by walking at a wall.
     double const lifted = b->y - oy;
     b->on_ground        = false;
-    move_axis(b, 1, -lifted);
+    move_axis(b, 1, -lifted, false);
 
     bool const gained = (b->x != ox || b->z != oz);
     if (!gained || !b->on_ground) {

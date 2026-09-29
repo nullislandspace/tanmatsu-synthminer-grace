@@ -33,6 +33,35 @@
 #define PL_SNEAK 0.065f
 #define PL_ACCEL 0.35f  // share of the gap to target speed closed per tick
 
+// SNEAKING IS A TOGGLE (the user), not a key held down. This is a
+// handheld: the sneak key is a shoulder button under a thumb that is
+// also steering, and the one thing you do while sneaking -- walk
+// backwards to a lip and lay a block under your own feet -- takes both
+// thumbs and several seconds. Holding a third button through that is
+// the sort of thing a keyboard and a mouse let you get away with and a
+// badge does not.
+//
+// The cost of a toggle is forgetting it is on, so it has to SHOW: the
+// camera drops, Fred crouches, and the HUD says the word. All three,
+// because in first person there is no Fred, and a camera that dropped
+// half a second ago is not a state anybody can read.
+//
+// What it does, both of them Minecraft's (game/physics.h):
+//   -- you climb nothing without jumping (step_up = 0)
+//   -- you cannot walk off a ledge (edge_stop)
+//
+// 0.30 blocks of drop, which is four times Minecraft's 0.08. Theirs
+// sits under a 1080p monitor a foot from your face; this is a 4.3-inch
+// screen at arm's length, upscaled from half resolution, and 0.08 of a
+// block is not a movement on it -- it is a pixel and a half.
+#define PL_SNEAK_DROP 0.30f   // how far the eye falls, in blocks
+#define PL_CROUCH_RATE 0.25f  // of the way per tick: four ticks, a fifth of a second
+
+// And the bound on it: the crouched eye stays in the head rather than
+// in the boots. A drop big enough to put the camera below the middle of
+// the body puts it inside whatever the player is standing beside.
+_Static_assert(PHYS_PLAYER_EYE - PL_SNEAK_DROP > PHYS_PLAYER_H * 0.5f, "the crouch drops the camera too far");
+
 // The jump arc. These three are chosen together, by simulating the arc
 // rather than by feel, because what matters is a number you can state:
 //
@@ -88,6 +117,14 @@
 typedef struct {
     phys_body_t body;
     float       yaw, pitch;
+
+    // SNEAKING: the toggle, and how far into the crouch the figure and
+    // the camera are (0 standing .. 1 down). The blend is advanced in
+    // the tick and interpolated for the frame, like the position --
+    // which also makes it replay-safe, since the eye the ray is cast
+    // from depends on it.
+    bool        sneaking;
+    float       crouch, prev_crouch;
     inventory_t inv;
     int         health, hunger;
 
@@ -197,5 +234,10 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed);
 
 
 // The eye for the frame being drawn. `alpha` is how far through the
-// current tick it is, 0..1.
+// current tick it is, 0..1. The crouch is IN the y it returns.
 void player_eye(player_t const* p, float alpha, double* x, double* y, double* z, float* yaw, float* pitch);
+
+// How far into the crouch, 0..1, for the frame being drawn. Anyone who
+// needs the FEET back out of player_eye's y wants
+// `y - PHYS_PLAYER_EYE + PL_SNEAK_DROP * player_crouch(...)`.
+float player_crouch(player_t const* p, float alpha);

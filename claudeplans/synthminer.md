@@ -6061,6 +6061,60 @@ types the code:
   depth is measured upwards from whatever floor is under the cell
   ahead. There is no sea level in this game.
 
+- **D-130** 2026-09-29, **the user**: **sneak is a toggle, it shows,
+  and it does what Minecraft's does.**
+
+  *"Sneak should be a toggle instead of holding the button down. There
+  should also be a visible indicator that sneak is active (character
+  crouches, camera lowers). And sneak should act like in minecraft,
+  e.g. while sneaking you don't climb (unless jumping) and you don't
+  fall off a ledge so you can build out by walking backwards and
+  placing blocks."*
+
+  Three things in one message, and the third is the one that makes the
+  first two necessary. **Building outwards over a drop** -- walk
+  backwards to the lip, stop dead, place the next block under your own
+  feet -- takes both thumbs and several seconds. Holding a third button
+  through that is something a keyboard and a mouse let you get away
+  with and a badge does not.
+
+  The rules live on the BODY, not on the player (`phys_body_t.step_up`,
+  `.edge_stop`), because they are statements about a box moving through
+  blocks and physics.c has never known what a player is. `step_up = 0`
+  is the whole of "you do not climb"; the jump is untouched, which is
+  the user's "unless jumping" for free. `edge_stop` is asked BEFORE
+  each sub-step rather than undone afterwards -- undoing it puts the
+  body back where the tick started, a quarter of a block short of the
+  lip, and standing ON the lip is the entire point. The sub-step is
+  halved four times before the move is given up, so what is left is the
+  tick's move over eight: under a hundredth of a block, less than the
+  collision skin.
+
+  **And the rule is that SOMETHING is under the box, not all of it.**
+  A sneaking player walks out until only the trailing edge of their
+  0.6-wide box is over solid ground -- measured, 12.294 against a lip
+  at 12.0 -- which is what puts the cell under their own feet inside
+  reach. A stricter rule would be safer and would make the feature
+  useless.
+
+  **The indicator is all three of them**, because each one is blind
+  somewhere: there is no Fred in first person, the camera's drop is a
+  movement nobody can read a minute later, and the HUD word is the only
+  part that answers "is it still on". The word is `action.sneak`,
+  already translated 32 ways because it is what the key is called on
+  the controls screen.
+
+  The drop is **0.30 blocks, four times Minecraft's 0.08**. Theirs sits
+  under a monitor a foot from your face; this is a 4.3-inch screen at
+  arm's length, upscaled from half resolution, where 0.08 of a block is
+  a pixel and a half. Fred's crouch is built to arrive at the same
+  height to within a hundredth of a block, so first and third person
+  agree about where the player is looking from -- and it is his TORSO
+  that crouches, sliding down and tipping forward over legs that stay
+  planted, because his legs are one rigid piece and lowering the hips
+  puts his boots through the floor. That is Minecraft's cheat too. His
+  head rides it without tipping with it.
+
 - **D-121** 2026-09-29, **the user**: **animals are generated with the
   land.** A herd or two is placed when a chunk is first generated, in
   the biomes that suit it, and after that only breeding makes more.

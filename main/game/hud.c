@@ -445,6 +445,22 @@ void hud_player(pax_buf_t* fb, player_t const* p) {
         bool const full = p->hunger >= (i + 1) * 2;
         drumstick(fb, x0 + total - 11 - i * 12, row_y, full ? 0xFFC08030u : 0xFF404040u);
     }
+
+    // SNEAKING IS A TOGGLE (game/player.h), and the thing a toggle has
+    // to do that a held key never has to is say it is still on. The
+    // camera is down and Fred is crouched, but neither of those is
+    // visible in first person a minute later -- this is.
+    //
+    // Said in the player's language: the word is already there, because
+    // it is what the key is called on the controls screen.
+    if (p->sneaking) {
+        char const* const word = T(SM_STR_ACTION_SNEAK);
+        if (word != NULL && word[0] != '\0') {
+            float const y = (float)(row_y - 19);
+            rendertext_draw(fb, 0xFF000000u, NULL, 16.0f, (float)x0 + 1.5f, y + 1.5f, word);
+            rendertext_draw(fb, 0xFF90C8FFu, NULL, 16.0f, (float)x0, y, word);
+        }
+    }
 }
 
 // The Tab screen: the same slots the hotbar draws, in the grid they

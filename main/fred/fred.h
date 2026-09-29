@@ -50,7 +50,28 @@ typedef struct {
     float       head_pitch;  // radians, + looking down (the camera's convention)
     fred_hold_t hold;
     bool        left_handed;  // which hand holds the tool (a Graphics setting)
+    float       crouch;       // 0 standing .. 1 sneaking (game/player.h)
 } fred_pose_t;
+
+// THE CROUCH, and it is the torso that does it, not the legs.
+//
+// His legs are one rigid piece hanging from the hip: lower the hips and
+// his boots go through the floor. So the LEGS STAY PLANTED and the
+// torso -- with the arms, what they hold and the head on it -- drops
+// and tips forward over them. That is Minecraft's cheat too, and it
+// works for the same reason: the torso mesh is wide enough at the waist
+// that the join never shows.
+//
+// The two numbers are one number. The camera drops PL_SNEAK_DROP (0.30
+// blocks) and his head has to arrive in the same place, or third person
+// and first person disagree about where the player is looking from.
+// Leaning by FRED_CROUCH_LEAN already drops a head sitting FRED_BODY_H
+// above the pivot by BODY_H * (1 - cos lean) = 0.085; the rest is the
+// slide, and the lot is divided by FRED_SCALE to get model units:
+//
+//   0.30 / 0.9 = 0.333 down in all -> 0.333 - 0.085 = 0.248 of slide.
+#define FRED_CROUCH_LEAN 0.5f   // radians the torso tips forward
+#define FRED_CROUCH_DROP 0.25f  // model units the torso slides down
 
 // Build the meshes and look up the materials. After chunk_render_init()
 // (a block in his hand borrows the world's textures).

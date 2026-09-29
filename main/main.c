@@ -2433,8 +2433,13 @@ static void on_render(pax_buf_t* fb, void* user) {
             double px, py, pz;
             float  pyaw, ppitch;
             player_eye(&s_player, tick_alpha(&s_tick), &px, &py, &pz, &pyaw, &ppitch);
+            // player_eye's y is the EYE and the crouch is already in
+            // it; his feet are that much further back up, or a
+            // sneaking Fred sinks into the ground (game/player.h).
+            float const crouch = player_crouch(&s_player, tick_alpha(&s_tick));
+            double const feet = py - (double)PHYS_PLAYER_EYE + (double)(PL_SNEAK_DROP * crouch);
             float rfx, rfy, rfz;
-            chunk_render_rel(ox, oz, px, py - (double)PHYS_PLAYER_EYE, pz, &rfx, &rfy, &rfz);
+            chunk_render_rel(ox, oz, px, feet, pz, &rfx, &rfy, &rfz);
             xform_t const     root = {mat3_rot_y(pyaw), v3(rfx, rfy, rfz), 1.0f};
             fred_pose_t const pose = {
                 .walk        = s_walk,
@@ -2442,7 +2447,8 @@ static void on_render(pax_buf_t* fb, void* user) {
                 .swing       = swing,
                 .head_pitch  = ppitch,
                 .hold        = hold,
-                .left_handed = left_handed()};
+                .left_handed = left_handed(),
+                .crouch      = crouch};
             fred_submit(&root, &pose,
                         world_light((int32_t)floor(px), (int32_t)floor(py - 0.6), (int32_t)floor(pz)));
         } else {

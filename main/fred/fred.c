@@ -265,12 +265,20 @@ void fred_submit(xform_t const* root, fred_pose_t const* p, uint8_t light) {
     float const   bob    = 0.04f * p->stride * fabsf(sinf(p->walk));
     xform_t const hips   = joint(&scaled, v3(0.0f, FRED_LEG_H + bob, 0.0f), ident());
 
-    // Legs: the right one (on -x) forward when sin(walk) > 0.
+    // Legs: the right one (on -x) forward when sin(walk) > 0. FROM THE
+    // HIPS, which the crouch does not move -- see fred.h.
     xform_t const leg_r = joint(&hips, v3(-FRED_HIP_X, 0.0f, 0.0f), mat3_rot_x(-leg));
     xform_t const leg_l = joint(&hips, v3(FRED_HIP_X, 0.0f, 0.0f), mat3_rot_x(leg));
     mesh_submit(&s_leg, &leg_r, mats, FM_COUNT);
     mesh_submit(&s_leg, &leg_l, mats, FM_COUNT);
-    mesh_submit(&s_body, &hips, mats, FM_COUNT);
+
+    // Everything above the waist hangs off the TORSO, which is the hips
+    // until he crouches and then slides down and tips forward over
+    // them.
+    float const   crouch = p->crouch < 0.0f ? 0.0f : p->crouch > 1.0f ? 1.0f : p->crouch;
+    xform_t const torso  = joint(&hips, v3(0.0f, -FRED_CROUCH_DROP * crouch, 0.0f),
+                                 mat3_rot_x(FRED_CROUCH_LEAN * crouch));
+    mesh_submit(&s_body, &torso, mats, FM_COUNT);
 
     // Arms swing against the legs; the tool arm also lifts the tool (a
     // turn about x of -angle swings the hand forward and up).
@@ -285,15 +293,21 @@ void fred_submit(xform_t const* root, fred_pose_t const* p, uint8_t light) {
     float const   raise  = p->hold.kind != FRED_HOLD_NONE ? 0.35f + 1.9f * p->swing : 1.2f * p->swing;
     float const   arm_sw = 0.45f * p->stride * sinf(p->walk);
     vec3_t const  sh_y   = v3(0.0f, FRED_BODY_H - 0.06f, 0.0f);
-    xform_t const arm_t  = joint(&hips, v3_add(sh_y, v3(side * FRED_SHOULDER_X, 0, 0)), mat3_rot_x(arm_sw - raise));
-    xform_t const arm_o  = joint(&hips, v3_add(sh_y, v3(-side * FRED_SHOULDER_X, 0, 0)), mat3_rot_x(-arm_sw));
+    xform_t const arm_t  = joint(&torso, v3_add(sh_y, v3(side * FRED_SHOULDER_X, 0, 0)), mat3_rot_x(arm_sw - raise));
+    xform_t const arm_o  = joint(&torso, v3_add(sh_y, v3(-side * FRED_SHOULDER_X, 0, 0)), mat3_rot_x(-arm_sw));
     mesh_submit(&s_arm, &arm_t, mats, FM_COUNT);
     mesh_submit(&s_arm, &arm_o, mats, FM_COUNT);
     submit_held(&arm_t, &p->hold, mats, light);
 
-    mat3_t const  yaw   = mat3_rot_y(p->head_yaw);
-    mat3_t const  pitch = mat3_rot_x(p->head_pitch);
-    xform_t const head  = joint(&hips, v3(0.0f, FRED_BODY_H, 0.0f), mat3_mul(&yaw, &pitch));
+    // The head RIDES the torso but does not tip with it: crouching
+    // moves it down and forward, and it goes on looking wherever the
+    // player is looking. So the torso's lean is taken back out of its
+    // own rotation, which leaves the pitch the camera has.
+    mat3_t const  yaw    = mat3_rot_y(p->head_yaw);
+    mat3_t const  pitch  = mat3_rot_x(p->head_pitch);
+    mat3_t const  look   = mat3_mul(&yaw, &pitch);
+    mat3_t const  unlean = mat3_rot_x(-FRED_CROUCH_LEAN * crouch);
+    xform_t const head   = joint(&torso, v3(0.0f, FRED_BODY_H, 0.0f), mat3_mul(&unlean, &look));
     mesh_submit(&s_head, &head, mats, FM_COUNT);
 }
 

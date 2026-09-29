@@ -222,7 +222,7 @@ The camera is the player unless you press **F**. The defaults:
 | `W` `A` `S` `D` | walk |
 | cursor keys | look |
 | `Space` | jump |
-| `L-Shift` | sneak |
+| `L-Shift` | **toggle** sneak: no climbing, no walking off a ledge, and a slow walk |
 | `Q` | **hold** to break the block under the crosshair |
 | `E` | place the selected one |
 | `G` | drop what you are holding |

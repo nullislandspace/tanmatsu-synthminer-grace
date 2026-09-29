@@ -4397,6 +4397,100 @@ static void check_physics(void) {
 }
 
 // A brute-force march, fine enough that it cannot miss a block: the
+// SNEAKING: the two rules a body can be given (game/physics.h), which
+// are the player's for as long as the toggle is on (game/player.h).
+//
+// Both of them are rules about what does NOT happen, which is the kind
+// that rots quietly: nobody notices that a sneak stopped holding the
+// edge until they walk off a tower they were building.
+static void check_sneak(void) {
+    printf("sneaking\n");
+    CHECK(flat_world(8) != NULL, "the test world would not become resident");
+
+    // A cliff. Everything from x = 12 east is cut away to the bedrock,
+    // so the lip of the floor is the plane x = 12 and the drop is the
+    // whole eight blocks.
+    for (int32_t x = 12; x <= 31; x++) {
+        for (int32_t z = 0; z <= 15; z++) {
+            for (int32_t y = 0; y <= 7; y++) set_block(x, y, z, BLK_AIR, 0);
+        }
+    }
+
+    phys_body_t b;
+
+    // Walking off it, which is what everyone does by accident and what
+    // the rule is FOR.
+    phys_body_init(&b, 8.5, 8.0, 8.5);
+    for (int i = 0; i < 60; i++) phys_move(&b, 0.2, -0.3, 0.0);
+    CHECK(b.y < 4.0, "a walking body did not fall off a cliff (y %g)", b.y);
+
+    // ... and not walking off it.
+    phys_body_init(&b, 8.5, 8.0, 8.5);
+    b.edge_stop = true;
+    b.step_up   = 0.0f;
+    for (int i = 0; i < 200; i++) phys_move(&b, (double)PL_SNEAK, -0.3, 0.0);
+    printf("  sneaking, stopped at x = %.3f with the lip at 12 and a %.1f-wide box\n", b.x, (double)b.w);
+    CHECK(b.y > 7.99 && b.y < 8.01 && b.on_ground, "a sneaking body left the ground (y %g)", b.y);
+    // HANGING OVER THE EDGE IS THE POINT. The rule is that SOMETHING is
+    // under the box, not all of it -- so the far half may be out over
+    // the drop, which is what puts the cell under your own feet within
+    // reach and makes building outwards possible at all.
+    CHECK(b.x > 12.0, "a sneaking body stopped %.2f blocks short of the lip (x %g)", 12.0 - b.x, b.x);
+    CHECK(b.x < 12.30, "a sneaking body walked past the last supported point (x %g)", b.x);
+
+    // It still SLIDES along the lip. The rule is asked per axis, so
+    // walking into the drop at an angle walks you ALONG it rather than
+    // gluing you to the spot -- which is the difference between an edge
+    // and a corner you are stuck in.
+    double const z0 = b.z;
+    for (int i = 0; i < 40; i++) phys_move(&b, (double)PL_SNEAK, -0.3, (double)PL_SNEAK);
+    printf("  and slid along it from z %.2f to z %.2f\n", z0, b.z);
+    CHECK(b.z > z0 + 1.0, "a sneaking body could not slide along the lip (z %g -> %g)", z0, b.z);
+    CHECK(b.y > 7.99, "sliding along the lip dropped the body (y %g)", b.y);
+
+    // The rule holds a body that is STANDING on something. One already
+    // in the air -- jumping off, falling, shoved by another animal --
+    // is not held by it, or a leap off a tower would stop dead in
+    // mid-air over the edge.
+    phys_body_init(&b, 11.9, 12.0, 8.5);
+    b.edge_stop = true;
+    for (int i = 0; i < 20; i++) phys_move(&b, 0.2, -0.2, 0.0);
+    CHECK(b.x > 12.5, "a body in the air was held back by the ledge rule (x %g)", b.x);
+
+    // NO CLIMBING. The one-block step that a walk goes straight up
+    // (PHYS_STEP, check_physics) has to stop a sneak dead.
+    CHECK(flat_world(8) != NULL, "the test world would not rebuild");
+    for (int32_t x = 11; x <= 24; x++) {
+        for (int32_t z = 6; z <= 10; z++) set_block(x, 8, z, BLK_STONE, 0);
+    }
+    phys_body_init(&b, 8.5, 8.0, 8.5);
+    b.edge_stop = true;
+    b.step_up   = 0.0f;
+    for (int i = 0; i < 60; i++) phys_move(&b, 0.2, -0.1, 0.0);
+    printf("  sneaking at a 1-block step: x %.2f, y %.2f\n", b.x, b.y);
+    CHECK(b.y > 7.99 && b.y < 8.01, "a sneaking body climbed a 1-block step (y %g)", b.y);
+    CHECK(b.x > 10.6 && b.x < 10.71, "a sneaking body stopped at x %g, expected 10.70 against the step", b.x);
+
+    // ... UNLESS JUMPING (the user's rule). The escape hatch matters as
+    // much as the rule: a sneak you cannot get out of an alcove in is a
+    // trap, not a mode.
+    phys_body_init(&b, 8.5, 8.0, 8.5);
+    b.edge_stop = true;
+    b.step_up   = 0.0f;
+    bool jumped = false;
+    for (int i = 0; i < 60; i++) {
+        if (b.on_ground && !jumped && b.x > 10.0) {
+            b.vy   = PL_JUMP;  // as player_tick does on the ground
+            jumped = true;
+        }
+        phys_move(&b, 0.2, (double)b.vy, 0.0);
+        phys_gravity(&b, PL_GRAVITY, PL_DRAG, PL_TERMINAL);
+    }
+    printf("  and jumping at it from a sneak landed at x %.2f, y %.2f\n", b.x, b.y);
+    CHECK(jumped, "the test never jumped");
+    CHECK(b.y > 8.99 && b.y < 9.01, "a sneaking body could not jump onto a 1-block step (y %g)", b.y);
+}
+
 // reference the DDA has to agree with.
 static bool brute_pick(double ox, double oy, double oz, float dx, float dy, float dz, float max, int32_t* bx,
                        int32_t* by, int32_t* bz) {
@@ -7283,6 +7377,7 @@ int main(void) {
         return 1;
     }
     check_physics();
+    check_sneak();
     check_raycast();
     check_stacked();
     check_felling();
