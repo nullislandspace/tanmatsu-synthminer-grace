@@ -111,6 +111,11 @@ int mob_damage_of(uint16_t item) {
 
 static mob_t    s_pool[MOB_MAX];
 static int      s_live;
+// HOW MANY ANIMALS WERE TURNED AWAY because the pool was full. Zero in
+// normal play, and the number that would have made F-125 obvious on the
+// first boot instead of after an afternoon's walking: a full pool stops
+// the world QUIETLY, and quiet is the problem.
+static uint32_t s_refused;
 // Ids are handed out in order and never reused while a world is open:
 // they are what a creature's own randomness is seeded from, so two
 // animals standing in the same place still behave differently.
@@ -120,6 +125,7 @@ void mob_reset(void) {
     memset(s_pool, 0, sizeof s_pool);
     s_live    = 0;
     s_next_id = 1;
+    s_refused = 0;
 }
 
 int mob_live(void) {
@@ -192,11 +198,45 @@ static uint32_t roll(mob_t const* m, uint32_t now, uint32_t salt) {
 #define MOB_DRAG       0.98f
 #define MOB_TERMINAL   1.5f
 #define MOB_JUMP       0.30f
-#define MOB_SWIM_UP    0.025f
 
+// IN WATER THEY FLOAT, and these are the player's own numbers (D-86,
+// player.h): buoyancy cancels almost all of gravity and the water kills
+// a fall in well under a second. Without them an animal that wandered
+// into a lake SANK -- it had a swim stroke but full gravity under it,
+// so the stroke was 0.025 against 0.04 and the net was down. What that
+// looked like from the shore was animals standing on the sea bed, which
+// read as animals SPAWNING in the ocean (F-125).
+#define MOB_WATER_GRAV 0.008f
+#define MOB_WATER_DRAG 0.80f
+#define MOB_WATER_TERM 0.50f
+// The stroke, which is what keeps a floating animal at the surface
+// rather than drifting down through it.
+#define MOB_SWIM_UP    0.020f
+// ... and the harder one, for climbing out at a bank.
+#define MOB_SWIM_CLIMB 0.16f
+
+// IS IT IN THE WATER -- asked at the FEET, not at the middle.
+//
+// The middle is what the player uses (PL_WADE_Y), because the question
+// there is "am I wading or swimming". For an animal the question is
+// "is the water holding me up", and a floating body rides with its
+// middle ABOVE the surface: testing there said dry, which switched the
+// buoyancy and the swim-for-the-shore steering off at exactly the
+// moment they were doing their job, and left a cow bobbing in the
+// middle of a lake turning in circles.
+// A floating body rides with its FEET AT THE SURFACE -- buoyancy lifts
+// it until they leave the water and gravity drops them back -- so the
+// cell the feet are in reads air about as often as it reads water. Two
+// samples, a little above the feet and a little below, and either one
+// counts: without the lower one a floating animal flickers between
+// swimming and not, which turns off its buoyancy and its steering every
+// other tick and leaves it turning in circles in the middle of a lake.
+#define MOB_WET_UP   0.25
+#define MOB_WET_DOWN 0.15
 static bool in_water(mob_t const* m) {
-    return block_liquid(world_block((int32_t)floor(m->body.x), (int32_t)floor(m->body.y + (double)m->body.h * 0.5),
-                                    (int32_t)floor(m->body.z)));
+    int32_t const x = (int32_t)floor(m->body.x), z = (int32_t)floor(m->body.z);
+    if (block_liquid(world_block(x, (int32_t)floor(m->body.y + MOB_WET_UP), z))) return true;
+    return block_liquid(world_block(x, (int32_t)floor(m->body.y - MOB_WET_DOWN), z));
 }
 
 // IS THE THING IN FRONT A FENCE? A creature hops over a one-block step
@@ -243,17 +283,46 @@ static bool fence_ahead(mob_t const* m) {
     return false;
 }
 
-// Is the cell ahead a drop the creature should not walk off? Two below
-// and still nothing is a cliff; one is a step.
-static bool cliff_ahead(mob_t const* m, float dx, float dz) {
+// IS THE WAY AHEAD SOMEWHERE THIS CREATURE SHOULD NOT GO -- a drop it
+// would not survive the walk down, or water it would have to swim?
+//
+// WATER IS NOT AT ONE HEIGHT. There is no sea level in this game: a
+// pond is wherever the ground dips, a player can pour a bucket out on a
+// hilltop, and a stream flows down a slope (the user, on being shown a
+// rule that assumed otherwise). So this finds the FLOOR of the cell
+// ahead -- wherever that is -- and measures the water standing on it.
+//
+// One block of water is waded: a stream, a rice paddy, the edge of a
+// lake. Two is a swim, and an animal that swims is an animal drifting
+// away from where its owner left it.
+//
+// Testing the cell at the animal's own foot level was not enough and
+// was wrong twice over: an animal on a BANK has air at its feet and a
+// pond below, and an animal at a shore has the lake bed below it, which
+// says nothing about how deep the water over it is.
+#define MOB_WADE_DEPTH 1  // cells of water it will walk through
+
+static bool hazard_ahead(mob_t const* m, float dx, float dz) {
     int32_t const x = (int32_t)floor(m->body.x + (double)dx * 0.7);
     int32_t const z = (int32_t)floor(m->body.z + (double)dz * 0.7);
     int32_t const y = (int32_t)floor(m->body.y);
-    for (int d = 1; d <= 3; d++) {
-        uint8_t const b = world_block(x, y - d, z);
-        if (block_solid(b) || block_liquid(b)) return false;
+
+    // Down from its own level for something to stand on. A step up is
+    // the caller's business (the body hops); this is about going DOWN.
+    for (int d = 0; d <= 3; d++) {
+        int32_t const fy = y - d;
+        uint8_t const b  = world_block(x, fy, z);
+        if (!block_solid(b)) continue;
+
+        // The floor. How much water is standing on it?
+        int depth = 0;
+        for (int u = 1; u <= MOB_WADE_DEPTH + 1; u++) {
+            if (!block_liquid(world_block(x, fy + u, z))) break;
+            depth++;
+        }
+        return depth > MOB_WADE_DEPTH;
     }
-    return true;
+    return true;  // nothing within three: a cliff
 }
 
 // --- One creature's tick -------------------------------------------------
@@ -323,6 +392,50 @@ static void shove(phys_body_t* a, phys_body_t* b, float a_share, float b_share, 
     double const ux = dx / d, uz = dz / d;
     if (a_share > 0.0f) phys_move(a, ux * push * (double)a_share, 0.0, uz * push * (double)a_share);
     if (b_share > 0.0f) phys_move(b, -ux * push * (double)b_share, 0.0, -uz * push * (double)b_share);
+}
+
+// WHICH WAY IS THE SHORE? The yaw towards the nearest cell an animal
+// could stand on, or a negative number if there is none within reach.
+//
+// This is what makes the rule above SAFE RATHER THAN BRITTLE. Refusing
+// to walk into water stops an animal choosing to swim; it does not stop
+// one being shoved off a bank by another, hopping a fence into a moat,
+// being poured on by a player with a bucket, or standing where a lake
+// already is because an older build let it. Something has to get them
+// out again, and it is this.
+//
+// Eight directions, six blocks: 48 lookups, and only for a creature
+// that is actually in water, which is a handful at most.
+static float shore_dir(mob_t const* m) {
+    int32_t const y = (int32_t)floor(m->body.y);
+    float         best_yaw = -1.0f;
+    int           best_d = 99;
+
+    for (int a = 0; a < 8; a++) {
+        float const yaw = (float)a * 0.785398f;  // an eighth of a turn
+        float const sx = sinf(yaw), sz = cosf(yaw);
+        for (int d = 1; d <= 6 && d < best_d; d++) {
+            int32_t const x = (int32_t)floor(m->body.x + (double)sx * (double)d);
+            int32_t const z = (int32_t)floor(m->body.z + (double)sz * (double)d);
+            // Land is a floor within a step of the surface with no more
+            // than a wade of water on it.
+            for (int u = 1; u >= -2; u--) {
+                uint8_t const b = world_block(x, y + u, z);
+                if (!block_solid(b)) continue;
+                int depth = 0;
+                for (int w = 1; w <= MOB_WADE_DEPTH + 1; w++) {
+                    if (!block_liquid(world_block(x, y + u + w, z))) break;
+                    depth++;
+                }
+                if (depth <= MOB_WADE_DEPTH) {
+                    best_d   = d;
+                    best_yaw = yaw;
+                }
+                break;
+            }
+        }
+    }
+    return best_yaw;
 }
 
 // The player, as far as an animal is concerned.
@@ -461,8 +574,23 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         // --- Moving ---------------------------------------------------
         float speed = 0.0f;
         float yaw   = m->yaw;
+
+        // IN THE WATER AND NOT MEANING TO BE: swim for the shore. See
+        // shore_dir -- the rule that keeps them out is about choosing,
+        // and plenty of things put an animal in a lake without it
+        // choosing anything.
+        bool const swimming = in_water(m);
+        if (swimming && m->intent != MOB_FOLLOW) {
+            float const to_land = shore_dir(m);
+            if (to_land >= 0.0f) {
+                m->yaw        = to_land;
+                m->intent     = MOB_WANDER;
+                m->intent_for = 20;
+                yaw           = to_land;
+            }
+        }
         switch (m->intent) {
-            case MOB_WANDER: speed = d->speed; break;
+            case MOB_WANDER: speed = swimming ? d->speed * 1.3f : d->speed; break;
             case MOB_FOLLOW: speed = d->speed * 1.4f; break;
             case MOB_SEEK: speed = d->speed * 1.4f; break;
             case MOB_FLEE:
@@ -477,9 +605,17 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
 
         if (speed > 0.0f) {
             float const sx = sinf(yaw), sz = cosf(yaw);
-            if (m->intent == MOB_WANDER && cliff_ahead(m, sx, sz)) {
-                // Turn rather than fall: a pig at the bottom of a ravine
-                // is a pig the player has to go and fetch.
+            // GOING TO SOMEBODY IS THE ONE REASON TO TAKE THE RISK (the
+            // user): a dog heeling and an animal after the food in your
+            // hand will follow you into water and down a drop. Anything
+            // else -- ambling, fleeing, walking to a mate -- stops at
+            // the edge, because an animal that wanders into a lake or
+            // off a cliff is an animal the player has to go and fetch.
+            // ... and an animal already IN the water is past being
+            // warned about it: it is swimming for the shore, and the
+            // shore is on the other side of more water.
+            bool const reckless = m->intent == MOB_FOLLOW || swimming;
+            if (!reckless && hazard_ahead(m, sx, sz)) {
                 m->yaw += 2.2f;
                 speed = 0.0f;
             } else {
@@ -492,7 +628,7 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
             m->body.vz = 0.0f;
         }
 
-        bool const wet = in_water(m);
+        bool const wet = swimming;
         phys_move(&m->body, (double)m->body.vx, (double)m->body.vy, (double)m->body.vz);
         // WALLS ARE STEPPED OVER, NOT CLIMBED: a body that is blocked
         // and on the ground hops, which is how an animal gets up a
@@ -500,12 +636,24 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         // what a pen is (fence_ahead, F-122).
         if ((m->body.hit_x || m->body.hit_z) && m->body.on_ground && speed > 0.0f && !fence_ahead(m)) {
             m->body.vy = MOB_JUMP;
+        } else if ((m->body.hit_x || m->body.hit_z) && wet && !fence_ahead(m)) {
+            // CLIMBING OUT. A swimming body is never `on_ground`, so the
+            // step-up will not lift it and an animal that swam to the
+            // bank floated against it for ever -- its feet below the
+            // top of a bank it was touching. Pressing UP against
+            // whatever stopped it is what gets it out, and it is what
+            // anything swimming does.
+            m->body.vy = MOB_SWIM_CLIMB;
         }
         if (wet) {
-            m->body.vy += MOB_SWIM_UP;  // it floats rather than drowns
+            // Swim up, then let the WATER's gravity and drag act rather
+            // than the air's: one without the other is what sank them.
+            m->body.vy += MOB_SWIM_UP;
             if (m->body.vy > 0.12f) m->body.vy = 0.12f;
+            phys_gravity(&m->body, MOB_WATER_GRAV, MOB_WATER_DRAG, MOB_WATER_TERM);
+        } else {
+            phys_gravity(&m->body, MOB_GRAVITY, MOB_DRAG, MOB_TERMINAL);
         }
-        phys_gravity(&m->body, MOB_GRAVITY, MOB_DRAG, MOB_TERMINAL);
 
         // --- Breeding, and being heard --------------------------------
         if (m->love > 0 && m->breed_cd == 0) breed_pass(m, now);
@@ -717,27 +865,57 @@ mob_use_result_t mob_use(int i, uint16_t item) {
 // What lives in each biome, and how likely a chunk is to hold a herd of
 // it. A row per biome pair rather than a rule, so adding sheep to the
 // mountains is a line.
+// HOW OFTEN A CHUNK HOLDS A HERD, and the numbers are a POPULATION
+// rather than a feeling (F-125).
+//
+// Every resident chunk keeps its animals in the pool, and at the far
+// view distance the ring holds 225 chunks (chunk_render.h,
+// VIEW_FAR_EVICT). So the rates here multiplied by 225 must fit inside
+// MOB_MAX with room to spare, or the pool fills and the world stops
+// spawning -- which is exactly what happened at the first numbers:
+// about 1.3 animals a chunk, which is a farmyard, not a landscape.
+//
+// These come to roughly half that again -- a herd every four or five
+// chunks, so a walk meets one often enough to feel alive -- and about
+// 100 animals across a full far-view ring.
+//
+// THE DOG RATES ARE UNCHANGED. They were already the rare ones, and
+// the reason no dog had ever been seen was the cap rather than the
+// odds: a rare roll that comes up when the pool is full is a roll that
+// never happened.
 static struct {
     uint8_t biome;
     uint8_t kind;
     uint8_t chance_pct;  // that a chunk of this biome holds a herd
     uint8_t min_n, max_n;
 } const HERDS[] = {
-    {BIOME_PLAINS, MOB_COW, 14, 2, 4},
-    {BIOME_PLAINS, MOB_PIG, 12, 2, 3},
+    {BIOME_PLAINS, MOB_COW, 4, 2, 4},
+    {BIOME_PLAINS, MOB_PIG, 4, 2, 3},
     // SHEEP ARE A PLAINS ANIMAL and a mountain one: grass and hillside,
-    // which is where sheep are. They are the commonest of the four,
-    // because wool is the one thing here that is needed in threes.
-    {BIOME_PLAINS, MOB_SHEEP, 16, 2, 4},
-    {BIOME_MOUNTAIN, MOB_SHEEP, 10, 1, 3},
-    {BIOME_FOREST, MOB_PIG, 12, 2, 3},
-    {BIOME_FOREST, MOB_COW, 7, 1, 3},
-    {BIOME_BIRCH, MOB_PIG, 8, 1, 3},
-    // WILD DOGS ARE RARE and they live in the woods, which is what
-    // makes taming one an event rather than an errand.
-    {BIOME_FOREST, MOB_DOG, 5, 1, 2},
-    {BIOME_BIRCH, MOB_DOG, 3, 1, 1},
+    // which is where sheep are.
+    {BIOME_PLAINS, MOB_SHEEP, 4, 2, 4},
+    {BIOME_MOUNTAIN, MOB_SHEEP, 4, 1, 3},
+    {BIOME_FOREST, MOB_PIG, 4, 2, 3},
+    {BIOME_FOREST, MOB_COW, 2, 1, 3},
+    {BIOME_BIRCH, MOB_PIG, 3, 1, 3},
+    // WILD DOGS ARE RARE, and they were UNFINDABLE: at 5% of forest
+    // and 3% of birch they wanted 400 chunks of walking, because this
+    // world is four fifths PLAINS (measured: 629 plains chunks against
+    // 58 of forest in 784). A rare thing in a place nobody goes is not
+    // rare, it is absent -- and a dog is the one creature the player is
+    // supposed to go looking for.
+    //
+    // So: commoner in the woods where they belong, and a thin scatter
+    // on the grassland where the player actually walks. About one dog
+    // every forty chunks, which is a find rather than an errand.
+    {BIOME_FOREST, MOB_DOG, 8, 1, 2},
+    {BIOME_BIRCH, MOB_DOG, 6, 1, 1},
+    {BIOME_PLAINS, MOB_DOG, 1, 1, 2},
 };
+
+uint32_t mob_refused(void) {
+    return s_refused;
+}
 
 void mob_populate_chunk(int32_t cx, int32_t cz, uint32_t seed) {
     for (size_t h = 0; h < sizeof HERDS / sizeof HERDS[0]; h++) {
@@ -761,7 +939,7 @@ void mob_populate_chunk(int32_t cx, int32_t cz, uint32_t seed) {
             // above the ground, so a cell of water reads as ground and
             // a cow would be standing in a lake.
             if (block_liquid(world_block(bx, y - 1, bz)) || block_liquid(world_block(bx, y, bz))) continue;
-            mob_spawn(HERDS[h].kind, (double)bx + 0.5, (double)y, (double)bz + 0.5, false);
+            if (mob_spawn(HERDS[h].kind, (double)bx + 0.5, (double)y, (double)bz + 0.5, false) < 0) s_refused++;
         }
     }
 }

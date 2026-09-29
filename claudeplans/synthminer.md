@@ -4085,6 +4085,89 @@ types the code:
   offered to a pig answers *"plant this in tilled soil"* -- a worse lie
   than saying nothing at all.
 
+- **F-125** 2026-09-29, the user, play-testing step 10: *"animals spawn
+  in oceans (which shouldn't happen), and animals sink instead of
+  swim... when I load into a game, a few animals spawn, then I can walk
+  a long distance without encountering new animals. So far, I also
+  didn't encounter any sheep or wolves."*
+
+  **Four symptoms, three bugs, and the biggest one was a constant.**
+
+  **THE POOL HELD 48 AND A FAR-VIEW RING HOLDS 225 CHUNKS.** Every
+  resident chunk keeps its animals in that pool, so it filled after 43
+  chunks of real terrain -- measured -- and after that nothing spawned
+  anywhere, ever again. That is the whole of "a few animals and then a
+  long empty walk", and it is why the RARE creatures never appeared:
+  **a rare roll that comes up against a full pool is a roll that never
+  happened.** The number was sized for a farm and a valley when what it
+  has to hold is a landscape.
+
+  The failure mode is the thing worth keeping: it did not crash, it did
+  not warn, it went QUIET -- the same shape as F-120's texture cache,
+  and the second time this project has been bitten by a limit that
+  fails silently. There is now a counter of animals turned away, it is
+  asserted to be zero over a full ring, and the herd rates are chosen
+  AGAINST that ring rather than by feel (about a third of an animal a
+  chunk, some 72 in a full ring).
+
+  **DOGS WERE RARE IN THE WRONG PLACE.** Forest and birch only, at 5%
+  and 3% -- and this world is four fifths PLAINS: 629 plains chunks
+  against 58 of forest in a measured 784. That is one dog per 400
+  chunks, which is not rare, it is absent. Now also a thin scatter on
+  the grassland: one per 71 chunks measured, so a dog is a find rather
+  than an expedition.
+
+  **AND THEY SANK, WHICH IS WHY THEY LOOKED LIKE THEY SPAWNED IN THE
+  SEA.** An animal had a swim stroke (0.020) with FULL AIR GRAVITY
+  under it (0.040), so the net was down: anything that wandered into a
+  lake walked to the bottom and stood there. From the shore that is a
+  herd in the ocean. They now use the player's own water numbers
+  (D-86) -- buoyancy cancels almost all of gravity -- and float.
+
+  Nothing generated in water: that part of the report was the sinking,
+  seen from outside. The check that proves it counts every animal a
+  full ring generates and demands none of them is standing in a liquid.
+
+  **What the user added on being shown all this** is the rule that makes
+  it stable rather than merely fixed: *"Animals can decide to go into
+  the water under certain circumstances: Dogs following the player,
+  animals following the player when holding the right sort of food.
+  Otherwise, animals should avoid getting into water. Or falling off
+  cliffs."* So avoiding a hazard is a property of INTENT: a creature
+  walking to somebody takes the risk, and one ambling, fleeing or
+  walking to a mate stops at the edge.
+
+  And *"water can happen at other levels as well, including player
+  placed water"*, which killed two versions of the rule before it. Depth
+  is measured UPWARDS from whatever floor is under the cell ahead --
+  not at the animal's own foot level (an animal on a BANK has air at
+  its feet and a pond below) and not downwards (the bed of a lake says
+  nothing about how deep the water over it is). One block is waded; two
+  is a swim.
+
+  Three more things came out of making the check honest, and each was a
+  bug of its own:
+
+  * a creature already in the water **swims for the nearest shore**.
+    Refusing to walk in stops one CHOOSING to swim; it does not stop
+    one being shoved off a bank by another, hopping a fence into a
+    moat, or standing in a lake because an older build put it there --
+    and that last one is every animal in the user's current save;
+  * it **climbs out** at the bank. A swimming body is never
+    `on_ground`, so the step-up will not lift it: it floated against
+    the bank with its feet below the top of it. Pressing up against
+    whatever stopped it is what anything swimming does;
+  * "am I in water" is asked at the **feet, twice** -- a little above
+    and a little below. A floating body rides with its middle above the
+    surface and its feet AT it, so a single sample flickered and
+    switched the buoyancy and the steering off every other tick.
+
+  Two of the failing runs on the way here were the FIXTURE, not the
+  code: a lake whose shore sat four blocks below its own surface (no
+  world could contain that), and a lake sixteen blocks wide in a world
+  forty-eight wide, which the cow swam out of. A test world that could
+  not exist is a test that cannot pass.
+
 ### Decisions (D-n), each with date and who decided
 
 - **D-128** 2026-09-29, building step 12: **a cast is two taps, and the
@@ -5864,6 +5947,26 @@ types the code:
   **only off the pork one** -- a bean sausage has no bones in it. That
   last part is an inference rather than the user's word, and it is the
   one number in this step worth revisiting.
+
+- **D-129** 2026-09-29, **the user**, on being shown why their animals
+  drowned themselves: **avoiding a hazard is a property of INTENT.**
+
+  *"Animals can decide to go into the water under certain
+  circumstances: Dogs following the player, animals following the
+  player when holding the right sort of food. Otherwise, animals should
+  avoid getting into water. Or falling off cliffs."*
+
+  So there is no list of dangerous blocks and no bravery stat: a
+  creature walking TO SOMEBODY takes the risk, and one ambling,
+  fleeing or walking to a mate stops at the edge. That is one line at
+  the one place a creature decides where to put its feet, and it is
+  right in a way a per-creature flag would not be -- a dog does not
+  wade because dogs are brave, it wades because you are over there.
+
+  Paired with it, and from the same message: *"water can happen at
+  other levels as well, including player placed water"*, which is why
+  depth is measured upwards from whatever floor is under the cell
+  ahead. There is no sea level in this game.
 
 - **D-121** 2026-09-29, **the user**: **animals are generated with the
   land.** A herd or two is placed when a chunk is first generated, in

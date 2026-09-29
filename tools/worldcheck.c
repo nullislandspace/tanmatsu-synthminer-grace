@@ -3268,6 +3268,178 @@ static void check_shoving(void) {
 //      hash of where the float landed and when, so a replay fishes the
 //      same river the same way (Part T).
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+//  The population, and the water (F-125)
+//
+//  Four things the user found by playing, and every one of them was
+//  invisible from inside the code:
+//
+//    * the pool held 48 and a FAR-VIEW RING HOLDS 225 CHUNKS. It filled
+//      after 43 chunks of real terrain and then the world stopped
+//      spawning anything, anywhere, for ever. What that looks like is
+//      "a few animals at spawn and then a long empty walk";
+//    * the rarest creature therefore never appeared at all: a rare roll
+//      that comes up against a full pool is a roll that never happened;
+//    * ... and dogs were rare in the wrong PLACE. This world is four
+//      fifths plains and they lived only in the woods;
+//    * animals walked into water and SANK, because they had a swim
+//      stroke with full gravity under it. From the shore, a herd on the
+//      sea bed reads as animals spawning in the ocean.
+//
+//  So the checks below are about a LANDSCAPE rather than a pen: how
+//  many animals a real ring of real terrain holds, whether the pool can
+//  take them, and what happens to one that gets its feet wet.
+// ---------------------------------------------------------------------
+static void check_population(void) {
+    printf("population: what a ring of real terrain holds\n");
+    uint32_t const seed = 20260929u;
+
+    chunk_store_clear();
+    mob_reset();
+
+    // A FULL FAR-VIEW RING, which is the worst case the pool has to
+    // survive: 15 x 15 chunks resident at once (chunk_render.h,
+    // VIEW_FAR_EVICT is 7, so 2*7+1 across).
+    int kinds[MOB_KIND_COUNT];
+    memset(kinds, 0, sizeof(kinds));
+    int chunks = 0, wet = 0;
+    for (int32_t cz = -7; cz <= 7; cz++) {
+        for (int32_t cx = -7; cx <= 7; cx++) {
+            chunk_t* c = chunk_claim(cx, cz);
+            if (c == NULL) continue;
+            worldgen_chunk(c, seed, FARLANDS_NONE);
+            c->cstate = CS_READY;
+            chunk_resummarise(c);
+            chunks++;
+            mob_populate_chunk(cx, cz, seed);
+        }
+    }
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_t const* m = mob_at(i);
+        if (!m->alive) continue;
+        kinds[m->kind]++;
+        int32_t const bx = (int32_t)floor(m->body.x), by = (int32_t)floor(m->body.y), bz = (int32_t)floor(m->body.z);
+        if (block_liquid(world_block(bx, by, bz)) || block_liquid(world_block(bx, by - 1, bz))) wet++;
+    }
+    printf("  %d chunks resident at once: %d animals (%d pig, %d cow, %d sheep, %d dog)\n", chunks, mob_live(),
+           kinds[MOB_PIG], kinds[MOB_COW], kinds[MOB_SHEEP], kinds[MOB_DOG]);
+
+    // THE POOL MUST NOT FILL. This is the whole of F-125: a full pool
+    // does not fail, it goes quiet.
+    CHECK(mob_refused() == 0, "%u animals were turned away: the pool is too small for a far-view ring",
+          mob_refused());
+    CHECK(mob_live() < MOB_MAX, "a single ring filled the pool (%d of %d)", mob_live(), MOB_MAX);
+    // ... and it must not be empty either. A landscape with no animals
+    // in sight is the other half of what the user reported.
+    CHECK(mob_live() > 20, "only %d animals in %d chunks: a walk would meet nothing", mob_live(), chunks);
+    CHECK(wet == 0, "%d animals were generated standing in water", wet);
+
+    // EVERY KIND HAS TO TURN UP SOMEWHERE, over an area a player could
+    // walk in an evening. The dog is the one this is really about.
+    mob_reset();
+    int seen[MOB_KIND_COUNT];
+    memset(seen, 0, sizeof(seen));
+    int wide = 0;
+    for (int32_t cz = -14; cz < 14; cz++) {
+        for (int32_t cx = -14; cx < 14; cx++) {
+            chunk_t* c = chunk_claim(cx, cz);
+            if (c == NULL) continue;
+            worldgen_chunk(c, seed, FARLANDS_NONE);
+            c->cstate = CS_READY;
+            chunk_resummarise(c);
+            wide++;
+            mob_reset();  // counting what each chunk OFFERS, not what fits
+            mob_populate_chunk(cx, cz, seed);
+            for (int i = 0; i < MOB_MAX; i++) {
+                if (mob_at(i)->alive) seen[mob_at(i)->kind]++;
+            }
+        }
+    }
+    int total = 0;
+    for (int k = MOB_PIG; k < MOB_KIND_COUNT; k++) total += seen[k];
+    printf("  %d chunks walked: %d animals, one every %.1f chunks; %d dogs, one every %.0f\n", wide, total,
+           (double)wide / (total > 0 ? total : 1), seen[MOB_DOG],
+           seen[MOB_DOG] > 0 ? (double)wide / seen[MOB_DOG] : 0.0);
+    for (int k = MOB_PIG; k < MOB_KIND_COUNT; k++) {
+        CHECK(seen[k] > 0, "no %s in %d chunks of real terrain", mob_def((uint8_t)k)->name, wide);
+    }
+    // A dog is a FIND, not an errand: rarer than the livestock, and not
+    // so rare that a player never meets one.
+    CHECK(seen[MOB_DOG] * 4 < total, "dogs are as common as livestock");
+    CHECK(seen[MOB_DOG] * 200 > wide, "a dog turns up less than once in 200 chunks, which is never");
+
+    mob_reset();
+    chunk_store_clear();
+}
+
+static void check_swimming(void) {
+    printf("swimming: an animal in water floats\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(16) != NULL, "the swimming world would not become resident");
+    mob_reset();
+
+    // A LAKE FOUR DEEP WITH A SHORE ON ONE SIDE, and the shore is at
+    // the water's own level -- which is the only way a lake can be. The
+    // first version of this fixture put the bank four blocks BELOW the
+    // surface, which no world could contain and which sent the swimming
+    // rule looking for land in the wrong place.
+    //
+    //   z < 8   ground to y = 19, so it is walked on at y = 20
+    //   z >= 8  water from y = 16 to 19 on a bed at 15: four deep,
+    //           surface flush with the bank
+    // ACROSS THE WHOLE RESIDENT AREA, not one chunk of it: an animal
+    // that swims to the edge of the fixture and out into bare test
+    // terrain has not been tested, it has been lost.
+    for (int x = -16; x < 32; x++) {
+        for (int z = -16; z < 32; z++) {
+            for (int y = 16; y < 20; y++) {
+                set_block(x, y, z, z >= 8 ? BLK_WATER : BLK_DIRT, z >= 8 ? ST_PLACED : 0);
+            }
+            if (z < 8) set_block(x, 19, z, BLK_GRASS, 0);
+        }
+    }
+
+    phys_body_t watcher;
+    phys_body_init(&watcher, 40.0, 20.0, 40.0);
+    uint32_t clk = 8000;
+
+    // DROPPED IN THE MIDDLE OF IT, a cow must float and then make for
+    // the shore. Both halves matter, and the second one is what repairs
+    // a world where animals are already standing on the sea bed.
+    int const c = mob_spawn(MOB_COW, 6.5, 19.5, 12.5, false);
+    CHECK(c >= 0, "the pool would not take a cow");
+    double low = 99.0;
+    int    out = -1;
+    for (int t = 0; t < 1200 && out < 0; t++) {
+        mob_tick(clk++, &watcher, 0);
+        if (mob_at(c)->body.y < low) low = mob_at(c)->body.y;
+        if (mob_at(c)->body.z < 7.8) out = t;
+    }
+    printf("  a cow dropped in four blocks of water never sank below y %.2f (the bed is at 16) and "
+           "reached the shore in %d ticks\n", low, out);
+    CHECK(low > 16.5, "the cow sank to the bottom of the lake (y %.2f)", low);
+    CHECK(out >= 0, "the cow never got out of the lake (at %.2f, %.2f, %.2f)", mob_at(c)->body.x,
+          mob_at(c)->body.y, mob_at(c)->body.z);
+
+    // AND IT DOES NOT WALK IN. A herd on the shore stays on the shore:
+    // deep water is a cliff as far as an animal is concerned.
+    mob_reset();
+    int const walkers[4] = {mob_spawn(MOB_COW, 4.5, 20.0, 5.5, false), mob_spawn(MOB_PIG, 8.5, 20.0, 6.5, false),
+                            mob_spawn(MOB_SHEEP, 11.5, 20.0, 5.5, false), mob_spawn(MOB_COW, 2.5, 20.0, 6.5, false)};
+    for (int t = 0; t < 4000; t++) mob_tick(clk++, &watcher, 0);
+    int swam = 0;
+    for (int i = 0; i < 4; i++) {
+        if (walkers[i] < 0) continue;
+        if (mob_at(walkers[i])->body.z > 8.5) swam++;
+    }
+    printf("  four animals wandering a shore for three minutes: %d ended up in the lake\n", swam);
+    CHECK(swam == 0, "%d animals wandered into deep water", swam);
+
+    mob_reset();
+    chunk_store_clear();
+}
+
 static void check_fishing(void) {
     printf("fishing: a worm a cast, and what comes up\n");
 
@@ -7011,6 +7183,8 @@ int main(void) {
     check_pens();
     check_shoving();
     check_breeding();
+    check_population();
+    check_swimming();
     check_fishing();
     check_sheep();
     check_bed();

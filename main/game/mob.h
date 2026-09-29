@@ -44,10 +44,23 @@
 #include "items/inventory.h"
 #include "world/chunk.h"
 
-// Live creatures across the whole resident ring. A farm is a dozen and
-// a wild valley a handful; 48 is room for both at once, and the pool is
-// what bounds the cost of the tick.
-#define MOB_MAX 48
+// LIVE CREATURES ACROSS THE WHOLE RESIDENT RING, and this number stops
+// the world when it is too small (F-125).
+//
+// It was 48, which is a farm and a wild valley -- and that is not what
+// it has to hold. Every chunk the player has loaded keeps its animals
+// in here, and a player at a normal view distance is standing in well
+// over a hundred chunks. Measured: the pool filled after 43 chunks of
+// real terrain, and after that NOTHING spawned anywhere ever again --
+// which is what "I walked a long way and met no new animals" is, and
+// why the rare creatures (dogs) never turned up at all: they lose the
+// race to the cap.
+//
+// 128 against a herd rate of about half an animal a chunk leaves room
+// for the ring twice over. It costs ~13 KiB of static memory, which is
+// in line with the item pool beside it, and it bounds the tick: the
+// separation pass is the only thing here that is quadratic.
+#define MOB_MAX 128
 
 typedef enum {
     MOB_NONE = 0,
@@ -188,6 +201,11 @@ typedef struct {
 // items.c: the day a weapon exists it becomes a column with something
 // to put in it.
 int mob_damage_of(uint16_t item);
+
+// How many animals could not be put into the world because the pool
+// was full. It must be 0: see MOB_MAX, and F-125 for what it looks
+// like when it is not.
+uint32_t mob_refused(void);
 
 void mob_reset(void);
 int  mob_live(void);
