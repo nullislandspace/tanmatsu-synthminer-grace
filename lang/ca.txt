@@ -369,3 +369,19 @@ maker.pick_hint = Enter tria   Esc enrere
 maker.a_day = un formatge al dia
 maker.a_minute = una botifarra al minut
 maker.bucket_back = La galleda torna de seguida
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Xai cru
+item.wool = Llana
+item.shears = Tisores
+item.string = Fil
+item.mutton_mash = Xai amb puré
+item.kebab = Kebab
+item.bed_foot = Llit
+mob.sheep = Ovella
+animal.shorn = Li prens el velló
+animal.bare = El seu pèl encara no ha crescut
+bed.slept = Dorms fins al matí
+bed.daytime = Només pots dormir de nit
+bed.no_room = No hi ha lloc per a un llit
+bed.spawn_set = Et despertaràs aquí

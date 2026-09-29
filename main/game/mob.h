@@ -54,6 +54,10 @@ typedef enum {
     MOB_PIG,
     MOB_COW,
     MOB_DOG,
+    // The fourth, and the first that is worth keeping rather than
+    // killing: a sheep SHEARS. Everything else an animal gives, it
+    // gives once (game/mob.c, MOBS[]).
+    MOB_SHEEP,
     MOB_KIND_COUNT
 } mob_kind_t;
 
@@ -94,6 +98,12 @@ typedef struct {
     // dog -- which is the user's own answer and is why the sausage
     // maker has a second output slot.
     uint16_t    tame_item;
+
+    // WHAT SHEARING IT GIVES, and how much: wool, for a sheep, and
+    // nothing for anything else. A column rather than a rule, so the
+    // day something else carries a coat it is a row.
+    uint16_t    shear_item;
+    uint8_t     shear_min, shear_max;
     uint32_t    argb;  // the flat colour it draws as when textures are off
 } mob_def_t;
 
@@ -124,6 +134,12 @@ typedef struct {
 
     bool        tame;
     bool        sitting;
+    // SHORN, and how long until the coat is back. A sheared sheep is a
+    // different picture (fred/beast.c) and gives nothing until it has
+    // grown its fleece again -- otherwise a flock of two is an endless
+    // supply of string and a bed costs nothing.
+    bool        shorn;
+    uint32_t    age_shorn;  // ticks since the fleece came off
     uint8_t     hurt;      // ticks left of the flinch, and of being unhittable
     uint8_t     say;       // mob_say_t, drained by the caller each tick
 } mob_t;
@@ -144,6 +160,16 @@ typedef struct {
 // being a thing you lose to a cliff.
 #define MOB_DOG_TELEPORT 18.0f
 #define MOB_HURT_TICKS  10u
+
+// HOW LONG A FLEECE TAKES TO GROW BACK: an in-game day, which is the
+// composter's and the cheese maker's number and the one this game
+// already means by "a while". Ticks elapsed, like every other duration
+// here (D-51), so a flock in a chunk nobody has visited does not grow
+// wool while nobody is looking.
+//
+// This is a choice rather than the user's: they said a sheep can be
+// sheared and what wool is for, not how often.
+#define MOB_REGROW_TICKS 24000u
 
 // HOW MUCH BIGGER A CREATURE IS TO AIM AT THAN TO WALK INTO. Pointing
 // and colliding are different questions: a pig is 0.9 blocks tall and
@@ -222,12 +248,17 @@ typedef enum {
     // answers "plant this in tilled soil", which is a worse lie than
     // saying nothing.
     MOB_USE_BUSY,
+    // Shears on a sheep. MOB_USE_BARE is the same shears on one that
+    // has nothing to give yet.
+    MOB_USE_SHORN,
+    MOB_USE_BARE,
 } mob_use_t;
 
 typedef struct {
     uint8_t  what;     // mob_use_t
     uint16_t becomes;  // what the held stack turns into, 0 to leave it
     bool     consume;  // take one from the held stack
+    bool     wear;     // the tool in hand did a job (shears)
 } mob_use_result_t;
 
 mob_use_result_t mob_use(int i, uint16_t item);

@@ -361,3 +361,19 @@ maker.pick_hint = Entrée choisit   Échap retour
 maker.a_day = un fromage par jour
 maker.a_minute = une saucisse par minute
 maker.bucket_back = Le seau revient aussitôt
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Mouton cru
+item.wool = Laine
+item.shears = Cisailles
+item.string = Ficelle
+item.mutton_mash = Mouton purée
+item.kebab = Kebab
+item.bed_foot = Lit
+mob.sheep = Mouton
+animal.shorn = Tu prends sa toison
+animal.bare = Sa laine n'a pas repoussé
+bed.slept = Tu dors jusqu'au matin
+bed.daytime = On ne dort que la nuit
+bed.no_room = Pas la place pour un lit
+bed.spawn_set = Tu te réveilleras ici

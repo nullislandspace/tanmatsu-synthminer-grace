@@ -82,6 +82,17 @@ static int drop_for(uint8_t block, uint8_t state, int32_t x, int32_t y, int32_t 
     return item_entity_spawn(x, y, z, d->drop_item, n, 0);
 }
 
+bool interact_bed_other(int32_t x, int32_t y, int32_t z, int32_t* ox, int32_t* oy, int32_t* oz) {
+    uint8_t const b = world_block(x, y, z);
+    if (b != BLK_BED_FOOT && b != BLK_BED_HEAD) return false;
+    uint8_t const face = (uint8_t)(st_data(world_state(x, y, z)) & 0x03u);
+    int const     s    = b == BLK_BED_FOOT ? 1 : -1;  // foot -> head, or back
+    if (ox != NULL) *ox = x + s * bed_step_x(face);
+    if (oy != NULL) *oy = y;
+    if (oz != NULL) *oz = z + s * bed_step_z(face);
+    return true;
+}
+
 bool interact_toggle_gate(int32_t x, int32_t y, int32_t z) {
     uint8_t const b = world_block(x, y, z);
     if (b != BLK_FENCE_GATE && b != BLK_FENCE_GATE_OPEN) return false;
@@ -219,6 +230,28 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
         }
     }
 
+    // AND THE OTHER HALF OF A BED, which is the same rule lying down:
+    // two cells side by side rather than one above the other, so it
+    // finds its partner through the facing both halves carry rather
+    // than through `tall_other`. Only the FOOT pays out, like the rice.
+    //
+    // Worked out from the id and state SAVED ABOVE, because the cell
+    // itself is already air by now.
+    if (b == BLK_BED_FOOT || b == BLK_BED_HEAD) {
+        uint8_t const face = (uint8_t)(st_data(st) & 0x03u);
+        int const     s    = b == BLK_BED_FOOT ? 1 : -1;
+        int32_t const bx = x + s * bed_step_x(face), bz = z + s * bed_step_z(face);
+        uint8_t const other = world_block(bx, y, bz);
+        // A half whose partner is missing simply finds something else
+        // there, which is what makes this safe at a chunk border.
+        if (other == BLK_BED_FOOT || other == BLK_BED_HEAD) {
+            uint8_t const ost = world_state(bx, y, bz);
+            world_set(bx, y, bz, BLK_AIR, 0);
+            if (other == BLK_BED_FOOT) drop_for(other, ost, bx, y, bz, tool_item);
+            r.felled++;
+        }
+    }
+
     // A CROP CANNOT STAND ON NOTHING. Dig the soil out from under a
     // field and the field comes with it, harvested as it stood -- ripe
     // wheat yields wheat, a sprout yields its seed back (drop_for).
@@ -341,6 +374,24 @@ bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* 
         float const ax = dx < 0.0f ? -dx : dx, az = dz < 0.0f ? -dz : dz;
         uint8_t const axis = ax > az ? GATE_AXIS_Z : GATE_AXIS_X;
         state              = (uint8_t)(ST_PLACED | (uint8_t)(axis << ST_DATA_SHIFT));
+    }
+
+    // A BED IS TWO CELLS and goes down as one: the foot where the
+    // player pointed and the head one step further along the way they
+    // are facing. If that second cell is not free, or has nothing to
+    // stand on, NOTHING is placed -- half a bed is not a thing.
+    if (block == BLK_BED_FOOT) {
+        float const   ax   = dx < 0.0f ? -dx : dx, az = dz < 0.0f ? -dz : dz;
+        uint8_t const face = ax > az ? (dx > 0.0f ? BED_FACE_PX : BED_FACE_NX)
+                                     : (dz > 0.0f ? BED_FACE_PZ : BED_FACE_NZ);
+        int32_t const hx = x + bed_step_x(face), hz = z + bed_step_z(face);
+        if (chunk_find(chunk_of(hx), chunk_of(hz)) == NULL) return false;
+        if (!block_replaceable(world_block(hx, y, hz))) return false;
+        if (!block_solid(world_block(hx, y - 1, hz))) return false;
+        state = (uint8_t)(ST_PLACED | (uint8_t)(face << ST_DATA_SHIFT));
+        world_set(x, y, z, BLK_BED_FOOT, state);
+        world_set(hx, y, hz, BLK_BED_HEAD, state);
+        return true;
     }
 
     // A block that remembers things needs somewhere to remember them,

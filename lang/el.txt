@@ -369,3 +369,19 @@ maker.pick_hint = Enter επιλέγει   Esc πίσω
 maker.a_day = ένα τυρί την ημέρα
 maker.a_minute = ένα λουκάνικο το λεπτό
 maker.bucket_back = Ο κουβάς επιστρέφει αμέσως
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Ωμό αρνί
+item.wool = Μαλλί
+item.shears = Ψαλίδι
+item.string = Σπάγκος
+item.mutton_mash = Αρνί με πουρέ
+item.kebab = Κεμπάπ
+item.bed_foot = Κρεβάτι
+mob.sheep = Πρόβατο
+animal.shorn = Παίρνεις το μαλλί του
+animal.bare = Δεν έχει ξαναβγάλει μαλλί
+bed.slept = Κοιμάσαι ως το πρωί
+bed.daytime = Μπορείς να κοιμηθείς μόνο τη νύχτα
+bed.no_room = Δεν χωράει κρεβάτι εδώ
+bed.spawn_set = Εδώ θα ξυπνήσεις

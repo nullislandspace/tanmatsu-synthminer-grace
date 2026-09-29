@@ -44,6 +44,11 @@ typedef enum {
     // checks all keep working without learning about them.
     RS_CHEESE,
     RS_SAUSAGE,
+    // The kitchen stove, which does not exist yet (step 11). Its dishes
+    // are rows here already because their numbers are the user's and
+    // this is where they belong; nothing can reach the station, so they
+    // are inert until the machine arrives.
+    RS_STOVE,
     RS_COUNT
 } recipe_station_t;
 

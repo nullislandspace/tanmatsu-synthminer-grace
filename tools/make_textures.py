@@ -1603,6 +1603,120 @@ def sm_item_compost():
     return img
 
 
+# --- The animals themselves --------------------------------------------
+#
+# A creature's hide is ONE 16x16 texture put once on each box of its
+# model (fred/beast.c), not a Minecraft-style unwrapped skin: the models
+# are half a dozen boxes and an unwrap would be a layout to maintain for
+# every one of them. So what these have to be is a PATTERN that reads
+# the same whichever face it lands on -- which is what a breed marking
+# is anyway.
+
+def _blotches(gen, base, spot, n, rmin, rmax, edge=0):
+    """A field of `base` with `n` soft-edged blobs of `spot` on it."""
+    out = np.zeros((B, B, 3), np.uint8)
+    for y in range(B):
+        for x in range(B):
+            v = int(gen.integers(-8, 9))
+            out[y, x] = np.clip(np.array(base) + v, 0, 255)
+    for _ in range(n):
+        cx, cy = int(gen.integers(0, B)), int(gen.integers(0, B))
+        r = float(gen.integers(rmin, rmax + 1))
+        for y in range(B):
+            for x in range(B):
+                # Wrapped distance: the texture repeats across faces, so
+                # a blotch that runs off one edge has to come back on the
+                # other or the seam is a straight line of base colour.
+                dx = min(abs(x - cx), B - abs(x - cx))
+                dy = min(abs(y - cy), B - abs(y - cy))
+                d = (dx * dx + dy * dy) ** 0.5
+                if d > r + float(gen.integers(0, 2)):
+                    continue
+                v = int(gen.integers(-10, 11))
+                out[y, x] = np.clip(np.array(spot) + v, 0, 255)
+    if edge:
+        for y in range(B):
+            for x in range(B):
+                if (x + y) % 7 == 0:
+                    out[y, x] = np.clip(out[y, x].astype(int) - edge, 0, 255)
+    return out
+
+
+def sm_pig_hide():
+    """OXFORD SANDY AND BLACK, the user's choice of breed: a sandy ginger
+    pig with big irregular black blotches. The blotches are what the
+    breed IS -- a plain sandy pig is a Tamworth -- so they are large and
+    few rather than a speckle."""
+    gen = sm_gen(80)
+    return _blotches(gen, (206, 146, 96), (44, 38, 38), 5, 3, 5)
+
+
+def sm_pig_face():
+    """The same sandy ground with the breed's pale blaze down it."""
+    img = _blotches(sm_gen(81), (212, 154, 104), (48, 40, 40), 2, 2, 3)
+    for y in range(B):
+        for x in range(6, 10):
+            img[y, x] = np.clip(np.array((232, 194, 160)), 0, 255)
+    return img
+
+
+def sm_cow_hide():
+    """AYRSHIRE, the user's choice: white with sharply edged red-brown
+    patches. Sharply edged is the point -- a Hereford's markings are
+    soft and a Holstein's are black, and at 16 px the edge is most of
+    what tells them apart."""
+    gen = sm_gen(82)
+    return _blotches(gen, (238, 234, 226), (150, 72, 40), 4, 3, 5)
+
+
+def sm_cow_face():
+    """Mostly white, as an Ayrshire's face is, with brown round the eyes."""
+    img = _blotches(sm_gen(83), (240, 236, 228), (150, 72, 40), 2, 2, 3)
+    return img
+
+
+def sm_sheep_wool():
+    """Fleece: cream, and CURLY. A flat cream square reads as paper, so
+    the texture is all short arcs -- at this size the curl is the whole
+    of what says wool."""
+    gen = sm_gen(84)
+    out = np.zeros((B, B, 3), np.uint8)
+    base = (236, 232, 220)
+    for y in range(B):
+        for x in range(B):
+            v = int(gen.integers(-10, 11))
+            out[y, x] = np.clip(np.array(base) + v, 0, 255)
+    for cy in range(1, B, 4):
+        for cx in range(1, B, 4):
+            ox, oy = int(gen.integers(-1, 2)), int(gen.integers(-1, 2))
+            for dx, dy in ((0, 0), (1, 0), (2, 1), (0, 1), (2, 0), (1, 2)):
+                x, y = (cx + ox + dx) % B, (cy + oy + dy) % B
+                out[y, x] = np.clip(np.array(base) - 26, 0, 255)
+    return out
+
+
+def sm_sheep_shorn():
+    """A sheep that has just been sheared: pink skin with the stubble
+    still on it. Its own texture rather than a tint, so a shorn sheep is
+    unmistakable across a field -- which is the point of shearing one."""
+    gen = sm_gen(85)
+    out = np.zeros((B, B, 3), np.uint8)
+    base = (226, 184, 176)
+    for y in range(B):
+        for x in range(B):
+            v = int(gen.integers(-9, 10))
+            out[y, x] = np.clip(np.array(base) + v, 0, 255)
+    for i in range(24):
+        x, y = int(gen.integers(0, B)), int(gen.integers(0, B))
+        out[y, x] = np.clip(np.array(base) - 30, 0, 255)
+    return out
+
+
+def sm_sheep_face():
+    """A dark face, which is what a white sheep has."""
+    return _blotches(sm_gen(86), (72, 64, 58), (52, 46, 42), 3, 2, 4)
+
+
 # --- The animals' two machines, and the fence (step 10) ----------------
 
 def sm_barrel_side():
@@ -1775,6 +1889,93 @@ def sm_item_bucket_milk():
     return _bucket((238, 236, 226))
 
 
+# --- What a sheep is worth, and what wool becomes ----------------------
+
+def sm_item_mutton():
+    return _meat(_icon(), (198, 96, 88), (240, 230, 216))
+
+
+def sm_item_wool():
+    """A fleece: a pale curly lump, the same curls as the sheep."""
+    img = _icon()
+    base = (238, 234, 222)
+    _blob(img, base, 5, 8, 8, squash=1.1)
+    for x, y in ((5, 6), (8, 5), (11, 7), (6, 10), (10, 11), (8, 8)):
+        _dot(img, x, y, _shade(base, -30))
+        _dot(img, x + 1, y + 1, _shade(base, -18))
+    return img
+
+
+def sm_item_shears():
+    """Two blades crossed on a pivot. The X is the whole silhouette --
+    one blade reads as a knife."""
+    img = _icon()
+    steel = (208, 212, 220)
+    for i in range(7):
+        _dot(img, 3 + i, 3 + i, steel)
+        _dot(img, 4 + i, 3 + i, _shade(steel, -34))
+        _dot(img, 12 - i, 3 + i, steel)
+        _dot(img, 11 - i, 3 + i, _shade(steel, -34))
+    _dot(img, 8, 8, (120, 124, 132))          # the pivot
+    for x, y in ((3, 12), (4, 13), (12, 12), (11, 13)):
+        _dot(img, x, y, (90, 96, 104))        # the handles
+    return img
+
+
+def sm_item_string():
+    """A loose coil. Thin, pale, and wound -- a straight line reads as a
+    stick."""
+    img = _icon()
+    pale = (226, 222, 210)
+    path = ((4, 11), (5, 9), (7, 8), (9, 8), (11, 9), (11, 11), (9, 12), (7, 12), (5, 11), (4, 9), (6, 7), (9, 6))
+    for x, y in path:
+        _dot(img, x, y, pale)
+    for x, y in ((6, 10), (8, 10), (10, 10)):
+        _dot(img, x, y, _shade(pale, -40))
+    return img
+
+
+def sm_item_bed():
+    """A bed from the side: a red mattress on a wooden frame with a
+    white pillow at one end."""
+    img = _icon()
+    _rect(img, 2, 11, 14, 14, (140, 104, 60))      # the frame
+    _rect(img, 2, 7, 14, 11, (188, 56, 52))        # the mattress
+    _rect(img, 2, 7, 14, 8, (214, 78, 72))         # ... lit along the top
+    _rect(img, 3, 6, 7, 9, (238, 236, 228))        # the pillow
+    _rect(img, 2, 14, 4, 16, (110, 80, 46))        # two legs
+    _rect(img, 12, 14, 14, 16, (110, 80, 46))
+    return img
+
+
+def sm_bed_top(head=False):
+    """Seen from above: the quilt, and the pillow on the head half."""
+    gen = sm_gen(88 if head else 89)
+    out = np.zeros((B, B, 3), np.uint8)
+    for y in range(B):
+        for x in range(B):
+            v = int(gen.integers(-8, 9))
+            out[y, x] = np.clip(np.array((186, 58, 54)) + v, 0, 255)
+    for y in range(B):                              # a seam down the middle
+        out[y, 7] = np.clip(np.array((150, 42, 40)), 0, 255)
+    if head:
+        for y in range(1, 7):
+            for x in range(2, 14):
+                v = int(gen.integers(-6, 7))
+                out[y, x] = np.clip(np.array((238, 236, 228)) + v, 0, 255)
+    return out
+
+
+def sm_bed_side():
+    """The frame, with the mattress sitting on it."""
+    lum, _ = sm_planks_lum(90)
+    out = sm_rgb(lum, (150, 112, 64))
+    for y in range(0, 7):
+        for x in range(B):
+            out[y, x] = np.clip(np.array((188, 58, 54)) + (x % 3) * 4, 0, 255)
+    return out
+
+
 def sm_item_worm():
     """A curled worm. Pink-brown, two texels thick, so it reads at slot
     size as a body rather than a line."""
@@ -1908,6 +2109,22 @@ TEXTURES = {
     "item_bone.png": sm_item_bone,
     "item_fence.png": lambda: sm_item_fence(False),
     "item_fence_gate.png": lambda: sm_item_fence(True),
+    # The animals' own hides (fred/beast.c), and the sheep round them.
+    "pig_hide.png": sm_pig_hide,
+    "pig_face.png": sm_pig_face,
+    "cow_hide.png": sm_cow_hide,
+    "cow_face.png": sm_cow_face,
+    "sheep_wool.png": sm_sheep_wool,
+    "sheep_shorn.png": sm_sheep_shorn,
+    "sheep_face.png": sm_sheep_face,
+    "bed_top.png": lambda: sm_bed_top(False),
+    "bed_head.png": lambda: sm_bed_top(True),
+    "bed_side.png": sm_bed_side,
+    "item_mutton.png": sm_item_mutton,
+    "item_wool.png": sm_item_wool,
+    "item_shears.png": sm_item_shears,
+    "item_string.png": sm_item_string,
+    "item_bed.png": sm_item_bed,
 }
 
 

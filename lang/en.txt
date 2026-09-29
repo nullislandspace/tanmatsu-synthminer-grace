@@ -283,6 +283,14 @@ item.sausage = Sausage
 item.sausage_veg = Bean sausage
 # A rare find in the sausage maker, and what tames a dog
 item.bone = Bone
+# The sheep's half of the farm
+item.mutton = Raw mutton
+item.wool = Wool
+item.shears = Shears
+item.string = String
+# Cooked on the stove, which does not exist yet
+item.mutton_mash = Mutton and mash
+item.kebab = Kebab
 # Tilled soil, wet or dry: one name for both, since it is one thing
 item.farmland = Farmland
 item.composter = Composter
@@ -290,6 +298,8 @@ item.cheese_maker = Cheese maker
 item.sausage_maker = Sausage maker
 item.fence = Fence
 item.fence_gate = Fence gate
+# One name for both halves of the bed
+item.bed_foot = Bed
 # The growing plants, which are blocks rather than things you carry
 item.wheat_crop = Wheat plant
 item.potato_crop = Potato plant
@@ -384,6 +394,7 @@ farm.already_ripe = It is ripe already
 mob.pig = Pig
 mob.cow = Cow
 mob.dog = Dog
+mob.sheep = Sheep
 # Under the crosshair, when an animal has been fed and is looking for a
 # partner. %s is the animal's name
 mob.ready = %s - ready to breed
@@ -400,6 +411,9 @@ animal.tamed = It follows you now
 # Said when an animal is offered food it likes but has already been fed,
 # or is resting after breeding
 animal.busy = It has had enough for now
+# Said when a sheep is sheared, and when one has no coat to give yet
+animal.shorn = You take its fleece
+animal.bare = Its coat has not grown back
 animal.sits = It sits down
 animal.stands = It gets up
 
@@ -426,6 +440,16 @@ maker.a_day = one cheese a day
 maker.a_minute = one sausage a minute
 # Said when a bucket of milk goes in and the empty pail comes back
 maker.bucket_back = The bucket comes straight back
+
+# --- The bed ----------------------------------------------------------------
+# Said when the player sleeps, which also sets where they will wake up
+bed.slept = You sleep until morning
+# ... and when they try to in daylight
+bed.daytime = You can only sleep at night
+# ... and when there is no room to put one down
+bed.no_room = No room for a bed there
+# Said when the spawn point moves, whether or not they sleep
+bed.spawn_set = You will wake up here
 
 # --- What a block will not do -----------------------------------------------
 # %s is the tool it wants, e.g. "a stone pickaxe"

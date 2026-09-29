@@ -47,6 +47,9 @@ typedef enum {
     // is empty. The user asked for three appearances and this is them,
     // in one block id rather than three.
     K_BARREL,
+    // Half a bed: a low slab with a frame, and a pillow on the head
+    // half. Low enough to walk onto, which is what a bed is for.
+    K_BED,
     // A liquid is ONLY ever its surface. It draws no sides and no
     // bottom, and a top only where there is air above it, and it never
     // hides the faces of its neighbours -- so a lake is a lid over
@@ -323,7 +326,18 @@ enum {
     // closed one, so a player never ends up carrying "an open gate".
     BLK_FENCE_GATE     = 43,
     BLK_FENCE_GATE_OPEN = 44,
-    // New blocks here: BLK_SOMETHING = 45, and a line in tools/ids.txt.
+    // THE BED, and it is two blocks like a real one: the half you lie
+    // on and the half your head is at. Which is which is the id, and
+    // which way round they lie is two bits of the state byte
+    // (BED_FACE_*), so the pair needs no pointers -- the head is always
+    // the foot's cell plus its facing, and the foot is the head's minus
+    // it. That is enough because a bed is always placed as a unit and
+    // both halves know the same direction (contrast D-110, where the
+    // stove and its chest really do need each other's coordinates: a
+    // player can put two stoves side by side).
+    BLK_BED_FOOT        = 45,
+    BLK_BED_HEAD        = 46,
+    // New blocks here: BLK_SOMETHING = 47, and a line in tools/ids.txt.
     BLK_COUNT
 };
 
@@ -419,6 +433,22 @@ static inline float block_collide_top(uint8_t id) {
 #define BARREL_EMPTY  0u
 #define BARREL_MILK   1u
 #define BARREL_CHEESE 2u
+
+// WHICH WAY A BED LIES, in the state byte of BOTH halves: the direction
+// from the foot to the head. The mesher draws the frame the right way
+// round with it, and interact.c finds one half from the other.
+#define BED_FACE_PX 0u
+#define BED_FACE_NX 1u
+#define BED_FACE_PZ 2u
+#define BED_FACE_NZ 3u
+
+// The step from the foot of a bed to its head, for a facing.
+static inline int bed_step_x(uint8_t face) {
+    return face == BED_FACE_PX ? 1 : face == BED_FACE_NX ? -1 : 0;
+}
+static inline int bed_step_z(uint8_t face) {
+    return face == BED_FACE_PZ ? 1 : face == BED_FACE_NZ ? -1 : 0;
+}
 
 static inline bool block_usable(uint8_t id) {
     return (block_def(id)->flags2 & BF2_USABLE) != 0;

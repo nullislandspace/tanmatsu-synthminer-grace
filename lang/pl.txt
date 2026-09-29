@@ -369,3 +369,19 @@ maker.pick_hint = Enter wybiera   Esc wraca
 maker.a_day = jeden ser dziennie
 maker.a_minute = jedna kiełbasa na minutę
 maker.bucket_back = Wiadro wraca od razu
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Surowa baranina
+item.wool = Wełna
+item.shears = Nożyce
+item.string = Nić
+item.mutton_mash = Baranina z puree
+item.kebab = Kebab
+item.bed_foot = Łóżko
+mob.sheep = Owca
+animal.shorn = Bierzesz jej runo
+animal.bare = Wełna jeszcze nie odrosła
+bed.slept = Śpisz do rana
+bed.daytime = Spać można tylko w nocy
+bed.no_room = Nie ma miejsca na łóżko
+bed.spawn_set = Tu się obudzisz

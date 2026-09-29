@@ -369,3 +369,19 @@ maker.pick_hint = Enter выбирает   Esc назад
 maker.a_day = один сыр в день
 maker.a_minute = одна колбаса в минуту
 maker.bucket_back = Ведро возвращается сразу
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Сырая баранина
+item.wool = Шерсть
+item.shears = Ножницы
+item.string = Нить
+item.mutton_mash = Баранина с пюре
+item.kebab = Кебаб
+item.bed_foot = Кровать
+mob.sheep = Овца
+animal.shorn = Ты снимаешь руно
+animal.bare = Шерсть ещё не отросла
+bed.slept = Ты спишь до утра
+bed.daytime = Спать можно только ночью
+bed.no_room = Здесь нет места для кровати
+bed.spawn_set = Здесь ты проснёшься

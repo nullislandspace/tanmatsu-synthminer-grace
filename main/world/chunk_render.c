@@ -98,6 +98,9 @@ static struct {
     [VM_CHEESE]        = {"cheese.png", 0xFFE8B84Cu},
     [VM_SAUSAGE_SIDE]  = {"sausage_side.png", 0xFF9A9AA0u},
     [VM_SAUSAGE_TOP]   = {"sausage_top.png", 0xFF8E8E94u},
+    [VM_BED_TOP]       = {"bed_top.png", 0xFFBA3A36u},
+    [VM_BED_HEAD]      = {"bed_head.png", 0xFFD8D4C8u},
+    [VM_BED_SIDE]      = {"bed_side.png", 0xFF96703Eu},
 };
 
 // THE CACHE HAS TO HOLD EVERY MATERIAL, WITH ROOM AFTER IT. This is a

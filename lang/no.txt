@@ -369,3 +369,19 @@ maker.pick_hint = Enter velger   Esc tilbake
 maker.a_day = én ost om dagen
 maker.a_minute = én pølse i minuttet
 maker.bucket_back = Bøtta kommer straks tilbake
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Rått sauekjøtt
+item.wool = Ull
+item.shears = Saks
+item.string = Snor
+item.mutton_mash = Sau med potetmos
+item.kebab = Kebab
+item.bed_foot = Seng
+mob.sheep = Sau
+animal.shorn = Du tar ulla dens
+animal.bare = Ulla har ikke vokst ut igjen
+bed.slept = Du sover til morgenen
+bed.daytime = Du kan bare sove om natten
+bed.no_room = Ikke plass til en seng
+bed.spawn_set = Du våkner her

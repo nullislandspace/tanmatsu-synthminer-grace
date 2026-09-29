@@ -67,6 +67,26 @@ mob_def_t const MOBS[MOB_KIND_COUNT] = {
                  .feed       = {ITEM_BEEF, 0},
                  .tame_item  = ITEM_BONE,
                  .argb       = 0xFFB8B0A4u},
+
+    // A SHEEP: mutton when it dies, wool whenever you ask, and the
+    // second is the point. It eats wheat like a cow -- which is not a
+    // clash with D-119 ("each animal its own food"): the rule is that
+    // an animal HAS a food, not that no two share one, and wheat is
+    // what a sheep eats.
+    [MOB_SHEEP] = {.name       = "sheep",
+                   .label      = SM_STR_MOB_SHEEP,
+                   .w          = 0.8f,
+                   .h          = 1.1f,
+                   .health_max = 8,
+                   .speed      = 0.05f,
+                   .drop_item  = ITEM_MUTTON,
+                   .drop_min   = 1,
+                   .drop_max   = 2,
+                   .feed       = {ITEM_WHEAT, 0},
+                   .shear_item = ITEM_WOOL,
+                   .shear_min  = 1,
+                   .shear_max  = 3,
+                   .argb       = 0xFFEEEAE0u},
 };
 
 int mob_damage_of(uint16_t item) {
@@ -374,6 +394,14 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         if (m->love > 0) m->love--;
         if (m->breed_cd > 0) m->breed_cd--;
 
+        // THE FLEECE GROWS BACK, on ticks elapsed like everything else
+        // here: a flock in a chunk nobody has visited grows no wool
+        // while nobody is looking (D-51).
+        if (m->shorn && ++m->age_shorn >= MOB_REGROW_TICKS) {
+            m->shorn     = false;
+            m->age_shorn = 0;
+        }
+
         // GROWING UP. A calf becomes an animal, box and all, and only
         // then can it be bred or milked.
         m->age++;
@@ -603,7 +631,7 @@ bool mob_hit(int i, int damage, double fx, double fz) {
 }
 
 mob_use_result_t mob_use(int i, uint16_t item) {
-    mob_use_result_t r = {MOB_USE_NOTHING, 0, false};
+    mob_use_result_t r = {MOB_USE_NOTHING, 0, false, false};
     mob_t*           m = mob_at_mut(i);
     if (m == NULL || !m->alive) return r;
     mob_def_t const* d = mob_def(m->kind);
@@ -613,6 +641,30 @@ mob_use_result_t mob_use(int i, uint16_t item) {
     if (item == ITEM_BUCKET && m->kind == MOB_COW && !m->baby) {
         r.what    = MOB_USE_MILKED;
         r.becomes = ITEM_BUCKET_MILK;
+        return r;
+    }
+
+    // SHEARS ON A SHEEP. A fleece is the one thing an animal gives more
+    // than once, so it is the one that needs a timer: a shorn sheep
+    // gives nothing until its coat is back (MOB_REGROW_TICKS), and it
+    // looks shorn in the meantime, which is what stops a player
+    // wandering a flock trying every one of them.
+    if (item_def(item).tool == TOOL_SHEARS && d->shear_item != ITEM_NONE && !m->baby) {
+        if (m->shorn) {
+            r.what = MOB_USE_BARE;
+            return r;
+        }
+        m->shorn     = true;
+        m->age_shorn = 0;  // counted up by the tick until the coat is back
+        int const span = (int)d->shear_max - (int)d->shear_min + 1;
+        int const n    = (int)d->shear_min + (int)(sm_hash3((int32_t)m->body.x, (int32_t)m->body.y,
+                                                            (int32_t)m->body.z, 0x5EA12Cu ^ m->id) %
+                                                   (uint32_t)(span > 0 ? span : 1));
+        item_entity_spawn((int32_t)floor(m->body.x), (int32_t)floor(m->body.y), (int32_t)floor(m->body.z),
+                          d->shear_item, n, 0);
+        m->say = MOB_SAY_IDLE;
+        r.what = MOB_USE_SHORN;
+        r.wear = true;
         return r;
     }
 
@@ -673,6 +725,11 @@ static struct {
 } const HERDS[] = {
     {BIOME_PLAINS, MOB_COW, 14, 2, 4},
     {BIOME_PLAINS, MOB_PIG, 12, 2, 3},
+    // SHEEP ARE A PLAINS ANIMAL and a mountain one: grass and hillside,
+    // which is where sheep are. They are the commonest of the four,
+    // because wool is the one thing here that is needed in threes.
+    {BIOME_PLAINS, MOB_SHEEP, 16, 2, 4},
+    {BIOME_MOUNTAIN, MOB_SHEEP, 10, 1, 3},
     {BIOME_FOREST, MOB_PIG, 12, 2, 3},
     {BIOME_FOREST, MOB_COW, 7, 1, 3},
     {BIOME_BIRCH, MOB_PIG, 8, 1, 3},
@@ -742,6 +799,10 @@ static void write_record(tag_writer_t* w, mob_t const* m) {
     tag_put_i32(w, "age", (int32_t)m->age);
     if (m->baby) tag_put_i8(w, "baby", 1);
     if (m->tame) tag_put_i8(w, "tame", 1);
+    if (m->shorn) {
+        tag_put_i8(w, "shorn", 1);
+        tag_put_i32(w, "shornage", (int32_t)m->age_shorn);
+    }
     if (m->sitting) tag_put_i8(w, "sit", 1);
     if (m->love > 0) tag_put_i16(w, "love", (int16_t)m->love);
     if (m->breed_cd > 0) tag_put_i16(w, "cd", (int16_t)m->breed_cd);
@@ -800,7 +861,8 @@ static void read_record(tag_reader_t* r, size_t end) {
     char     kind[TAG_NAME_MAX + 1] = {0};
     float    x = 0, y = 0, z = 0, yaw = 0;
     int      hp = 0, age = 0, love = 0, cd = 0;
-    bool     baby = false, tame = false, sit = false;
+    bool     baby = false, tame = false, sit = false, shorn = false;
+    int      shornage = 0;
 
     while (r->pos < end && !r->error) {
         int const t = tag_next(r, name, sizeof(name));
@@ -827,6 +889,10 @@ static void read_record(tag_reader_t* r, size_t end) {
             baby = tag_get_i8(r) != 0;
         } else if (t == TAG_I8 && strcmp(name, "tame") == 0) {
             tame = tag_get_i8(r) != 0;
+        } else if (t == TAG_I8 && strcmp(name, "shorn") == 0) {
+            shorn = tag_get_i8(r) != 0;
+        } else if (t == TAG_I32 && strcmp(name, "shornage") == 0) {
+            shornage = tag_get_i32(r);
         } else if (t == TAG_I8 && strcmp(name, "sit") == 0) {
             sit = tag_get_i8(r) != 0;
         } else {
@@ -842,8 +908,10 @@ static void read_record(tag_reader_t* r, size_t end) {
     m->yaw      = yaw;
     if (hp > 0) m->health = (int16_t)hp;
     m->age      = (uint32_t)(age < 0 ? 0 : age);
-    m->tame     = tame;
-    m->sitting  = sit;
+    m->tame      = tame;
+    m->sitting   = sit;
+    m->shorn     = shorn;
+    m->age_shorn = (uint32_t)(shornage < 0 ? 0 : shornage);
     m->love     = (uint16_t)(love < 0 ? 0 : love);
     m->breed_cd = (uint16_t)(cd < 0 ? 0 : cd);
 }

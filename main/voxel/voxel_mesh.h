@@ -141,6 +141,10 @@ typedef enum {
     VM_CHEESE,
     VM_SAUSAGE_SIDE,
     VM_SAUSAGE_TOP,
+    // The bed: the quilt, the pillow end, and the frame round both.
+    VM_BED_TOP,
+    VM_BED_HEAD,
+    VM_BED_SIDE,
     VM_COUNT
 } vox_mat_t;
 

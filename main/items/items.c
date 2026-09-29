@@ -79,6 +79,31 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     // nothing, and the one thing it does -- taming a dog -- is a use,
     // not a swing (game/mob.h).
     [ITEM_BONE - BLK_COUNT]        = {"bone", SM_STR_ITEM_BONE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE4E0D0u},
+
+    // --- The sheep's half of the farm ---------------------------------
+    //
+    // The three trailing numbers are `compost`, `hunger`, `saturation`.
+    // Raw meat is none of those: it composts no more than pork does and
+    // it is not food until a stove has been at it.
+    [ITEM_MUTTON - BLK_COUNT] = {"mutton", SM_STR_ITEM_MUTTON, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC6605Cu},
+    // WOOL ROTS DOWN. It is the one animal product that does: it is
+    // hair, it is what a composter is for, and a player with a shed
+    // full of it should have something to do with the surplus.
+    [ITEM_WOOL - BLK_COUNT]   = {"wool", SM_STR_ITEM_WOOL, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFEEEAE0u, 1},
+    // SHEARS ARE A TOOL OF THEIR OWN CLASS (TOOL_SHEARS, which has been
+    // in blocks.h since step 0.3 with nothing to put in it). They break
+    // no block faster than a fist; what they do is take a fleece, and
+    // they wear by one each time.
+    [ITEM_SHEARS - BLK_COUNT] = {"shears", SM_STR_ITEM_SHEARS, 1, TOOL_SHEARS, 1, 220, 0, 0xFFC8CCD4u},
+    [ITEM_STRING - BLK_COUNT] = {"string", SM_STR_ITEM_STRING, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE2DED2u},
+
+    // The two dishes, with the user's numbers. Nothing can cook them
+    // until the stove exists (step 11); these rows are where the
+    // numbers live in the meantime.
+    [ITEM_MUTTON_MASH - BLK_COUNT] = {"mutton_mash", SM_STR_ITEM_MUTTON_MASH, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0,
+                                      0xFFD8A870u, 0, 5, 2},
+    [ITEM_KEBAB - BLK_COUNT]       = {"kebab", SM_STR_ITEM_KEBAB, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC07840u, 0,
+                                      8, 7},
 };
 
 // A bucket and what is in it. Adding lava is this row plus a row in the
@@ -206,6 +231,9 @@ static sm_str_t const BLOCK_LABEL[BLK_COUNT] = {
     // dry farmland share one.
     [BLK_FENCE_GATE] = SM_STR_ITEM_FENCE_GATE,
     [BLK_FENCE_GATE_OPEN] = SM_STR_ITEM_FENCE_GATE,
+    // One name for both halves: it is one bed.
+    [BLK_BED_FOOT] = SM_STR_ITEM_BED_FOOT,
+    [BLK_BED_HEAD] = SM_STR_ITEM_BED_FOOT,
     // Air and the barrier are never in anybody's hands and have none.
 };
 

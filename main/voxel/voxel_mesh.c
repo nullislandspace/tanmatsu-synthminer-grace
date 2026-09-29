@@ -263,6 +263,30 @@ static void emit_barrel(mesh_t* m, int X, int Y, int Z, uint8_t side, uint8_t to
     emit_f(m, DIRS[2], fy, ix0, ix1, iz0, iz1, 1.0f, 1.0f, fill);
 }
 
+// HALF A BED: a frame with a mattress on it, nine sixteenths of a block
+// tall so it can be walked onto. `head` puts the pillow end's texture on
+// top; `face` is the direction from the foot to the head, which decides
+// which of the four sides is the open one where the two halves meet.
+#define BED_H 0.5625f
+
+static void emit_bed(mesh_t* m, int X, int Y, int Z, uint8_t top, uint8_t side, unsigned face, bool head) {
+    float const x0 = (float)X, x1 = (float)X + 1.0f;
+    float const z0 = (float)Z, z1 = (float)Z + 1.0f;
+    float const y0 = (float)Y, y1 = (float)Y + BED_H;
+    mesh_set_dir(m, MESH_DIR_NONE);
+    emit_f(m, DIRS[2], y1, x0, x1, z0, z1, 1.0f, 1.0f, top);
+    emit_f(m, DIRS[3], y0, x0, x1, z0, z1, 1.0f, 1.0f, side);
+    // The four sides, minus the one the other half is against: two beds
+    // meeting would otherwise draw a wall down the middle of one bed.
+    int const dx = face == BED_FACE_PX ? 1 : face == BED_FACE_NX ? -1 : 0;
+    int const dz = face == BED_FACE_PZ ? 1 : face == BED_FACE_NZ ? -1 : 0;
+    int const jx = head ? -dx : dx, jz = head ? -dz : dz;  // towards the other half
+    if (jx != 1) emit_f(m, DIRS[0], x1, z0, z1, y0, y1, 1.0f, BED_H, side);
+    if (jx != -1) emit_f(m, DIRS[1], x0, z0, z1, y0, y1, 1.0f, BED_H, side);
+    if (jz != 1) emit_f(m, DIRS[4], z1, x0, x1, y0, y1, 1.0f, BED_H, side);
+    if (jz != -1) emit_f(m, DIRS[5], z0, x0, x1, y0, y1, 1.0f, BED_H, side);
+}
+
 int voxel_sign_text(int32_t x, int32_t y, int32_t z) {
     uint32_t h = (uint32_t)x * 0x9E3779B1u ^ (uint32_t)y * 0x85EBCA77u ^ (uint32_t)z * 0xC2B2AE3Du;
     h ^= h >> 15;
@@ -696,6 +720,11 @@ void voxel_mesh_build(mesh_t* m, vox_grid_t const* g, vox_mesh_mode_t mode) {
                 if (k == K_LIQUID && SHAPED(x, y, z)) {
                     mesh_set_light(m, LIGHT(x, y + 1, z));
                     emit_fluid(m, g, x, y, z, (uint8_t)voxel_face_mat(b, VF_TOP));
+                }
+                if (k == K_BED) {
+                    mesh_set_light(m, LIGHT(x, y, z));
+                    emit_bed(m, X, Y, Z, (uint8_t)voxel_face_mat(b, VF_TOP), (uint8_t)voxel_face_mat(b, VF_SIDE),
+                             grid_data(g, x, y, z) & 0x03u, b == BLK_BED_HEAD);
                 }
                 if (k == K_PLANT || k == K_TORCH || k == K_SIGN || k == K_FENCE || k == K_GATE || k == K_BARREL) {
                     mesh_set_light(m, LIGHT(x, y, z));  // lit by its own cell

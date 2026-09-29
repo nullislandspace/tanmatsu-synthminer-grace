@@ -369,3 +369,19 @@ maker.pick_hint = Enter renkasi   Esc atgal
 maker.a_day = vienas sūris per dieną
 maker.a_minute = viena dešra per minutę
 maker.bucket_back = Kibiras grįžta iš karto
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Žalia aviena
+item.wool = Vilna
+item.shears = Žirklės
+item.string = Virvelė
+item.mutton_mash = Aviena su bulvių koše
+item.kebab = Kebabas
+item.bed_foot = Lova
+mob.sheep = Avis
+animal.shorn = Nukerpi jos vilną
+animal.bare = Vilna dar neataugo
+bed.slept = Miegi iki ryto
+bed.daytime = Miegoti galima tik naktį
+bed.no_room = Nėra vietos lovai
+bed.spawn_set = Čia pabusi

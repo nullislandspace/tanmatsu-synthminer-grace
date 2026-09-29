@@ -108,6 +108,26 @@ enum {
     // dog costs a pig, a flower and some luck rather than a dish off a
     // stove that does not exist yet.
     ITEM_BONE,
+
+    // --- Sheep, and what comes off one (step 10, the user's round two)
+    //
+    // MUTTON is the third meat and the first that is worth more cooked
+    // than any other: both of its dishes are near the top of Part A's
+    // table. WOOL is the interesting one -- it is the first material in
+    // this game that is neither mined nor grown, and it is where STRING
+    // comes from, which has been an open question since the rod was
+    // designed (Part A: "string will not come from spiders").
+    ITEM_MUTTON,
+    ITEM_WOOL,
+    ITEM_SHEARS,
+    ITEM_STRING,
+
+    // The two dishes mutton makes, which need a stove and so cannot be
+    // cooked until step 11. Their rows are here now because the numbers
+    // are the user's and this is where numbers live -- the recipes name
+    // a station nothing has yet, so they are inert rather than wrong.
+    ITEM_MUTTON_MASH,
+    ITEM_KEBAB,
     ITEM_COUNT
 };
 
@@ -152,6 +172,17 @@ typedef struct {
     // argb would land in `fuel` and a pickaxe would burn for four
     // billion ticks. A new column goes on the end, or every row changes.
     uint8_t     compost;
+
+    // WHAT EATING IT IS WORTH (Part A's table). Both are Minecraft's
+    // units: hunger is the drumsticks and saturation is the invisible
+    // reserve that drains first. 0 for anything that is not food --
+    // which is most of the table, and why these are last.
+    //
+    // The loop that spends them is step 11; the numbers are here
+    // because the user gave them with the food and a number in two
+    // places is a number that will disagree with itself.
+    uint8_t     hunger;
+    uint8_t     saturation;
 } item_def_t;
 
 // Everything about an item, blocks included. For a block id this is

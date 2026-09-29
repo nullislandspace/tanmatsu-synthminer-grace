@@ -225,6 +225,44 @@ static recipe_t const RECIPES[] = {
     {.out     = ITEM_SAUSAGE_VEG, .out_n = 1, .station = RS_SAUSAGE,
      .n_in    = 1,
      .in      = {{ITEM_BEANS, 2}}},
+
+    // --- Sheep, wool, and what wool is for ---------------------------
+    //
+    // SHEARS ARE TWO IRON INGOTS (the user). They are the only way to
+    // get wool off a sheep without killing it, which is what makes a
+    // flock worth keeping rather than eating.
+    {.out     = ITEM_SHEARS, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 1,
+     .in      = {{ITEM_IRON_INGOT, 2}}},
+
+    // THE BED: three wool and three planks, and it sets the spawn.
+    {.out     = BLK_BED_FOOT, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 2,
+     .in      = {{ITEM_WOOL, 3}, {BLK_PLANKS, 3}}},
+
+    // AND WHERE STRING COMES FROM, which has been an open question
+    // since the fishing rod was designed (Part A: the user, "strings
+    // will not come from spiders"). One fleece is three strings.
+    //
+    // NOT reversible: three strings must not become a fleece, or wool
+    // and string would be the same thing at different rates.
+    {.out     = ITEM_STRING, .out_n = 3, .station = RS_TABLE,
+     .n_in    = 1,
+     .in      = {{ITEM_WOOL, 1}}},
+
+    // --- On a stove that does not exist yet (step 11) ----------------
+    //
+    // Both are the user's numbers, given with the sheep. They are worth
+    // more than anything else mutton could be: the kebab is second only
+    // to the pizza, and it wants a crop, a fruit and a bean as well as
+    // the meat.
+    {.out     = ITEM_MUTTON_MASH, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 2,
+     .in      = {{ITEM_MUTTON, 1}, {ITEM_POTATO, 2}}},
+
+    {.out     = ITEM_KEBAB, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 4,
+     .in      = {{ITEM_MUTTON, 1}, {ITEM_BEANS, 1}, {ITEM_WHEAT, 2}, {ITEM_TOMATO, 1}}},
 };
 
 #define RECIPE_N ((int)(sizeof(RECIPES) / sizeof(RECIPES[0])))

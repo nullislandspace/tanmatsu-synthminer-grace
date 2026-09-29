@@ -369,3 +369,19 @@ maker.pick_hint = Enter roghnaíonn   Esc ar ais
 maker.a_day = cáis amháin sa lá
 maker.a_minute = ispín amháin sa nóiméad
 maker.bucket_back = Filleann an buicéad láithreach
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Caoireoil amh
+item.wool = Olann
+item.shears = Deimheas
+item.string = Sreang
+item.mutton_mash = Caoireoil is brúitín
+item.kebab = Cibeab
+item.bed_foot = Leaba
+mob.sheep = Caora
+animal.shorn = Tógann tú a lomra
+animal.bare = Níl a fionnadh fásta ar ais fós
+bed.slept = Codlaíonn tú go maidin
+bed.daytime = Ní féidir codladh ach san oíche
+bed.no_room = Níl slí do leaba ann
+bed.spawn_set = Dúiseoidh tú anseo

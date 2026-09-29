@@ -3234,6 +3234,179 @@ static void check_shoving(void) {
     mob_reset();
 }
 
+// ---------------------------------------------------------------------
+//  Sheep, wool and the bed (step 10, round two)
+//
+//  The sheep is the first animal worth KEEPING rather than killing --
+//  everything else gives what it gives once -- so the claims are about
+//  the fleece and what it becomes:
+//
+//    * shears take a fleece and the sheep lives; it gives nothing more
+//      until the coat is back, and it looks shorn in the meantime;
+//    * a fleece survives a save, coat clock and all, or a flock read
+//      back off the card is an infinite supply of wool;
+//    * ONE FLEECE IS THREE STRINGS, which is where string comes from in
+//      this game -- an open question since the fishing rod was designed
+//      (the user: "strings will not come from spiders");
+//    * a bed is TWO CELLS and behaves like one thing: placed together,
+//      broken together, and only the foot pays out.
+// ---------------------------------------------------------------------
+static void check_sheep(void) {
+    printf("sheep: the fleece, and what it becomes\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the sheep world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    mob_reset();
+    item_entity_reset();
+
+    phys_body_t watcher;
+    phys_body_init(&watcher, 12.0, 20.0, 12.0);
+    uint32_t clk = 6000;
+
+    int const s = mob_spawn(MOB_SHEEP, 6.5, 20.0, 6.5, false);
+    CHECK(s >= 0, "the pool would not take a sheep");
+    CHECK(!mob_at(s)->shorn, "a new sheep is already shorn");
+
+    // Anything but shears gets nothing off it.
+    CHECK(mob_use(s, ITEM_AXE_IRON).what == MOB_USE_NOTHING, "an axe sheared a sheep");
+    CHECK(item_entity_live() == 0, "something came off the sheep without shears");
+
+    mob_use_result_t const cut = mob_use(s, ITEM_SHEARS);
+    CHECK(cut.what == MOB_USE_SHORN, "shears did not shear a sheep");
+    CHECK(cut.wear && !cut.consume, "shearing did not wear the shears, or ate them");
+    CHECK(mob_at(s)->shorn, "the sheep is not shorn after shearing");
+    CHECK(mob_at(s)->alive, "shearing killed the sheep");
+    int wool = 0;
+    for (int i = 0; i < ITEM_ENTITY_MAX; i++) {
+        item_entity_t const* e = item_entity_at(i);
+        if (e != NULL && e->alive && e->item == ITEM_WOOL) wool += e->count;
+    }
+    CHECK(wool >= mob_def(MOB_SHEEP)->shear_min && wool <= mob_def(MOB_SHEEP)->shear_max,
+          "shearing gave %d wool, outside %u..%u", wool, mob_def(MOB_SHEEP)->shear_min,
+          mob_def(MOB_SHEEP)->shear_max);
+
+    // A SHORN SHEEP GIVES NOTHING until its coat is back.
+    CHECK(mob_use(s, ITEM_SHEARS).what == MOB_USE_BARE, "a shorn sheep was sheared again");
+
+    // ... and the coat takes an in-game day, counted in TICKS ELAPSED
+    // (D-51), so a flock nobody is looking at grows no wool.
+    for (uint32_t t = 0; t < MOB_REGROW_TICKS - 2; t++) mob_tick(clk++, &watcher, 0);
+    CHECK(mob_at(s)->shorn, "the fleece grew back early");
+    for (int t = 0; t < 4; t++) mob_tick(clk++, &watcher, 0);
+    CHECK(!mob_at(s)->shorn, "the fleece never grew back");
+    printf("  a fleece takes %u ticks to grow back, and the sheep lives through it\n", MOB_REGROW_TICKS);
+
+    // A LAMB HAS NO FLEECE TO GIVE.
+    int const lamb = mob_spawn(MOB_SHEEP, 7.5, 20.0, 6.5, true);
+    CHECK(mob_use(lamb, ITEM_SHEARS).what == MOB_USE_NOTHING, "a lamb was sheared");
+
+    // --- The fleece survives a save -------------------------------------
+    mob_reset();
+    int const keep = mob_spawn(MOB_SHEEP, 6.5, 20.0, 6.5, false);
+    mob_at_mut(keep)->shorn     = true;
+    mob_at_mut(keep)->age_shorn = 1234;
+    static uint8_t buf[2048];
+    size_t const   n = mob_encode_chunk(0, 0, buf, sizeof buf);
+    CHECK(n > 0, "a chunk with a sheep in it wrote nothing");
+    mob_drop_chunk(0, 0);
+    mob_decode_section(buf + 5, n - 5);
+    mob_t const* back = NULL;
+    for (int i = 0; i < MOB_MAX; i++) {
+        if (mob_at(i)->alive) back = mob_at(i);
+    }
+    CHECK(back != NULL && back->kind == MOB_SHEEP, "what came back is not a sheep");
+    CHECK(back->shorn && back->age_shorn == 1234, "the sheep came back with its coat on (shorn %d, age %u)",
+          back->shorn, back->age_shorn);
+
+    // --- Wool is where string comes from --------------------------------
+    inventory_t inv;
+    inv_clear(&inv);
+    inv_add(&inv, ITEM_WOOL, 4, 0);
+    recipe_t const* str = NULL;
+    recipe_t const* bed = NULL;
+    for (int i = 0; i < recipe_count(); i++) {
+        recipe_t const* r = recipe_at(i);
+        if (r->out == ITEM_STRING) str = r;
+        if (r->out == BLK_BED_FOOT) bed = r;
+    }
+    CHECK(str != NULL, "nothing makes string");
+    CHECK(bed != NULL, "nothing makes a bed");
+    CHECK(str->out_n == 3 && str->n_in == 1 && str->in[0].item == ITEM_WOOL && str->in[0].count == 1,
+          "one wool does not make three strings");
+    CHECK(recipe_make(str, &inv, 1) == 1, "the string recipe would not run");
+    CHECK(inv_count(&inv, ITEM_STRING) == 3, "one wool made %d strings", inv_count(&inv, ITEM_STRING));
+    CHECK(inv_count(&inv, ITEM_WOOL) == 3, "the string recipe took the wrong amount of wool");
+
+    // And the bed: three wool and three planks, which is most of a
+    // flock's first shearing.
+    inv_clear(&inv);
+    inv_add(&inv, ITEM_WOOL, 3, 0);
+    inv_add(&inv, BLK_PLANKS, 3, 0);
+    CHECK(recipe_make(bed, &inv, 1) == 1, "three wool and three planks would not make a bed");
+
+    mob_reset();
+    item_entity_reset();
+}
+
+static void check_bed(void) {
+    printf("the bed: two cells, one thing\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the bed world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    item_entity_reset();
+
+    // Aiming at the ground at (6, 19, 6) while facing +z: the foot goes
+    // in the cell above it and the head one further along.
+    ray_hit_t hit = {0};
+    hit.x = 6, hit.y = 19, hit.z = 6;
+    hit.px = 6, hit.py = 20, hit.pz = 6;
+    hit.block = BLK_GRASS;
+    hit.face  = MESH_DIR_PY;
+    CHECK(interact_place_dir(&hit, BLK_BED_FOOT, NULL, 0.0f, 1.0f), "a bed would not go down");
+    CHECK(world_block(6, 20, 6) == BLK_BED_FOOT, "the foot of the bed is not where it was put");
+    CHECK(world_block(6, 20, 7) == BLK_BED_HEAD, "the head of the bed is not beside the foot");
+    CHECK(st_data(world_state(6, 20, 6)) == st_data(world_state(6, 20, 7)),
+          "the two halves of the bed disagree about which way they lie");
+
+    // Each half knows the other.
+    int32_t ox, oy, oz;
+    CHECK(interact_bed_other(6, 20, 6, &ox, &oy, &oz) && ox == 6 && oy == 20 && oz == 7,
+          "the foot does not know where its head is");
+    CHECK(interact_bed_other(6, 20, 7, &ox, &oy, &oz) && ox == 6 && oy == 20 && oz == 6,
+          "the head does not know where its foot is");
+    CHECK(!interact_bed_other(6, 20, 9, NULL, NULL, NULL), "empty air claims to be half a bed");
+
+    // NO ROOM, NO BED: the second cell is taken, so nothing is placed --
+    // half a bed is not a thing.
+    set_block(9, 20, 7, BLK_STONE, ST_PLACED);
+    ray_hit_t h2 = {0};
+    h2.x = 9, h2.y = 19, h2.z = 6;
+    h2.px = 9, h2.py = 20, h2.pz = 6;
+    h2.block = BLK_GRASS;
+    h2.face  = MESH_DIR_PY;
+    CHECK(!interact_place_dir(&h2, BLK_BED_FOOT, NULL, 0.0f, 1.0f), "a bed went down with one cell of room");
+    CHECK(world_block(9, 20, 6) == BLK_AIR, "a refused bed left half of itself behind");
+
+    // BREAKING EITHER HALF TAKES BOTH, and only the foot pays out.
+    item_entity_reset();
+    break_result_t const r = interact_break(6, 20, 7, ITEM_AXE_IRON);  // the HEAD
+    CHECK(r.ok, "the head of the bed would not break");
+    CHECK(world_block(6, 20, 6) == BLK_AIR && world_block(6, 20, 7) == BLK_AIR,
+          "breaking one half of the bed left the other");
+    int beds = 0;
+    for (int i = 0; i < ITEM_ENTITY_MAX; i++) {
+        item_entity_t const* e = item_entity_at(i);
+        if (e != NULL && e->alive && e->item == BLK_BED_FOOT) beds += e->count;
+    }
+    CHECK(beds == 1, "breaking a bed dropped %d of them", beds);
+    printf("  placed as two cells, broken as two cells, dropped as one bed\n");
+    item_entity_reset();
+}
+
 static void check_pens(void) {
     printf("pens: what actually keeps a cow in (F-122)\n");
     double high = 0.0;
@@ -6030,9 +6203,19 @@ static void check_text_fits(void) {
             // ingredient of the fattest recipe there is.
             float room = TEXT_BUDGETS[bi].px;
             if (room == 0.0f) {
+                // ... one per ingredient of the fattest recipe THE BOOK
+                // CAN SHOW. A machine's recipes are not in the book --
+                // nobody picks a row in a sausage maker, and the stove
+                // has its own screen (step 11), which will need a
+                // budget line of its own when it exists. Counting them
+                // here tightened this line for a recipe that is never
+                // drawn on it, which is a wrong answer arrived at
+                // honestly.
                 int most = 1;
                 for (int ri = 0; ri < recipe_count(); ri++) {
-                    if (recipe_at(ri)->n_in > most) most = recipe_at(ri)->n_in;
+                    recipe_t const* r = recipe_at(ri);
+                    if (r->station != RS_INVENTORY && r->station != RS_TABLE && r->station != RS_FURNACE) continue;
+                    if (r->n_in > most) most = r->n_in;
                 }
                 room = PANEL_ROOM(0.88f) / (float)most;
             }
@@ -6705,6 +6888,8 @@ int main(void) {
     check_pens();
     check_shoving();
     check_breeding();
+    check_sheep();
+    check_bed();
     check_animals();
     check_makers();
     check_replay();

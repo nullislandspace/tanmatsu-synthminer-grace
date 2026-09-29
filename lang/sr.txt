@@ -369,3 +369,19 @@ maker.pick_hint = Enter бира   Esc назад
 maker.a_day = један сир дневно
 maker.a_minute = једна кобасица у минути
 maker.bucket_back = Канта се одмах враћа
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Сирова јагњетина
+item.wool = Вуна
+item.shears = Маказе
+item.string = Конац
+item.mutton_mash = Јагњетина с пиреом
+item.kebab = Кебаб
+item.bed_foot = Кревет
+mob.sheep = Овца
+animal.shorn = Узимаш јој руно
+animal.bare = Вуна јој још није нарасла
+bed.slept = Спаваш до јутра
+bed.daytime = Спавати се може само ноћу
+bed.no_room = Нема места за кревет
+bed.spawn_set = Овде ћеш се пробудити

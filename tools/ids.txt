@@ -96,3 +96,11 @@ item cheese
 item sausage
 item sausage_veg
 item bone
+block 45 bed_foot
+block 46 bed_head
+item mutton
+item wool
+item shears
+item string
+item mutton_mash
+item kebab

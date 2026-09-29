@@ -137,10 +137,18 @@ void sm_audio_mob_tick(double px, double pz) {
                 id = m->kind == MOB_COW ? SFX_MOO : m->kind == MOB_PIG ? SFX_OINK : SFX_BARK;
                 break;
         }
+        // AND IT GETS QUIETER WITH DISTANCE (the user). Full voice
+        // under a couple of blocks, falling away to nothing at the
+        // edge of earshot: `1 - (d/r)^2` rather than a straight line,
+        // so a nearby animal stays loud and the tail is long and soft,
+        // which is what distance actually sounds like.
+        double const d2   = dx * dx + dz * dz;
+        double const t    = d2 / (MOB_HEAR_RANGE * MOB_HEAR_RANGE);
+        float const  gain = (float)(1.0 - t);
         // A CALF IS A SMALLER INSTRUMENT: the same voice five semitones
         // up, which costs nothing and is most of what tells you from
         // across a field that there is a young one in the herd.
-        sfx_play_pitched(id, m->baby ? 5.0f : 0.0f);
+        sfx_play_at(id, m->baby ? 5.0f : 0.0f, gain);
         m->say = MOB_SAY_NONE;
         spoken++;
     }

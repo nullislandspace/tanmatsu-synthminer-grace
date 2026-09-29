@@ -32,5 +32,7 @@ void beast_shutdown(void);
 
 // One creature, at `root` (between its feet, +z the way it faces).
 // `walk` is the walk cycle in radians and `stride` 0..1; `light` is the
-// light byte of the cell it stands in.
-void beast_submit(xform_t const* root, uint8_t kind, bool baby, bool sitting, float walk, float stride, uint8_t light);
+// light byte of the cell it stands in. `shorn` is the sheep's, and
+// draws it in skin rather than fleece.
+void beast_submit(xform_t const* root, uint8_t kind, bool baby, bool sitting, bool shorn, float walk, float stride,
+                  uint8_t light);

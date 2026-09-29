@@ -188,6 +188,10 @@ static float jitter_unit(void) {
 }
 
 bool sfx_play_pitched(sfx_id_t id, float semitones) {
+    return sfx_play_at(id, semitones, 1.0f);
+}
+
+bool sfx_play_at(sfx_id_t id, float semitones, float gain) {
     if (id < 0 || id >= SFX_COUNT) return false;
     if (!settings_sfx()) return false;  // the mixer would silence it anyway; save the allocation
 
@@ -214,6 +218,18 @@ bool sfx_play_pitched(sfx_id_t id, float semitones) {
     d->f1 *= scale;
     d->fc0 *= scale;
     d->fc1 *= scale;
+    // HOW LOUD THIS ONE IS, on top of the row's own level. The voice
+    // works from a COPY of the row (see sfx_state_t), so a quiet play
+    // is a multiplication here and nothing downstream has to know --
+    // which is what lets a cow two fields away be a cow two fields
+    // away rather than a cow in your ear.
+    if (gain < 0.0f) gain = 0.0f;
+    if (gain > 1.0f) gain = 1.0f;
+    d->amp *= gain;
+    if (d->amp <= 0.0005f) {
+        heap_caps_free(st);
+        return false;  // too far to hear: do not spend a voice on it
+    }
     // The length varies a little too, or repeated steps tick like a clock.
     d->decay_s *= 1.0f + 0.15f * d->jitter * jitter_unit();
 

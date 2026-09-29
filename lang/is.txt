@@ -369,3 +369,19 @@ maker.pick_hint = Enter velur   Esc til baka
 maker.a_day = einn ostur á dag
 maker.a_minute = ein pylsa á mínútu
 maker.bucket_back = Fatan kemur strax til baka
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Hrátt lambakjöt
+item.wool = Ull
+item.shears = Klippur
+item.string = Band
+item.mutton_mash = Lamb og stappa
+item.kebab = Kebab
+item.bed_foot = Rúm
+mob.sheep = Kind
+animal.shorn = Þú tekur reyfið af henni
+animal.bare = Ullin er ekki vaxin aftur
+bed.slept = Þú sefur til morguns
+bed.daytime = Bara hægt að sofa á nóttunni
+bed.no_room = Ekkert pláss fyrir rúm
+bed.spawn_set = Þú vaknar hér

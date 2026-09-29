@@ -369,3 +369,19 @@ maker.pick_hint = Enter seçer   Esc geri
 maker.a_day = günde bir peynir
 maker.a_minute = dakikada bir sosis
 maker.bucket_back = Kova hemen geri gelir
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Çiğ koyun eti
+item.wool = Yün
+item.shears = Makas
+item.string = İp
+item.mutton_mash = Koyun ve püre
+item.kebab = Kebap
+item.bed_foot = Yatak
+mob.sheep = Koyun
+animal.shorn = Yününü alıyorsun
+animal.bare = Yünü henüz uzamadı
+bed.slept = Sabaha kadar uyursun
+bed.daytime = Sadece geceleri uyuyabilirsin
+bed.no_room = Yatak için yer yok
+bed.spawn_set = Burada uyanacaksın

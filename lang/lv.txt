@@ -369,3 +369,19 @@ maker.pick_hint = Enter izvēlas   Esc atpakaļ
 maker.a_day = viens siers dienā
 maker.a_minute = viena desa minūtē
 maker.bucket_back = Spainis uzreiz nāk atpakaļ
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Jēla aitas gaļa
+item.wool = Vilna
+item.shears = Šķēres
+item.string = Aukla
+item.mutton_mash = Aitas gaļa ar biezeni
+item.kebab = Kebabs
+item.bed_foot = Gulta
+mob.sheep = Aita
+animal.shorn = Tu noņem tās vilnu
+animal.bare = Vilna vēl nav ataugusi
+bed.slept = Tu guli līdz rītam
+bed.daytime = Gulēt var tikai naktī
+bed.no_room = Nav vietas gultai
+bed.spawn_set = Tu pamodīsies šeit

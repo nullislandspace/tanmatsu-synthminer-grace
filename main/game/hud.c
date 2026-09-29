@@ -163,7 +163,7 @@ void hud_creatures(double px, double pz) {
         xform_t const root  = {mat3_rot_y(m->yaw), v3((float)(m->body.x - (double)ox), (float)m->body.y,
                                                       (float)(m->body.z - (double)oz)),
                                1.0f};
-        beast_submit(&root, m->kind, m->baby, m->sitting, walk, stride, light);
+        beast_submit(&root, m->kind, m->baby, m->sitting, m->shorn, walk, stride, light);
     }
 }
 

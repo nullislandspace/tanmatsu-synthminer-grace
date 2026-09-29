@@ -369,3 +369,19 @@ maker.pick_hint = Enter választ   Esc vissza
 maker.a_day = napi egy sajt
 maker.a_minute = percenként egy kolbász
 maker.bucket_back = A vödör azonnal visszajár
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Nyers birkahús
+item.wool = Gyapjú
+item.shears = Olló
+item.string = Fonal
+item.mutton_mash = Birka pürével
+item.kebab = Kebab
+item.bed_foot = Ágy
+mob.sheep = Birka
+animal.shorn = Leveszed a gyapját
+animal.bare = Még nem nőtt vissza a gyapja
+bed.slept = Reggelig alszol
+bed.daytime = Csak éjjel lehet aludni
+bed.no_room = Nincs hely egy ágynak
+bed.spawn_set = Itt ébredsz fel

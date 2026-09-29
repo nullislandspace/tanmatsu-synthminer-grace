@@ -359,3 +359,19 @@ maker.pick_hint = Enter kiest   Esc terug
 maker.a_day = één kaas per dag
 maker.a_minute = één worst per minuut
 maker.bucket_back = De emmer komt meteen terug
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Rauw schapenvlees
+item.wool = Wol
+item.shears = Schaar
+item.string = Draad
+item.mutton_mash = Schaap met puree
+item.kebab = Kebab
+item.bed_foot = Bed
+mob.sheep = Schaap
+animal.shorn = Je neemt zijn vacht
+animal.bare = Zijn vacht is nog niet aangegroeid
+bed.slept = Je slaapt tot de ochtend
+bed.daytime = Slapen kan alleen 's nachts
+bed.no_room = Geen plaats voor een bed
+bed.spawn_set = Hier word je wakker

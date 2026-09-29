@@ -369,3 +369,19 @@ maker.pick_hint = Enter vybere   Esc zpět
 maker.a_day = jeden sýr za den
 maker.a_minute = jedna klobása za minutu
 maker.bucket_back = Kbelík se hned vrací
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Syrové skopové
+item.wool = Vlna
+item.shears = Nůžky
+item.string = Provázek
+item.mutton_mash = Skopové s kaší
+item.kebab = Kebab
+item.bed_foot = Postel
+mob.sheep = Ovce
+animal.shorn = Bereš jí rouno
+animal.bare = Srst jí ještě nedorostla
+bed.slept = Spíš až do rána
+bed.daytime = Spát jde jen v noci
+bed.no_room = Není tu místo na postel
+bed.spawn_set = Tady se probudíš

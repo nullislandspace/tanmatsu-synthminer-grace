@@ -84,6 +84,12 @@ bool interact_place(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoi
 // that has no such block in hand.
 bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoid, float dx, float dz);
 
+// THE OTHER HALF OF THE BED at (x, y, z), or false if that is not a
+// bed. Both halves carry the same facing in their state byte, so the
+// pair needs no stored coordinates: the head is the foot's cell plus
+// its facing and the foot is the head's minus it (blocks.h).
+bool interact_bed_other(int32_t x, int32_t y, int32_t z, int32_t* ox, int32_t* oy, int32_t* oz);
+
 // OPEN OR SHUT A GATE at (x, y, z), which is the whole of what using
 // one does: the two states are two block ids (blocks.h), so this swaps
 // the id and keeps the state byte that says which way it lies. False if
@@ -123,6 +129,10 @@ typedef enum {
     USE_NEEDS_SOIL,      // a seed, on anything but tilled soil
     USE_NEEDS_WATER,     // rice, away from one-deep water over sand
     USE_ALREADY_RIPE,    // compost, on a crop with nowhere left to grow
+    // A BED NEEDS TWO CELLS and only one was free. A placement that
+    // does nothing and says nothing is the same bug as a swing that
+    // does nothing: the player aims again at exactly the same spot.
+    USE_NO_ROOM,
 } use_msg_t;
 
 typedef struct {

@@ -361,3 +361,19 @@ maker.pick_hint = Enter wählt   Esc zurück
 maker.a_day = ein Käse pro Tag
 maker.a_minute = eine Wurst pro Minute
 maker.bucket_back = Der Eimer kommt sofort zurück
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Rohes Hammelfleisch
+item.wool = Wolle
+item.shears = Schere
+item.string = Faden
+item.mutton_mash = Hammel mit Püree
+item.kebab = Kebab
+item.bed_foot = Bett
+mob.sheep = Schaf
+animal.shorn = Du nimmst sein Vlies
+animal.bare = Sein Fell ist noch nicht nachgewachsen
+bed.slept = Du schläfst bis zum Morgen
+bed.daytime = Schlafen geht nur nachts
+bed.no_room = Kein Platz für ein Bett
+bed.spawn_set = Hier wachst du auf

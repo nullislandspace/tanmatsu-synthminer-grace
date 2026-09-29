@@ -82,6 +82,16 @@ bool sfx_play(sfx_id_t id);
 // identical.
 bool sfx_play_pitched(sfx_id_t id, float semitones);
 
+// ... and at `gain`, 0..1, on top of the row's own level: what a thing
+// making a noise SOMEWHERE ELSE needs (the animals, game/mob.h). The
+// mixer has no panning and no distance model of its own, so this is
+// the whole of the positional audio in this game -- and it is enough,
+// because the one question a player asks is "is that near me".
+//
+// A play too quiet to hear spends no voice at all, which matters when
+// a field of animals would otherwise take every slot the mixer has.
+bool sfx_play_at(sfx_id_t id, float semitones, float gain);
+
 // The material sounds, chosen by the block. An id past the table, or
 // air, is silent rather than wrong.
 bool sfx_play_step(uint8_t block);

@@ -369,3 +369,19 @@ maker.pick_hint = Enter valitsee   Esc takaisin
 maker.a_day = yksi juusto päivässä
 maker.a_minute = yksi makkara minuutissa
 maker.bucket_back = Sanko palaa heti
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Raaka lampaanliha
+item.wool = Villa
+item.shears = Keritsimet
+item.string = Lanka
+item.mutton_mash = Lammasta ja muusia
+item.kebab = Kebab
+item.bed_foot = Sänky
+mob.sheep = Lammas
+animal.shorn = Otat sen villan
+animal.bare = Villa ei ole vielä kasvanut takaisin
+bed.slept = Nukut aamuun asti
+bed.daytime = Nukkua voi vain yöllä
+bed.no_room = Ei tilaa sängylle
+bed.spawn_set = Heräät täällä

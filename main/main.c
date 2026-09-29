@@ -1509,6 +1509,69 @@ static struct {
     load_gate_t gate;
 } s_load;
 
+// --- The bed ----------------------------------------------------------
+//
+// Two things, and the first happens whether or not the second can:
+//
+//   * it SETS THE SPAWN POINT. level.smw has had the fields since step
+//     5.10 and nothing has ever written them (worldstore.h, bed_x). It
+//     is where the player will wake up when death arrives in step 13,
+//     and it is worth doing now because a bed somebody slept in and a
+//     bed that did nothing look identical;
+//   * AT NIGHT it sleeps through to morning. The user's rule -- "can
+//     only sleep at night" -- so by day it says so rather than doing
+//     nothing, which is the same argument as every other refusal here.
+//
+// The night is the daytime curve's own answer (game/daytime.h) rather
+// than a pair of tick numbers, so a change to when the sun sets moves
+// this with it.
+#define BED_NIGHT_DAYLIGHT 0.25f
+
+// One line on the HUD for a couple of seconds. The screenshot's
+// message already works this way and there is no reason for a second
+// mechanism (s_shot_msg, drawn at the bottom of render()).
+static void hud_say(char const* text) {
+    snprintf(s_shot_msg, sizeof(s_shot_msg), "%s", text != NULL ? text : "");
+    s_shot_msg_until = showtime_now() + 2.5;
+}
+
+static void use_bed(int32_t x, int32_t y, int32_t z) {
+    // THE FOOT IS WHERE YOU WAKE UP, whichever end was used: one bed,
+    // one spawn point.
+    int32_t fx = x, fy = y, fz = z;
+    if (world_block(x, y, z) == BLK_BED_HEAD) {
+        int32_t ox, oy, oz;
+        if (interact_bed_other(x, y, z, &ox, &oy, &oz) && world_block(ox, oy, oz) == BLK_BED_FOOT) {
+            fx = ox;
+            fy = oy;
+            fz = oz;
+        }
+    }
+    bool const moved = !s_saved.has_bed || s_saved.bed_x != fx || s_saved.bed_y != fy || s_saved.bed_z != fz;
+    s_saved.has_bed = true;
+    s_saved.bed_x   = fx;
+    s_saved.bed_y   = fy;
+    s_saved.bed_z   = fz;
+
+    daytime_t const now = daytime_at(s_meta.time_of_day);
+    if (now.day > BED_NIGHT_DAYLIGHT) {
+        // Daylight: the spawn still moves, and the refusal says why
+        // nothing else happened.
+        hud_say(T(moved ? SM_STR_BED_SPAWN_SET : SM_STR_BED_DAYTIME));
+        return;
+    }
+
+    // Morning, and no further: whatever day it is, wind the clock on to
+    // the next DAY_START rather than adding a fixed amount, or sleeping
+    // at four in the morning would put the sun back where it was.
+    int64_t const day = s_meta.time_of_day / DAY_TICKS;
+    int64_t       next = day * DAY_TICKS + DAY_START;
+    if (next <= s_meta.time_of_day) next += DAY_TICKS;
+    s_meta.time_of_day = next;
+    hud_say(T(SM_STR_BED_SLEPT));
+    sfx_play(SFX_CLICK);
+}
+
 static void start_loading(double wx, double wz, app_state_t next, char const* what, load_gate_t gate) {
     // A test that sets the clock needs the whole view present, because a
     // frame it photographs may look anywhere (D-59). Its reproducibility
@@ -1921,6 +1984,8 @@ static void on_update(float dt, void* user) {
             } else if (s_player.used_block == BLK_COMPOSTER && !composter_ui_active()) {
                 s_player.inv.open = false;
                 composter_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
+            } else if (s_player.used_block == BLK_BED_FOOT || s_player.used_block == BLK_BED_HEAD) {
+                use_bed(s_player.aim.x, s_player.aim.y, s_player.aim.z);
             } else if ((s_player.used_block == BLK_CHEESE_MAKER || s_player.used_block == BLK_SAUSAGE_MAKER) &&
                        !maker_ui_active()) {
                 s_player.inv.open = false;
@@ -2474,6 +2539,8 @@ static void on_render(pax_buf_t* fb, void* user) {
                 case MOB_USE_SIT: key = SM_STR_ANIMAL_SITS; break;
                 case MOB_USE_STAND: key = SM_STR_ANIMAL_STANDS; break;
                 case MOB_USE_BUSY: key = SM_STR_ANIMAL_BUSY; break;
+                case MOB_USE_SHORN: key = SM_STR_ANIMAL_SHORN; break;
+                case MOB_USE_BARE: key = SM_STR_ANIMAL_BARE; break;
                 default: break;
             }
             char const* const line = T(key);

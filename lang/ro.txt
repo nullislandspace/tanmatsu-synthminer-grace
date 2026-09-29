@@ -369,3 +369,19 @@ maker.pick_hint = Enter alege   Esc înapoi
 maker.a_day = o brânză pe zi
 maker.a_minute = un cârnat pe minut
 maker.bucket_back = Găleata se întoarce imediat
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Miel crud
+item.wool = Lână
+item.shears = Foarfece
+item.string = Sfoară
+item.mutton_mash = Miel cu piure
+item.kebab = Kebab
+item.bed_foot = Pat
+mob.sheep = Oaie
+animal.shorn = Îi iei lâna
+animal.bare = Lâna nu i-a crescut încă
+bed.slept = Dormi până dimineața
+bed.daytime = Poți dormi doar noaptea
+bed.no_room = Nu e loc pentru un pat
+bed.spawn_set = Te vei trezi aici

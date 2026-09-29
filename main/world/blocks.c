@@ -440,6 +440,32 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                              // is no item_fence_gate_open.png and nothing
                              // should go looking for one.
                              .flags2   = BF2_USABLE},
+
+    // --- The bed ------------------------------------------------------
+    //
+    // Three wool and three planks, and it does two things: it SETS THE
+    // SPAWN POINT (the original requirement, and level.smw has had the
+    // fields for it since step 5.10 with nothing to write them), and it
+    // lets the player sleep the night away. Both halves are usable, so
+    // it does not matter which end you walk up to.
+    [BLK_BED_FOOT] = {.name     = "bed_foot", .drop_item = BLK_BED_FOOT, .drop_min = 1, .drop_max = 1,
+                      .kind     = K_BED,
+                      .mat      = M3(VM_BED_TOP, VM_BED_SIDE, VM_BED_SIDE),
+                      .hardness = 20,
+                      .tool     = TOOL_AXE,
+                      .sound    = SND_SOFT,
+                      .flags2   = BF2_USABLE | BF2_ITEM_ICON},
+
+    // The head half drops NOTHING -- breaking either end takes both and
+    // the foot is what pays out, exactly as the two halves of the rice
+    // work (D-115).
+    [BLK_BED_HEAD] = {.name     = "bed_head",
+                      .kind     = K_BED,
+                      .mat      = M3(VM_BED_HEAD, VM_BED_SIDE, VM_BED_SIDE),
+                      .hardness = 20,
+                      .tool     = TOOL_AXE,
+                      .sound    = SND_SOFT,
+                      .flags2   = BF2_USABLE},
 };
 
 // Which kind of record each block keeps. A function rather than a

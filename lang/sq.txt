@@ -369,3 +369,19 @@ maker.pick_hint = Enter zgjedh   Esc kthehu
 maker.a_day = një djathë në ditë
 maker.a_minute = një salsiçe në minutë
 maker.bucket_back = Kova kthehet menjëherë
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Mish deleje
+item.wool = Lesh
+item.shears = Gërshërë
+item.string = Fill
+item.mutton_mash = Mish deleje me pure
+item.kebab = Kebab
+item.bed_foot = Krevat
+mob.sheep = Dele
+animal.shorn = I merr leshin
+animal.bare = Leshi nuk i është rritur ende
+bed.slept = Fle deri në mëngjes
+bed.daytime = Mund të flesh vetëm natën
+bed.no_room = S'ka vend për krevat
+bed.spawn_set = Këtu do të zgjohesh

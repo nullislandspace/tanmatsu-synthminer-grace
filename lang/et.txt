@@ -369,3 +369,19 @@ maker.pick_hint = Enter valib   Esc tagasi
 maker.a_day = üks juust päevas
 maker.a_minute = üks vorst minutis
 maker.bucket_back = Ämber tuleb kohe tagasi
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Toores lambaliha
+item.wool = Vill
+item.shears = Käärid
+item.string = Nöör
+item.mutton_mash = Lambaliha püreega
+item.kebab = Kebab
+item.bed_foot = Voodi
+mob.sheep = Lammas
+animal.shorn = Võtad tema villa
+animal.bare = Vill pole veel tagasi kasvanud
+bed.slept = Magad hommikuni
+bed.daytime = Magada saab ainult öösel
+bed.no_room = Voodi jaoks pole ruumi
+bed.spawn_set = Sa ärkad siin

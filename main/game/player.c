@@ -370,6 +370,8 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                     inv_mark_seen(&p->inv, mu.becomes);
                 }
                 if (mu.consume) inv_consume_held(&p->inv);
+                // SHEARS WEAR BY ONE PER FLEECE, like a hoe per plot.
+                if (mu.wear) inv_wear_held(&p->inv, 1);
                 p->mob_msg       = mu.what;
                 p->mob_msg_ticks = USE_MSG_TICKS;
                 sfx_play(mu.what == MOB_USE_MILKED ? SFX_PICKUP : SFX_CLICK);
@@ -428,6 +430,15 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                         trace_edit('P', p->aim.px, p->aim.py, p->aim.pz, block_def(block)->name, 1);
                         inv_consume_held(&p->inv);
                         sfx_play_place(block);
+                    } else if (block == BLK_BED_FOOT) {
+                        // A BED WANTS TWO CELLS and this spot had one.
+                        // Every other placement that fails is obvious --
+                        // the cell is full, or you are standing in it --
+                        // but half a bed's worth of room looks exactly
+                        // like enough.
+                        p->use_msg       = USE_NO_ROOM;
+                        p->use_msg_ticks = USE_MSG_TICKS;
+                        sfx_play(SFX_DENY);
                     }
                 }
             }

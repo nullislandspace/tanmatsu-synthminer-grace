@@ -369,3 +369,19 @@ maker.pick_hint = Enter elige   Esc atrás
 maker.a_day = un queso al día
 maker.a_minute = una salchicha por minuto
 maker.bucket_back = El cubo vuelve enseguida
+
+# --- Sheep, wool and the bed (step 10, round two) ---------------------------
+item.mutton = Cordero crudo
+item.wool = Lana
+item.shears = Tijeras
+item.string = Cuerda
+item.mutton_mash = Cordero con puré
+item.kebab = Kebab
+item.bed_foot = Cama
+mob.sheep = Oveja
+animal.shorn = Le quitas el vellón
+animal.bare = Aún no le ha crecido la lana
+bed.slept = Duermes hasta la mañana
+bed.daytime = Solo puedes dormir de noche
+bed.no_room = No hay sitio para una cama
+bed.spawn_set = Despertarás aquí

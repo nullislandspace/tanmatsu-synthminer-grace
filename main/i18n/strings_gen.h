@@ -202,12 +202,19 @@ typedef enum {
     SM_STR_ITEM_SAUSAGE,                // item.sausage
     SM_STR_ITEM_SAUSAGE_VEG,            // item.sausage_veg
     SM_STR_ITEM_BONE,                   // item.bone
+    SM_STR_ITEM_MUTTON,                 // item.mutton
+    SM_STR_ITEM_WOOL,                   // item.wool
+    SM_STR_ITEM_SHEARS,                 // item.shears
+    SM_STR_ITEM_STRING,                 // item.string
+    SM_STR_ITEM_MUTTON_MASH,            // item.mutton_mash
+    SM_STR_ITEM_KEBAB,                  // item.kebab
     SM_STR_ITEM_FARMLAND,               // item.farmland
     SM_STR_ITEM_COMPOSTER,              // item.composter
     SM_STR_ITEM_CHEESE_MAKER,           // item.cheese_maker
     SM_STR_ITEM_SAUSAGE_MAKER,          // item.sausage_maker
     SM_STR_ITEM_FENCE,                  // item.fence
     SM_STR_ITEM_FENCE_GATE,             // item.fence_gate
+    SM_STR_ITEM_BED_FOOT,               // item.bed_foot
     SM_STR_ITEM_WHEAT_CROP,             // item.wheat_crop
     SM_STR_ITEM_POTATO_CROP,            // item.potato_crop
     SM_STR_ITEM_TOMATO_CROP,            // item.tomato_crop
@@ -269,6 +276,7 @@ typedef enum {
     SM_STR_MOB_PIG,                     // mob.pig
     SM_STR_MOB_COW,                     // mob.cow
     SM_STR_MOB_DOG,                     // mob.dog
+    SM_STR_MOB_SHEEP,                   // mob.sheep
     SM_STR_MOB_READY,                   // mob.ready
     SM_STR_MOB_YOUNG,                   // mob.young
     SM_STR_MOB_RESTING,                 // mob.resting
@@ -276,6 +284,8 @@ typedef enum {
     SM_STR_ANIMAL_FED,                  // animal.fed
     SM_STR_ANIMAL_TAMED,                // animal.tamed
     SM_STR_ANIMAL_BUSY,                 // animal.busy
+    SM_STR_ANIMAL_SHORN,                // animal.shorn
+    SM_STR_ANIMAL_BARE,                 // animal.bare
     SM_STR_ANIMAL_SITS,                 // animal.sits
     SM_STR_ANIMAL_STANDS,               // animal.stands
     SM_STR_MAKER_CHEESE_TITLE,          // maker.cheese_title
@@ -296,6 +306,10 @@ typedef enum {
     SM_STR_MAKER_A_DAY,                 // maker.a_day
     SM_STR_MAKER_A_MINUTE,              // maker.a_minute
     SM_STR_MAKER_BUCKET_BACK,           // maker.bucket_back
+    SM_STR_BED_SLEPT,                   // bed.slept
+    SM_STR_BED_DAYTIME,                 // bed.daytime
+    SM_STR_BED_NO_ROOM,                 // bed.no_room
+    SM_STR_BED_SPAWN_SET,               // bed.spawn_set
     SM_STR_HUD_NEEDS_TOOL,              // hud.needs_tool
     SM_STR_ACTION_FORWARD,              // action.forward
     SM_STR_ACTION_BACK,                 // action.back
