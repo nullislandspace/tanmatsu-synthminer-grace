@@ -1369,16 +1369,39 @@ Tilled with a **hoe**, from grass or dirt. The user's rule: *"The tilled
 soil must be within 4 blocks of a water block on the same level"*, and
 farmland is drawn **dark when wet, lighter when dry**.
 
-The cheap way to do this is to not watch the water. Wetness is
-recomputed **when the crop's growth event fires** -- tier 2, once a
-growth step -- rather than every time water moves. Dry farmland simply
-does not advance its crop. That way the fluid scheduler needs no
-"wake everything within four blocks" call, which is the one thing it
-cannot do cheaply today (its neighbourhood is one cell).
+**Wetness is not watched, and it is not even checked while a crop
+grows** -- the user's own refinement, and it is cheaper again than the
+version this file first proposed:
 
-Cost per check: the cells at distance 1..4 on the same y, which is under
-a hundred reads of an already resident chunk, a few times a minute, for
-a field a player is standing in.
+> Only compute when a seed is planted or at least when the player tries
+> to plant) or the block is tilled. If farmland is dry, crops can't be
+> planted. (tilled unplanted soil can also be re-tilled to update its
+> status)
+
+So the water search runs **on a keypress and nowhere else**: tilling a
+cell, re-tilling an empty one, and trying to plant. Dry soil **refuses
+the seed** rather than accepting it and never growing, which is the
+better failure by a distance -- a refusal with a reason is a thing a
+player learns from, and a plot that silently never sprouts is a thing
+they file as a bug.
+
+Three consequences, all of them wanted:
+
+- **The fluid scheduler needs nothing at all.** Not a wake path, not a
+  four-block radius -- the one radius it cannot reach cheaply, its
+  neighbourhood being a single cell by design -- and not a growth-time
+  check either.
+- **Draining the moat after planting does not kill the crop.** The check
+  happened when the seed went in. Minecraft would wither it; this will
+  not, and that is a fair trade for a farm that cannot be ruined by
+  water being moved two chunks away.
+- **What the colour shows is the last answer, not today's.** A dry plot
+  beside water placed a minute ago stays light until something asks
+  again, which is exactly why the user said re-tilling an empty plot
+  updates it: the hoe is the refresh.
+
+Cost: the cells at distance 1..4 on the same y, under a hundred reads of
+an already resident chunk, **once per hoe swing or planting attempt**.
 
 ### Five crops, and where the first seed comes from (D-107)
 
@@ -1477,13 +1500,17 @@ step 13.
 Bait is **worms, held in the inventory**. The catch is one of
 **sardines, salmon, shrimp**.
 
-The reorder has one consequence worth catching now: **there is no
-string in this game, and there will not be until spiders arrive in step
-13.** Minecraft's rod is sticks and string. So either the rod is not a
-tool (fish with a bare hand and a worm, which is odd), or it is made of
-what exists -- proposed: **2 sticks, 1 iron ingot for the hook, and
-cordage from tall grass**, which also gives tall grass a second use
-beyond wheat seeds. The user's call when it is built.
+The reorder has one consequence, and the user has already ruled on it:
+**there is no string in this game until spiders arrive in step 13**, and
+Minecraft's rod is sticks and string. So for now the rod is **three
+sticks**, *"this recipe will get updated later when we have string"*.
+
+That is the right call and not a placeholder in the bad sense. It keeps
+step 12 free of step 13 -- the whole point of the reorder -- and the
+change, when it comes, is one row in the recipe table, in a game where a
+recipe is a multiset and not a grid (Part C). The only thing to remember
+is that a rod bought for three sticks is nearly free, so **the scarce
+thing in fishing has to be the worms**, not the tackle.
 
 ### The food table
 
@@ -1557,7 +1584,6 @@ stays a table row.
 Written down so they are decided on purpose rather than by whoever
 types the code:
 
-- **The fishing rod's recipe**, per D-109 above -- no string exists yet.
 - **Grilled tomatoes and baked beans take how many?** Not given. Two
   each is proposed: one tomato grilled for 2 hunger would make the raw
   tomato pointless.
@@ -1568,8 +1594,11 @@ types the code:
 - **Which chest** the stove uses when more than one touches it.
   Proposed: a fixed order (+X, -X, +Z, -Z), with the screen naming the
   one it found.
-- **One worm per catch, or per cast?** And does a rod wear out?
+- **One worm per catch, or per cast?** And does a rod wear out? At three
+  sticks it is cheap enough that durability would be theatre, so
+  probably not.
 - **Composter and hoe recipes** were not given.
+- **The rod's real recipe**, once string exists in step 13 (D-109).
 - **Whether the fake sausage may be a pizza's sausage.** It should be:
   the pizza has shrimp in it, so it is not a vegetarian dish either way,
   and refusing would only be a trap.
@@ -1658,10 +1687,10 @@ types the code:
 | 31 | **How many to move, and a cheat console** | done | 2026-09-23, asked for by the user. `ui/amount_ui.{c,h}`: moving a stack of more than one into or out of a chest, or into a furnace, asks first -- a slider AND a number, because one answers "about half" and the other answers "exactly seventeen" and neither answers both. It starts at everything, which is what the key did before it asked, and a stack of ONE never asks: there is nothing to decide and the modal would be a keypress added to every move. Taking a furnace's output never asks either (the user's rule: there is no reason to leave half a smelt behind). `ui/cheat_ui.{c,h}` on the backtick: every item in the game, searched by its STABLE name -- "pickaxe_wood", "iron_ore" -- which is English already, is what the save format keys on, is unambiguous, and needs no translation, which is exactly what the user asked for. |
 | 8.6 | The 8.4 screens in all 32 languages | done | 2026-09-23: 24 more keys each. Three languages spell "disassembly bench" wider than the column that holds an item name (Portuguese, Greek, Bulgarian) and were shortened rather than the column widened -- it is already the widest layout in the game. F-83. |
 | 8.5 | Item names and the crafting UI in all 32 languages | done | 2026-09-23: 63 keys x 31 languages -- every block and item a player can carry, the crafting book, the furnace and its picker. **Six overflowed and the check caught all six** before the badge did (French, Irish, Albanian, Greek, Bulgarian, Serbian), and widening the two crafting panels to hold them exposed something nothing had been measuring: **the book's row labels are ITEM NAMES**, and Russian "Деревянная лопата" is half as wide again as "Wooden shovel". `item.` joined `LABEL_COLUMNS`, the panels went to the wide layout, and the fold table grew to cover 82978 characters across the 32 languages. |
-| 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | todo | Designed 2026-09-29 from the user's own re-imagining -- **Part A** has all of it, D-104 and D-106 and D-107 the choices. Not Minecraft's list and not its fertiliser: wheat, potatoes, tomatoes, beans and **rice that grows in one-deep water**, planted only in tilled soil **within four blocks of water on the same level**, and fed by **compost from a composter** rather than bone meal -- the same machine that makes the **worms** step 12 needs for bait. The crop blocks are nearly free (`BF_CROP` and `growth_max` have been sitting unused in `block_def_t` since step 0.3, and the data plane the mesher needs to draw a stage by is the one the fluids already handed it, D-101). **The real cost is time, not stage**: a crop is a block, so there is nowhere in a cell to write when it last grew, and lazy catch-up needs **a per-chunk stamp** -- a new skippable chunk section, no format bump (D-30), and old worlds gain one on their first write, which since step 49 is immediately. About eleven permanent block ids (D-74). |
+| 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | todo | Designed 2026-09-29 from the user's own re-imagining -- **Part A** has all of it, D-104 and D-106 and D-107 the choices. Not Minecraft's list and not its fertiliser: wheat, potatoes, tomatoes, beans and **rice that grows in one-deep water**, planted only in tilled soil **within four blocks of water on the same level** -- checked when the soil is tilled or a seed is offered and **nowhere else**, with dry soil refusing the seed, which is the user's own amendment and leaves the fluid scheduler untouched (D-106) -- and fed by **compost from a composter** rather than bone meal -- the same machine that makes the **worms** step 12 needs for bait. The crop blocks are nearly free (`BF_CROP` and `growth_max` have been sitting unused in `block_def_t` since step 0.3, and the data plane the mesher needs to draw a stage by is the one the fluids already handed it, D-101). **The real cost is time, not stage**: a crop is a block, so there is nowhere in a cell to write when it last grew, and lazy catch-up needs **a per-chunk stamp** -- a new skippable chunk section, no format bump (D-30), and old worlds gain one on their first write, which since step 49 is immediately. About eleven permanent block ids (D-74). |
 | 10 | **Food, hunger, and the kitchen stove** | todo | Designed 2026-09-29, and the user's verdict on the alternative was blunt: cooking on a crafting table or in a furnace *"makes absolutely no sense"*. So food is made on a **stove that reads its ingredients out of the chest beside it** (D-105) -- a recipe selector, a fuel slot, an output slot, one in-game minute a dish, and **a message naming what is missing** when a recipe is short or no chest touches it, for the same reason iron refusing a wooden pick needed a line on the HUD. Eleven dishes, every number the user's, with **pizza as the superfood** at 10 hunger and 8 saturation because it needs a crop, a fish, a cow and a pig -- all four systems at once. `item_def_t` gains `hunger` and `saturation`, so a food is a table row. The hunger loop is Minecraft's model, which D-08 committed to on day one; the HUD has drawn both bars since 4.3 with nothing moving them. |
 | 11 | **Animals: pigs, cows, chickens; milk, cheese and sausages; dogs** | todo | Pigs give pork, cows give beef, and **a cow used with a bucket gives milk** -- which D-100 already paid for: a filled bucket is its own item id, so `ITEM_BUCKET_MILK` is one row in `BUCKETS[]` and the held model colours its own contents from the block table. Two slow machines of their own (D-108): the **cheese maker**, 7 planks, an open square barrel that shows white, then yellow-orange, then empty, takes a bucket of milk (**returning the bucket at once**) and an in-game day; and the **sausage maker**, which turns pork and a flower into a sausage in a minute, or **two beans into a vegetarian one with identical stats**. Breeding, and dogs found wild and tamed with steak, are unchanged from the original requirement. |
-| 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, which is why the composter in step 9 has two output slots. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. One thing the reorder exposes and Part A records: **there is no string in this game until spiders arrive in step 13**, so Minecraft's rod recipe is unavailable and the rod has to be made of something that exists. |
+| 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, which is why the composter in step 9 has two output slots. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. One thing the reorder exposes: **there is no string in this game until spiders arrive in step 13**, so Minecraft's rod recipe is unavailable -- the user's ruling is **three sticks for now**, *"this recipe will get updated later when we have string"*, which keeps step 12 free of step 13 and makes the worms the scarce input rather than the tackle. |
 | 13 | **Mobs: zombies, skeletons, spiders; spawning, pathing, combat; beds and spawn; death keeps the inventory** | todo | Now after fishing (D-109). Unchanged otherwise, and still the biggest single block left: it is the first thing in the game that needs an entity with a mind rather than a record with a timer. |
 | 14 | **Audio: sound effects, and music that is mostly silence** (D-82, D-83, D-84, D-85) | done | 2026-09-23: the mixer starts at boot. 21 effects as table rows (`audio/sfx.c`), and which one a block makes is its own registry row (`block_def_t.sound`), so a new block brings its sounds with it. Music is eleven public-domain MIDI files played by a ported sequencer and a six-shape synth: 72 KB for half an hour, against megabytes for the same music as MP3. `worldcheck`'s `check_midi` proves every shipped file parses, ends, rewinds identically and survives truncation at any length (F-72). The raw voice sum clipped, so the synth carries a master gain and a cubic soft limiter (F-73). **Three volume sliders** in Settings -> Audio (D-85): the badge's own, then how loudly the music and the effects are each mixed in. The effects turned out to be inaudible whenever the music was off -- the amplifier was asleep and eating them (F-75) -- which is why the engine is 2.2. Two checks came out of the round and stay behind: `tools/symcheck.sh`, after an unexported `strcasecmp` made the app link clean and then refuse to start with no message at all (F-74), and `check_label_widths()`, after the sliders' labels turned out to be the least of it -- three settings screens had been overlapping their own text in a dozen languages since the day the language count went to 32 (F-76). |
 | 15 | Block and sky lighting | done | 2026-09-22, asked for by the user (torches that light the area, computed when a block changes). Pulled forward from the end of the plan: a light plane per chunk (sky and block light, 0..15 each, D-69), flooded when a chunk arrives -- its own light on core 1, the border exchange on the main task (F-58) -- and updated with the two-queue flood on every block change. The mesher keys faces on light; a per-frame table turns light into brightness for the time of day, through the engine's new `SE_TRI_LIGHT`. Host-tested: fall-off, removal, a shaft opened and capped, across a chunk border and into a chunk arriving late. On the badge: a placed torch lights the ground at night. |
@@ -4834,14 +4863,30 @@ types the code:
   state of the simulation should be legible from the geometry and the
   colour, not from a wiki.
 
-  The implementation choice underneath it is **not to watch the water.**
-  Wetness is recomputed when the crop's own growth event fires, on tier
-  2, and dry farmland simply does not advance. Watching instead would
-  mean waking every farmland cell within four blocks of any water
-  change, and four blocks is the one radius the fluid scheduler cannot
-  reach cheaply: its neighbourhood is a single cell, by design. So a
-  hundred reads of a resident chunk a few times a minute, in a field
-  someone is standing in, replaces a new wake path through D-98.
+  **Amended the same day, by the user, and the amendment is the better
+  half.** This file first proposed recomputing wetness when the crop's
+  growth event fires. Their correction: *"Only compute when a seed is
+  planted or at least when the player tries to plant) or the block is
+  tilled. If farmland is dry, crops can't be planted. (tilled unplanted
+  soil can also be re-tilled to update its status)"*
+
+  So the water search happens **on a keypress and nowhere else** -- till,
+  re-till, or try to plant -- and **dry soil refuses the seed** instead
+  of swallowing it and never growing. Two things fall out of that:
+
+  - The fluid scheduler needs nothing added to it. Not a wake path and
+    not a four-block radius, which is the one radius it cannot reach
+    cheaply, its neighbourhood being a single cell by design.
+  - **A drained moat no longer kills a planted crop**, because nothing
+    asks again after the seed is in. Minecraft withers it. Not withering
+    is the better game: a farm cannot be ruined from two chunks away by
+    water someone moved, and the price is a rule that is easier to
+    explain, not harder.
+
+  The colour therefore shows the **last** answer rather than today's,
+  which is precisely why the user made re-tilling an empty plot refresh
+  it: the hoe is the refresh, and there is no hidden state a player
+  cannot reach.
 
 - **D-107** 2026-09-29, **the user**: **five crops, and you find the
   first one growing wild.**
@@ -4914,12 +4959,18 @@ types the code:
   means the food chain is playable even if combat takes twice as long as
   planned.
 
-  **One consequence to catch now**: Minecraft's fishing rod is sticks and
-  string, and **there is no string in this game until spiders arrive in
-  step 13.** So the rod has to be made of what exists. Part A proposes
-  two sticks, an iron ingot for the hook and cordage from tall grass --
-  which would also give tall grass a second use -- but it is the user's
-  call when it is built.
+  **One consequence, and the user ruled on it the same day**:
+  Minecraft's fishing rod is sticks and string, and **there is no string
+  in this game until spiders arrive in step 13.** Their answer: *"for now
+  it just takes three sticks (this recipe will get updated later when we
+  have string)"*.
+
+  That keeps step 12 independent of step 13, which is the entire point of
+  the reorder, and the later change is one row in a recipe table where a
+  recipe is a multiset and not a grid (Part C). The thing to hold onto is
+  that a rod this cheap means **the worms are the scarce input to
+  fishing**, not the tackle -- so the composter's 0-2 per day is the dial
+  that sets how much fishing anyone does.
 
 - **D-96** 2026-09-26, out of the user's question and then their
   instruction: **the audio codec is ours, and it is public domain.**
