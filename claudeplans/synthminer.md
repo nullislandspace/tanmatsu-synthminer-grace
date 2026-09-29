@@ -1365,9 +1365,16 @@ unit of material into one unit of compost, plus **0-2 worms**.
 
 ### Farmland is wet or dry, and water is four blocks away (D-106)
 
-Tilled with a **hoe**, from grass or dirt. The user's rule: *"The tilled
+Tilled with a **hoe** -- *"2 sticks plus 2 material"*, so three of them,
+wood, stone and iron -- from grass or dirt. The user's rule: *"The tilled
 soil must be within 4 blocks of a water block on the same level"*, and
 farmland is drawn **dark when wet, lighter when dry**.
+
+That price lands the hoe exactly where it belongs in a table nobody had
+to adjust for it: every tool in the game is 2 sticks plus its material,
+**1 for a shovel, 2 for a hoe, 3 for a pickaxe or an axe** (step 8.2).
+It is also Minecraft's own hoe recipe, which means nobody arriving from
+that game has to learn it.
 
 **Wetness is not watched, and it is not even checked while a crop
 grows** -- the user's own refinement, and it is cheaper again than the
@@ -1469,12 +1476,19 @@ as a guess at lava and milk; it is the milk half being cashed in.
 | Kitchen stove | 3 iron + 6 stone | **yes** | an adjacent chest, plus a recipe selector | 1 slot | 1 in-game minute |
 | Cheese maker | 7 wooden planks | no | 1 bucket of milk (**the bucket comes straight back**) | cheese | 1 in-game day |
 | Sausage maker | *"9 iron ore"* | not stated | 1 pork + 1 flower of any colour, or 2 beans | 1 sausage | 1 in-game minute |
-| Composter | not stated (proposed: 7 planks) | no | up to a stack of compostables | compost + 0-2 worms | 1 in-game day per unit |
+| Composter | 7 wooden planks | no | up to a stack of compostables | compost + 0-2 worms | 1 in-game day per unit |
 
 The cheese maker *"looks like an open barrel (quadratic, not round)"*
 with three appearances -- white with milk, yellow-orange with cheese,
 empty -- which is a texture set, not three block ids: it is a block
 entity, so its contents say which to draw.
+
+**The composter and the cheese maker cost the same seven planks**, which
+is legal here and would not be in Minecraft: a recipe is a multiset and
+the player picks the row out of the book, so two rows with identical
+ingredients are fine -- the wooden pickaxe and the wooden axe have been
+proving it since step 8.2. Worth knowing before anyone "fixes" one of
+the two prices to tell them apart.
 
 The **stove is the one with a new idea in it.** It has a fuel slot, an
 output slot and a recipe selector, and its ingredients come from *"a
@@ -1597,7 +1611,6 @@ types the code:
 - **One worm per catch, or per cast?** And does a rod wear out? At three
   sticks it is cheap enough that durability would be theatre, so
   probably not.
-- **Composter and hoe recipes** were not given.
 - **The rod's real recipe**, once string exists in step 13 (D-109).
 - **Whether the fake sausage may be a pizza's sausage.** It should be:
   the pizza has shrimp in it, so it is not a vegetarian dish either way,
@@ -4820,6 +4833,12 @@ types the code:
   point rather than a problem -- it drips, the input slot is the cap, and
   the lazy clock (D-51) pays out an absence in one go.
 
+  **Priced the same day, by the user: 7 wooden planks**, the same as the
+  cheese maker. Two rows with identical ingredients are legal because a
+  recipe here is a multiset and the player chooses the row out of the
+  book -- the wooden pickaxe and the wooden axe have shared a price since
+  step 8.2 -- so neither needs distorting to tell them apart.
+
 - **D-105** 2026-09-29, **the user**: **cooking gets its own station, and
   it reads out of the chest next to it.**
 
@@ -4887,6 +4906,12 @@ types the code:
   which is precisely why the user made re-tilling an empty plot refresh
   it: the hoe is the refresh, and there is no hidden state a player
   cannot reach.
+
+  **The hoe is "2 sticks plus 2 material"** (the user), so three of them
+  across the tiers -- and that number needed no thought because the table
+  it joins already had a shape: 2 sticks plus 1 material for a shovel, 3
+  for a pickaxe or an axe (step 8.2). A hoe at 2 sits between them, is
+  Minecraft's own price, and moves nothing.
 
 - **D-107** 2026-09-29, **the user**: **five crops, and you find the
   first one growing wild.**
