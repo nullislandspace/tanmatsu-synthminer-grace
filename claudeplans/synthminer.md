@@ -1937,6 +1937,7 @@ types the code:
 | 56 | **Water you can read: partial heights and a visible waterfall** | done | 2026-09-28, the user, on being told partial heights needed a different mesher: *"What's the problem with partial water heights? That seems to be integral as feedback to the player."* They were right and the claim was wrong (D-101). A flow is emitted per cell beside the plants and the torches, where this file has always put the blocks that are not boxes -- surface part-way up the cell, **corners averaged from the neighbouring cells so the sheet tilts the way it is running**, and the tilt is the flow arrow without anything working out a direction. Sources stay in the greedy pass, so every ocean is byte-identical and D-86 stands where it was made. **It also fixed a bug nobody had seen yet**: under D-86's "a liquid draws no sides" a falling column emits *nothing at all* -- no top (the cell above is water), no bottom, no sides -- so a waterfall was invisible between the spring and the splash (D-102). Held to **12 triangles for the worst-case cell** by naming a direction on every face and emitting one winding a wall, against 20 for the double-sided version; meshcheck pins the number, the slope, the surface height and the fact that a source pool is untouched. |
 | 57 | **Played, and the numbers say it is free** | done | 2026-09-28, the user's first test game: *"Water works surprisingly well."* The flight recorder agrees and says why. The physics queue peaked at **201 cells, dropped 0, carried 0, and returned to 0 every time** -- settled water really does cost nothing, which is the claim the whole design rests on. Mesh lag stayed at a **median of 89 ms** with every real case between 78 and 163 ms, so the remesh churn I had predicted from water edits marking sections urgent did not happen. 114 chunks saved at a mean of 16.8 ms, no compaction, no card refusals. **The one alarming number in the report was mine** (F-118): a 31281 ms mesh lag that turned out to be the recorder matching a mesh against an unrelated edit. Also visible for the first time: `pace_after_write`, the cargo left from the refuted erase-cycle theory, **waited 173 ms across four pauses, worst 68 ms** -- it is not inert, and now has a measured cost rather than a suspicion. |
 | 58 | **Water you can actually see through** | done, **default on** | 2026-09-29, the user, after being told partial heights were the expensive part: *"Currently we have fake transparency for water (like leaves). How much actual FPS impact would it be to have actual water transparency?"* The estimate said 5-20%, scaling with how much water fills the view. They asked for it behind a key so the two could be compared in one place, played it, and reported *"The new transparent water looked much better and framerates seems comparable."* Now a Graphics setting, **on by default and on for upgrades too** (D-103). `SE_TRI_BLEND` in the engine (2.5): a 50/50 RGB565 mix, and -- the part that matters -- blended triangles sorted after every opaque one and far-to-near among themselves, which cost **one bit of the existing depth key and no extra pass**, because a positive float never sets its sign bit and the top bit was always spare. D-86 is amended a second time: water is no longer only its surface's cut-out, it is a real mix, and `water_blend.png` is the same texture without its checkerboard. **The frame-rate claim is the user's, not the trace's**: their A/B in one spot is controlled and the trace was not, because nothing recorded which mode was running -- which is now fixed (`trace_event`, F-119). |
+| 59 | **Wood and flowers that come back** | done | 2026-09-30, the user, in one message: *"Logs (trees) and yellow flowers need to be renewable resources. So cutting trees should drop one or two seedlings that can be planted to grow into a new tree. And throwing compost onto the ground should grow a 3x3 grid of yellow flowers."* **Which closes the last hole in the economy.** Stone, ore, crops, wool, meat, milk and fish all come back; WOOD did not -- there is no recipe anywhere that makes a log, so a player who cleared the forest round their house had cleared it for good. Yellow flowers were the same and worse: a pork sausage needs one for its spice, so picking the meadow stopped the sausage maker. **Two permanent block ids** (49, 50) and **one new module** (`world/tree.{c,h}`). Felling leaves **one or two seedlings PER TREE, not per block** -- forty saplings off one oak would make the first tree the last one anybody had to plant -- rolled from the world's own hash so a replay reproduces a woodpile, and **of the species felled**, because a birch wood that grew back oak is not the wood anybody planted. **A SAPLING IS A CROP** and that is why it cost almost nothing: BF_CROP gives it stages in the state byte, the chunk's shared slow clock, the phase bits that stop a whole chunk ripening on one instant, the catch-up when a chunk returns after an hour away, and the compost that pushes any plant on a stage. None of that machinery had to learn the word sapling. The ONE difference is what happens at the last stage -- a wheat plant stops and waits to be cut, this turns into a tree -- and it is a **two-row table** in tree.c and not a block flag, because `flags2` has no bits left and because a flag would say only THAT a block is a sapling where every caller wants to know WHICH tree. One in-game day, which is wheat's; it plants on **grass or dirt and not a tilled field**, the only seed in the game that does, so it gets a refusal of its own rather than sending the player to look for a hoe. **The tree is the generator's own tree** (D-136): the canopy loop came out of `place_tree` into `worldgen_tree_shape`, emitted cell by cell to two writers that could not be less alike -- the generator stamps into ONE chunk on the core-1 worker and drops whatever falls outside, which is what makes a tree seamless at a border, while a sapling writes through `world_set` on the main task so the light flood, the mesher and the save all hear about it. One shape in the codebase instead of two that agree until somebody edits one. It takes the world seed, so a planted tree is the tree that spot would have grown. **A sapling with a ceiling over it waits** rather than growing half a tree, and the sweep asks again every pass and not only when a stage is owed -- without that, one planted in the wrong place would sit at its last stage for ever with nothing ever looking at it again. **Compost on bare grass raises a 3x3 of yellow flowers**, doing what it can: cells that are not grass or are not clear are skipped rather than refusing the lot, and it only refuses, and says so, when all nine are already done. Host-checked: which sapling comes off which trunk, 400 rolls of the one-or-two (210 singles, 190 pairs), planting refused on farmland and on stone, a seedling grown into a trunk-and-canopy that is GROWN and not PLACED so it fells like any other, the ceiling case both ways, and the flower bed on grass and on nothing else. Not renewable yet: **red flowers**, which the user did not ask for -- nothing is blocked, since the sausage maker takes either colour. |
 
 ---
 
@@ -4394,6 +4395,128 @@ types the code:
   **What would settle it**, and was not available: which blocks
   glitched. Ordinary terrain cubes and the fences and the bed are
   different suspects.
+
+- **F-130** 2026-09-30, **the user, playing v0.2.0**: *"the sausage
+  maker is just a white block."*
+
+  It was. `sausage_top.png` was **100% pure white** and
+  `sausage_side.png` 91%, and they had been since the day the sausage
+  maker was built.
+
+  **The cause is one word.** `sm_rgb(lum, tint)` adds `lum` to the tint
+  as an OFFSET, and every generator in make_textures.py builds it around
+  zero -- except those two, which built it around 148. 148 on top of a
+  tint of 150 clips to 255 in all three channels, in every texel. The
+  block had no texture at all; it had a flat white one.
+
+  **WHY NOTHING SAID SO, which is the part worth keeping.** Four checks
+  stand between a texture and a release and all four passed:
+
+  * the file existed, so the texture cache loaded it;
+  * `TEX_BY_NAME` had room, so nothing was evicted (F-120's fix);
+  * `metadata.json` listed it, so a repository install shipped it;
+  * `worldcheck` counted it, and opens every ITEM icon the game asks for
+    by name (F-128's fix).
+
+  Every one of them was asking about the FILE. None of them looked at
+  the picture. That is the same shape as F-128's black bed and as F-129
+  -- a check that measures a proxy of the outcome -- and it is the third
+  time in this project that the thing being measured was the thing that
+  was easy to measure.
+
+  **So `make check` now looks at the picture** (`make texcheck`,
+  `tools/make_textures.py --check`). It opens every committed PNG and
+  fails on one clipped to pure white or pure black, which is what a
+  generator does when it builds a brightness where an offset belongs.
+  Deliberately ONE measurement and not a contrast floor: `milk.png` and
+  `snow.png` are legitimately pale and flat (contrast 37 and 30), and a
+  threshold that caught them would have been turned off inside a month.
+  The survey that set the threshold found exactly two suspects in 150
+  files, and they were the two.
+
+  **And the same pass closed the last direction nobody was checking.**
+  The 87 block materials are named in C, in `MAT_FILES`
+  (world/chunk_render.c), and nothing compared those names to the files
+  -- a typo there falls back to the material's flat average colour in
+  silence, exactly as this did. worldcheck cannot open them (chunk_render.c
+  pulls in the engine, so it is not one of the pure sources the host
+  checks link), so `--check` reads the table as text and proves every
+  name exists AND is generated by the script. 87 named, 0 missing, 0
+  ungenerated.
+
+- **F-131** 2026-09-30, **the user, playing v0.2.0**, three things about
+  the sausage maker in one message.
+
+  *"When putting in pork and there is nothing in the second slot, it
+  should clearly state that it needs yellow flowers as well."* It said
+  *"nothing in it that goes together"*, which is true of an empty
+  machine and unhelpful of a half-loaded one. Now `MAKER_IDLE_MISSING`
+  and `maker_missing()`, which names the missing ingredient AND every
+  alternative: **"Needs 1 Red flower or Yellow flower"**, because either
+  colour makes a sausage. Built out of the recipe table rather than a
+  list, so a third flower would name itself. It only fires on a
+  PART-LOADED machine -- being told an empty one is short of everything
+  is not help, and that is what the old message still says.
+
+  *"When you put in beans and there are yellow flowers, these should
+  automatically return to the player inventory."* Two beans make a
+  sausage on their own, so a flower in the other slot is not an
+  ingredient of anything being made. `return_unused()` hands it back,
+  and it lives in the SCREEN rather than in game/maker.c for the reason
+  the milk pail does: a pure module may not touch an inventory. A full
+  pack leaves it in the machine rather than dropping it on the floor
+  behind the player.
+
+  *"Each slot needs an 'empty' pseudo-entry to take out materials."*
+  There was no way to take an ingredient out. Enter on an input row
+  opened a picker over what the player was carrying, filtered to what
+  the machine accepts, and the ONLY way anything came back was to put a
+  different accepted item in and let the swap return the old one -- so
+  twenty pork with no flowers and no beans on you left breaking the
+  machine as the only route to the pork. Now row 0 of every slot picker
+  is **"- take it out -"** when there is something to take, and it never
+  asks how many.
+
+  The same gap is in the furnace, the composter and the stove's fuel
+  slot, all of which share this shape. Left alone for now, and said out
+  loud here so the next person does not think the maker is special.
+
+  **And the maker screen had no text budget lines at all** -- added in
+  step 10, never measured, for a week. Adding the set found Lithuanian
+  `maker.input` at 319 px in a 240 px column ("Sudedamosios dalys", now
+  "Sudėtis"). A screen added without its budget rows is a screen nothing
+  is measuring, which is worth a rule: the budget lines go in the same
+  commit as the screen.
+
+- **D-136** 2026-09-30, building step 59: **there is one tree shape in
+  this codebase, and it is emitted rather than written.**
+
+  A sapling has to grow the same tree the generator grows, or a planted
+  wood looks like a different species from the wild one beside it. The
+  obvious way to get that is to copy the canopy loop into the grower,
+  and it would have been correct for exactly as long as nobody edited
+  either copy.
+
+  So `place_tree`'s body moved into `worldgen_tree_shape()`, which takes
+  a callback and emits the tree cell by cell. The two writers have
+  almost nothing in common:
+
+  * the GENERATOR stamps into one chunk's arrays, on the core-1 worker,
+    and silently drops every cell outside that chunk -- a tree at a
+    border is written twice, once by each side, and that is precisely
+    what makes it seamless (worldgen.h);
+  * a SAPLING writes through `world_set`, on the main task, so the light
+    flood, the mesh and the chunk's dirty flag all hear about it -- and
+    it refuses outright if a chunk it needs is not resident, because
+    world_block reads an absent chunk as the barrier (D-14) and half a
+    canopy at the edge of the ring would never come back.
+
+  Neither could have used the other's writer. The shape does not care,
+  which is the whole argument for handing it out a cell at a time.
+
+  It also takes the world's seed, so the height and the clipped canopy
+  corners are the ones that spot would have had. A replay therefore
+  reproduces a planted forest (Part T), and so does reopening the world.
 
 ### Decisions (D-n), each with date and who decided
 
