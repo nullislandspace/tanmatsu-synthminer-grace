@@ -228,15 +228,21 @@ static recipe_t const RECIPES[] = {
 
     // --- The fishing rod ----------------------------------------------
     //
-    // THREE STICKS, WHICH IS STILL A PLACEHOLDER. The user reserved the
-    // real recipe -- "i tell you the final recipe of the fishing rod
-    // another day when i have decided" -- and the one thing they had
-    // decided was that string would not come from spiders. It comes
-    // from a sheep now (D-126), so the material this was waiting for
-    // exists; the decision is still theirs and this is still one line.
+    // THREE STICKS AND TWO STRING (the user, 2026-09-29), which closes
+    // the last open question of the whole food chain. It was a
+    // placeholder of three sticks from the day fishing was designed,
+    // held open because the user had decided only what string would
+    // NOT come from; string came off a sheep the same afternoon
+    // (D-126) and this followed.
+    //
+    // What it means for the game is that a rod now costs a flock: two
+    // string is two thirds of a fleece, and a fleece wants shears,
+    // which want iron. Fishing is no longer the thing you can do on
+    // day one -- which is right, because the composter that feeds it
+    // is not either.
     {.out     = ITEM_ROD, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
-     .n_in    = 1,
-     .in      = {{ITEM_STICK, 3}}},
+     .n_in    = 2,
+     .in      = {{ITEM_STICK, 3}, {ITEM_STRING, 2}}},
 
     // --- Sheep, wool, and what wool is for ---------------------------
     //

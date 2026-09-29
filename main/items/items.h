@@ -131,12 +131,11 @@ enum {
 
     // --- Fishing (step 12) --------------------------------------------
     //
-    // THE ROD, AND WHAT COMES UP. Three sticks for now, which is the
-    // placeholder the user set when they reserved the real recipe --
-    // and the thing that was blocking it is gone, because string comes
-    // off a sheep now (D-126). No durability either, their call: the
-    // rod is paid for in worms and charging twice for one activity is
-    // how a system stops being worth using.
+    // THE ROD, AND WHAT COMES UP. Three sticks and two string (the
+    // user's final recipe, 2026-09-29), so a rod costs a flock: string
+    // is wool, wool wants shears, shears want iron. No durability
+    // either, their call -- the rod is paid for in worms, and charging
+    // twice for one activity is how a system stops being worth using.
     ITEM_ROD,
     ITEM_SARDINE,
     ITEM_SALMON,
