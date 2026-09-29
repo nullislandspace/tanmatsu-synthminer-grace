@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 #include "game/fishing.h"
+#include "game/food.h"
 #include "game/input.h"
 #include "game/mob.h"
 #include "game/physics.h"
@@ -104,12 +105,11 @@ _Static_assert(PHYS_PLAYER_EYE - PL_SNEAK_DROP > PHYS_PLAYER_H * 0.5f, "the crou
 // out of it while you are still swimming: the middle.
 #define PL_WADE_Y 0.9f
 
-// Survival, in Minecraft's units: 20 is full, and the HUD draws them
-// as ten hearts and ten drumsticks. The SYSTEMS that move them --
-// starvation, regeneration, fall damage, eating -- are block 12; this
-// carries and shows them.
-#define PL_HEALTH_MAX 20
-#define PL_HUNGER_MAX 20
+// SURVIVAL LIVES IN game/food.h now (step 11), numbers and all: health,
+// hunger, the invisible saturation reserve, the exhaustion that spends
+// it, and the fall. This file carries the body those rules are applied
+// to and measures the two things they need from it -- how far it walked
+// and how far it fell.
 
 // How long a refusal stays on screen: about two seconds at 20 Hz.
 #define USE_MSG_TICKS 36
@@ -126,7 +126,23 @@ typedef struct {
     bool        sneaking;
     float       crouch, prev_crouch;
     inventory_t inv;
-    int         health, hunger;
+    // Health, hunger, saturation and exhaustion (game/food.h). One
+    // struct because they are one system: what a fall takes, what a
+    // meal gives back and what a walk costs are three views of the
+    // same four numbers.
+    food_t      food;
+
+    // Where this fall started (game/food.h). A struct rather than two
+    // fields, because the rule that reads it is pure and the host check
+    // drives the real one rather than a copy of it.
+    fall_t      fall;
+
+    // WHAT THE SURVIVAL LOOP DID THIS TICK (food_event_t), and how many
+    // ticks are left of saying so. Reported rather than acted on, like
+    // used_block: this file has no business knowing what a screen is,
+    // and main.c is what respawns a body.
+    uint8_t     food_msg;
+    uint16_t    food_msg_ticks;
 
     // Breaking is HELD, not tapped: a block takes item_break_ticks() of
     // them, which is what makes hardness and tool choice mean anything

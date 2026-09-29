@@ -43,7 +43,10 @@
 #include "world/crops.h"
 #include "game/composter.h"
 #include "game/fishing.h"
+#include "game/food.h"
+#include "world/tree.h"
 #include "game/maker.h"
+#include "game/stove.h"
 #include "game/mob.h"
 #include "game/daytime.h"
 #include "world/fluid.h"
@@ -4408,6 +4411,61 @@ static void check_makers(void) {
           "two beans did not make a bean sausage");
     CHECK(sm->slot[BE_MAKER_EXTRA].count == 0, "a bean sausage left a bone");
 
+    // --- What it says when it is one thing short -----------------------
+    //
+    // The user, playing step 11: "when putting in pork and there is
+    // nothing in the second slot, it should clearly state that it needs
+    // yellow flowers as well". Either colour will do, so the machine
+    // names BOTH -- and it gets them out of the recipe table, so a third
+    // flower would appear in the message on its own.
+    blockent_remove(4, 20, 2);
+    sm = blockent_add(4, 20, 2, BE_SAUSAGE);
+    CHECK(sm != NULL, "the pool would not give a third sausage maker a record");
+    if (sm != NULL) {
+        sm->stamp = 0;
+        CHECK(maker_idle_reason(sm) == MAKER_IDLE_NO_INPUT, "an empty machine does not say it is empty");
+
+        sm->slot[BE_MAKER_IN_A].item  = ITEM_PORK;
+        sm->slot[BE_MAKER_IN_A].count = 1;
+        CHECK(maker_idle_reason(sm) == MAKER_IDLE_MISSING, "pork with no flower does not say what is missing");
+
+        uint16_t what[MAKER_MISSING_MAX];
+        int      need = 0;
+        int const cnt = maker_missing(sm, what, &need, MAKER_MISSING_MAX);
+        CHECK(cnt == 2, "pork alone is short of %d things, wanted both flowers", cnt);
+        CHECK(need == 1, "it wants %d flowers, wanted 1", need);
+        bool red = false, yellow = false;
+        for (int i = 0; i < cnt; i++) {
+            red |= what[i] == BLK_FLOWER_RED;
+            yellow |= what[i] == BLK_FLOWER_YELLOW;
+        }
+        CHECK(red && yellow, "the missing list does not name both flowers");
+
+        // ONE BEAN is short of one more bean, and of nothing else: a
+        // row nobody has started is not a row the machine is short of.
+        sm->slot[BE_MAKER_IN_A].item  = ITEM_BEANS;
+        sm->slot[BE_MAKER_IN_A].count = 1;
+        int const beans = maker_missing(sm, what, &need, MAKER_MISSING_MAX);
+        CHECK(beans == 1 && what[0] == ITEM_BEANS && need == 1,
+              "one bean is short of %d things, wanted one more bean", beans);
+
+        // AND WHAT IT IS NOT USING IS NOT ITS. Two beans make a sausage
+        // on their own, so a flower in the other slot belongs to the
+        // player (the user: "these should automatically return").
+        sm->slot[BE_MAKER_IN_A].count = 2;
+        sm->slot[BE_MAKER_IN_B].item  = BLK_FLOWER_YELLOW;
+        sm->slot[BE_MAKER_IN_B].count = 3;
+        CHECK(maker_match(sm) != NULL, "two beans do not match a recipe");
+        CHECK(maker_uses(sm, ITEM_BEANS), "the bean sausage does not use beans");
+        CHECK(!maker_uses(sm, BLK_FLOWER_YELLOW), "the bean sausage claims to use a flower");
+        // ... and with pork in instead, the flower IS an ingredient and
+        // must stay exactly where it is.
+        sm->slot[BE_MAKER_IN_A].item  = ITEM_PORK;
+        sm->slot[BE_MAKER_IN_A].count = 1;
+        CHECK(maker_uses(sm, BLK_FLOWER_YELLOW), "the pork sausage does not use its flower");
+    }
+    printf("  pork alone asks for either flower; a bean sausage does not want one\n");
+
     // --- The bone, which is what a dog costs ---------------------------
     //
     // One in six of the PORK ones, from the world's hash: counted over
@@ -4424,6 +4482,568 @@ static void check_makers(void) {
 
     blockent_remove(2, 20, 2);
     blockent_remove(4, 20, 2);
+}
+
+// =====================================================================
+//  THE KITCHEN STOVE (step 11, D-105 and D-110)
+// ---------------------------------------------------------------------
+//  Three things worth proving, and they are the three that would each
+//  cost a player something real:
+//
+//    the PAIR      -- one item, two blocks, each knowing the other, and
+//                     breaking either takes both and drops ONE item;
+//    the COOKING   -- ingredients come out of the chest and only when a
+//                     dish is finished, and an idle stove banks nothing;
+//    the REFUSALS  -- the user asked for "an appropriate info message",
+//                     and there are five different ways to be idle.
+// =====================================================================
+static void check_stove(void) {
+    printf("the kitchen stove: two blocks, one item, and a chest it reads\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the stove world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    blockent_clear();
+    item_entity_reset();
+
+    // --- One item, two blocks ----------------------------------------
+    //
+    // Facing +z, so the chest goes to the player's LEFT, which is -x.
+    ray_hit_t hit = {0};
+    hit.x = 6, hit.y = 19, hit.z = 6;
+    hit.px = 6, hit.py = 20, hit.pz = 6;
+    hit.block = BLK_GRASS;
+    hit.face  = MESH_DIR_PY;
+    CHECK(interact_place_dir(&hit, BLK_STOVE, NULL, 0.0f, 1.0f), "a stove would not go down");
+    CHECK(world_block(6, 20, 6) == BLK_STOVE, "the stove is not where it was put");
+    CHECK(world_block(5, 20, 6) == BLK_STOVE_CHEST, "the chest did not come down on the stove's left");
+
+    int32_t ox, oy, oz;
+    CHECK(interact_stove_other(6, 20, 6, &ox, &oy, &oz) && ox == 5 && oy == 20 && oz == 6,
+          "the stove does not know where its chest is");
+    CHECK(interact_stove_other(5, 20, 6, &ox, &oy, &oz) && ox == 6 && oy == 20 && oz == 6,
+          "the chest does not know which stove it belongs to");
+    CHECK(!interact_stove_other(6, 20, 9, NULL, NULL, NULL), "empty air claims to be half a stove");
+
+    blockent_t* be    = blockent_at(6, 20, 6);
+    blockent_t* chest = blockent_at(5, 20, 6);
+    CHECK(be != NULL && be->kind == BE_STOVE, "the stove has no record");
+    CHECK(chest != NULL && chest->kind == BE_CHEST, "the stove's chest is not a chest");
+    if (be == NULL || chest == NULL) return;
+
+    // A SECOND STOVE BESIDE THE FIRST still finds its own chest, which
+    // is the case blocks.h worried would need stored coordinates: a row
+    // of them is `chest stove chest stove` and every facing is exact.
+    ray_hit_t h2 = {0};
+    h2.x = 8, h2.y = 19, h2.z = 6;
+    h2.px = 8, h2.py = 20, h2.pz = 6;
+    h2.block = BLK_GRASS;
+    h2.face  = MESH_DIR_PY;
+    CHECK(interact_place_dir(&h2, BLK_STOVE, NULL, 0.0f, 1.0f), "a second stove would not go down");
+    CHECK(world_block(7, 20, 6) == BLK_STOVE_CHEST, "the second stove's chest is missing");
+    CHECK(interact_stove_other(8, 20, 6, &ox, NULL, NULL) && ox == 7,
+          "a stove in a row picked up its neighbour's chest");
+    CHECK(interact_stove_other(7, 20, 6, &ox, NULL, NULL) && ox == 8,
+          "a chest in a row picked up the wrong stove");
+    interact_break(8, 20, 6, ITEM_PICK_IRON);
+    item_entity_reset();
+
+    // NO ROOM, NO STOVE: half a kitchen is a stove that cannot cook.
+    set_block(11, 20, 6, BLK_STONE, ST_PLACED);  // where the chest would go
+    ray_hit_t h3 = {0};
+    h3.x = 12, h3.y = 19, h3.z = 6;
+    h3.px = 12, h3.py = 20, h3.pz = 6;
+    h3.block = BLK_GRASS;
+    h3.face  = MESH_DIR_PY;
+    CHECK(!interact_place_dir(&h3, BLK_STOVE, NULL, 0.0f, 1.0f), "a stove went down with nowhere for its chest");
+    CHECK(world_block(12, 20, 6) == BLK_AIR, "a refused stove left half of itself behind");
+    CHECK(blockent_at(12, 20, 6) == NULL, "a refused stove kept a record from the pool");
+
+    // --- Why it is idle, which is the user's info message -------------
+    be->stamp = 0;
+    CHECK(stove_idle_reason(be, chest) == STOVE_IDLE_NO_PICK, "a stove with no dish chosen does not say so");
+
+    // BREAD: three wheat, and the chest has two of them.
+    stove_set_pick(be, ITEM_BREAD);
+    chest->slot[0].item  = ITEM_WHEAT;
+    chest->slot[0].count = 2;
+    CHECK(stove_idle_reason(be, chest) == STOVE_IDLE_MISSING, "a stove short of an ingredient does not say so");
+    int      need = 0;
+    uint16_t what = stove_missing(be, chest, &need);
+    CHECK(what == ITEM_WHEAT && need == 1, "the stove named %u x %u as missing, wanted 1 wheat", need, what);
+    CHECK(stove_idle_reason(be, NULL) == STOVE_IDLE_NO_CHEST,
+          "a stove with no chest complains about ingredients instead");
+
+    chest->slot[0].count = 9;  // three loaves' worth
+    CHECK(stove_idle_reason(be, chest) == STOVE_IDLE_NO_FUEL, "a stove with no fuel does not say so");
+
+    // --- Cooking ------------------------------------------------------
+    // Four coal, because a loaf is 1200 ticks and a coal is 1600: one
+    // lump does not see three loaves through, and a test that gave it
+    // one would be testing the fuel rule while claiming to test the
+    // clock.
+    be->slot[BE_STOVE_FUEL].item  = ITEM_COAL;
+    be->slot[BE_STOVE_FUEL].count = 4;
+    CHECK(stove_busy(be, chest), "a stove with a dish, a chest and coal is not cooking");
+
+    stove_catch_up(be, chest, STOVE_COOK_TICKS - 1);
+    CHECK(be->slot[BE_STOVE_OUT].count == 0, "the stove paid out before the minute was up");
+    CHECK(chest->slot[0].count == 9, "the stove took its wheat before the bread was baked");
+    CHECK(stove_progress_pct(be) > 90, "the progress bar is not nearly full a tick before the end");
+
+    stove_catch_up(be, chest, STOVE_COOK_TICKS);
+    CHECK(be->slot[BE_STOVE_OUT].item == ITEM_BREAD && be->slot[BE_STOVE_OUT].count == 1,
+          "a minute did not make one loaf");
+    CHECK(chest->slot[0].count == 6, "the loaf did not cost three wheat out of the chest (%u left)",
+          chest->slot[0].count);
+
+    stove_catch_up(be, chest, STOVE_COOK_TICKS * 3);
+    CHECK(be->slot[BE_STOVE_OUT].count == 3, "three minutes made %u loaves", be->slot[BE_STOVE_OUT].count);
+    CHECK(chest->slot[0].count == 0, "three loaves did not empty a chest of nine wheat");
+
+    // AN IDLE STOVE BANKS NOTHING. A week of standing with an empty
+    // chest must not turn the next handful of wheat into bread on the
+    // spot -- the same rule the barrel and the composter have.
+    stove_catch_up(be, chest, STOVE_COOK_TICKS * 3 + MAKER_DAY * 7);
+    chest->slot[0].item  = ITEM_WHEAT;
+    chest->slot[0].count = 9;
+    stove_catch_up(be, chest, STOVE_COOK_TICKS * 3 + MAKER_DAY * 7 + 10);
+    CHECK(be->slot[BE_STOVE_OUT].count == 3, "an idle stove banked a week and baked at once");
+
+    // THE PIZZA'S TWO ROWS: the fake sausage counts (the user), so a
+    // chest with a bean sausage in it makes the same pizza.
+    blockent_t* be2 = blockent_add(2, 21, 2, BE_STOVE);
+    CHECK(be2 != NULL, "the pool would not give a second stove a record");
+    if (be2 != NULL) {
+        blockent_t* ch2 = blockent_add(3, 21, 2, BE_CHEST);
+        CHECK(ch2 != NULL, "the pool would not give a second chest a record");
+        if (ch2 != NULL) {
+            be2->stamp                     = 0;
+            be2->slot[BE_STOVE_FUEL].item  = ITEM_COAL;
+            be2->slot[BE_STOVE_FUEL].count = 4;
+            stove_set_pick(be2, ITEM_PIZZA);
+            ch2->slot[0] = (inv_slot_t){ITEM_WHEAT, 2, 0};
+            ch2->slot[1] = (inv_slot_t){ITEM_SAUSAGE_VEG, 1, 0};
+            ch2->slot[2] = (inv_slot_t){ITEM_CHEESE, 1, 0};
+            ch2->slot[3] = (inv_slot_t){ITEM_SHRIMP, 2, 0};
+            stove_catch_up(be2, ch2, STOVE_COOK_TICKS);
+            CHECK(be2->slot[BE_STOVE_OUT].item == ITEM_PIZZA,
+                  "a bean sausage did not count as a pizza's sausage");
+            CHECK(ch2->slot[1].count == 0, "the pizza did not eat the bean sausage");
+        }
+        blockent_remove(3, 21, 2);
+        blockent_remove(2, 21, 2);
+    }
+
+    // --- What it remembers across a save ------------------------------
+    //
+    // The dish is stored by NAME, so a recipe inserted in the middle of
+    // the table cannot repoint a stove somebody left cooking.
+    {
+        static uint8_t sec[8192];
+        size_t const   n = blockent_encode_chunk(0, 0, sec, sizeof(sec));
+        CHECK(n > 0, "a stove and its chest would not encode");
+        blockent_clear();
+        blockent_decode_section(sec + 5, n - 5);
+        blockent_t const* back = blockent_at(6, 20, 6);
+        CHECK(back != NULL && back->kind == BE_STOVE, "the stove did not come back from the card");
+        if (back != NULL) {
+            CHECK(back->pick == ITEM_BREAD, "the stove forgot which dish it was set to");
+            CHECK(back->slot[BE_STOVE_OUT].item == ITEM_BREAD && back->slot[BE_STOVE_OUT].count == 3,
+                  "the stove's finished bread did not survive");
+        }
+        blockent_t const* chest_back = blockent_at(5, 20, 6);
+        CHECK(chest_back != NULL && chest_back->kind == BE_CHEST, "the stove's chest did not come back");
+    }
+
+    // --- Breaking it --------------------------------------------------
+    //
+    // Either half takes both, BOTH give back what they were holding, and
+    // exactly ONE stove drops -- which is what makes the pair safe at a
+    // chunk border where only one half is resident.
+    be    = blockent_at(6, 20, 6);
+    chest = blockent_at(5, 20, 6);
+    CHECK(be != NULL && chest != NULL, "the pair is not in the pool after the save round trip");
+    if (be == NULL || chest == NULL) return;
+    chest->slot[0] = (inv_slot_t){ITEM_WHEAT, 11, 0};
+
+    // WITH AN AXE, AT THE CHEST END. That is the wrong tool for the
+    // stone half and has to work anyway: a pair breaks as one thing,
+    // and a kitchen taken from the wrong end must not evaporate (see
+    // the note on BLK_STOVE in blocks.c).
+    item_entity_reset();
+    break_result_t const r = interact_break(5, 20, 6, ITEM_AXE_IRON);  // the CHEST half
+    CHECK(r.ok, "the stove's chest would not break");
+    CHECK(world_block(6, 20, 6) == BLK_AIR && world_block(5, 20, 6) == BLK_AIR,
+          "breaking one half of the stove left the other");
+    int stoves = 0, wheat = 0, bread = 0;
+    for (int i = 0; i < ITEM_ENTITY_MAX; i++) {
+        item_entity_t const* e = item_entity_at(i);
+        if (e == NULL || !e->alive) continue;
+        if (e->item == BLK_STOVE) stoves += e->count;
+        if (e->item == ITEM_WHEAT) wheat += e->count;
+        if (e->item == ITEM_BREAD) bread += e->count;
+    }
+    CHECK(stoves == 1, "breaking a stove dropped %d of them", stoves);
+    CHECK(wheat == 11, "the chest kept %d of its 11 wheat", wheat);
+    CHECK(bread == 3, "the stove kept %d of its 3 loaves", bread);
+    CHECK(blockent_at(5, 20, 6) == NULL && blockent_at(6, 20, 6) == NULL,
+          "breaking the pair left a record behind in the pool");
+    printf("  placed as two, saved as two, broken as two, dropped as one stove\n");
+    item_entity_reset();
+    blockent_clear();
+}
+
+// =====================================================================
+//  HUNGER, SATURATION AND THE FALL (step 11)
+// ---------------------------------------------------------------------
+//  The hunger loop is the one system in this game that plays out over
+//  half an hour, so it is the one nobody is going to watch on a badge.
+//  Here it runs at a few million ticks a second.
+// =====================================================================
+static void check_hunger(void) {
+    printf("hunger: the reserve, the regeneration, and starving\n");
+
+    food_t f;
+    food_reset(&f);
+    CHECK(f.health == FOOD_HEALTH_MAX && f.hunger == FOOD_HUNGER_MAX && f.saturation == 0,
+          "a new player did not start full with no reserve");
+
+    // --- What a walk costs ---------------------------------------------
+    //
+    // At a walk (PL_WALK, 0.215 blocks a tick) one drumstick should be
+    // most of a minute and a half. If this number ever moves a long way,
+    // the food table stops meaning what the user priced it at.
+    int ticks = 0;
+    while (f.hunger == FOOD_HUNGER_MAX && ticks < 20 * 60 * 60) {
+        food_tick(&f, 0.215f, false, false);
+        ticks++;
+    }
+    CHECK(f.hunger == FOOD_HUNGER_MAX - 1, "the first drumstick went in one step of %d", ticks);
+    printf("  walking costs one drumstick every %d ticks (%.0f seconds)\n", ticks, ticks / 20.0);
+    CHECK(ticks > 20 * 40 && ticks < 20 * 180, "a drumstick a walk is %.0f seconds, which is not a walk",
+          ticks / 20.0);
+
+    // --- The reserve is spent first ------------------------------------
+    food_reset(&f);
+    f.hunger = 10;
+    food_eat_t const fe = food_eat(&f, ITEM_SMOKED_SALMON);  // 2 hunger, 4 saturation
+    CHECK(fe.ate, "smoked salmon would not go down");
+    CHECK(f.hunger == 12, "smoked salmon gave %d hunger, wanted 2", f.hunger - 10);
+    CHECK(f.saturation == 4, "smoked salmon gave %d reserve, wanted 4", f.saturation);
+
+    int const before = f.hunger;
+    while (f.saturation > 0) food_tick(&f, 1.0f, false, false);
+    CHECK(f.hunger == before, "hunger went down while there was still reserve to spend");
+    food_tick(&f, 400.0f, false, false);
+    CHECK(f.hunger < before, "hunger did not go down once the reserve was gone");
+
+    // SATURATION CANNOT EXCEED HUNGER, which is where the food table's
+    // shape comes from: the salmon's four points are only worth having
+    // to somebody with the drumsticks to hold them.
+    food_reset(&f);
+    f.hunger     = FOOD_HUNGER_MAX - 1;
+    f.saturation = 0;
+    food_eat(&f, ITEM_PIZZA);  // 10 hunger, 8 reserve, into one drumstick of room
+    CHECK(f.hunger == FOOD_HUNGER_MAX, "a pizza did not fill the bar");
+    CHECK(f.saturation <= f.hunger, "the reserve is bigger than the hunger holding it");
+
+    // A FULL PLAYER REFUSES, and says so. Without it, leaning on the Use
+    // key eats a larder.
+    food_eat_t const full = food_eat(&f, ITEM_BREAD);
+    CHECK(!full.ate && full.full, "a full player ate anyway");
+
+    // THE PAIL COMES BACK when the milk is drunk.
+    food_reset(&f);
+    f.hunger = 10;
+    food_eat_t const milk = food_eat(&f, ITEM_BUCKET_MILK);
+    CHECK(milk.ate && milk.leftover == ITEM_BUCKET, "drinking the milk did not give the bucket back");
+    CHECK(food_leftover(ITEM_BREAD) == 0, "a loaf of bread left something behind");
+
+    // NOTHING THAT IS NOT FOOD IS FOOD, which is a column in the item
+    // table and not a list: a pickaxe, a plank and a raw fish.
+    CHECK(!food_is_food(ITEM_PICK_IRON) && !food_is_food(BLK_PLANKS), "a tool or a block counts as food");
+    CHECK(!food_is_food(ITEM_SALMON), "raw salmon is food before it has seen a stove");
+    CHECK(food_is_food(ITEM_TOMATO) && food_is_food(ITEM_CHEESE), "a tomato or a cheese is not food");
+
+    // --- Regeneration, and what it costs -------------------------------
+    food_reset(&f);
+    f.health = 10;
+    int beats = 0;
+    for (int i = 0; i < FOOD_BEAT_TICKS * 4; i++) {
+        if (food_tick(&f, 0.0f, false, false) == FOOD_HEALED) beats++;
+    }
+    CHECK(beats > 0 && f.health > 10, "a well-fed player did not heal");
+    printf("  healing: %d beats in %d ticks took hunger to %d\n", beats, FOOD_BEAT_TICKS * 4, f.hunger);
+    CHECK(f.hunger < FOOD_HUNGER_MAX, "healing cost nothing at all");
+
+    // ... and a hungry one does not heal. Nine drumsticks of ten is the
+    // gate, so the last one is the warning.
+    food_reset(&f);
+    f.health = 10;
+    f.hunger = FOOD_REGEN_AT - 1;
+    for (int i = 0; i < FOOD_BEAT_TICKS * 4; i++) food_tick(&f, 0.0f, false, false);
+    CHECK(f.health == 10, "a player under the regeneration gate healed anyway");
+
+    // --- Starving, which can kill --------------------------------------
+    food_reset(&f);
+    f.hunger     = 0;
+    f.saturation = 0;
+    bool died = false;
+    for (int i = 0; i < FOOD_BEAT_TICKS * (FOOD_HEALTH_MAX + 2) && !died; i++) {
+        died = food_tick(&f, 0.0f, false, false) == FOOD_DIED;
+    }
+    CHECK(died && f.health == 0, "an empty stomach did not kill in %d beats", FOOD_HEALTH_MAX + 2);
+    printf("  an empty larder kills in %.0f seconds\n", FOOD_HEALTH_MAX * FOOD_BEAT_TICKS / 20.0);
+
+    // --- Damage ---------------------------------------------------------
+    food_reset(&f);
+    CHECK(food_hurt(&f, 6) == FOOD_STARVED && f.health == FOOD_HEALTH_MAX - 6, "six points of damage took %d",
+          FOOD_HEALTH_MAX - f.health);
+    CHECK(f.exhaustion > 0.0f, "being hurt cost no exhaustion");
+    CHECK(food_hurt(&f, 99) == FOOD_DIED && f.health == 0, "a mortal blow did not kill");
+    CHECK(food_hurt(&f, 1) == FOOD_NOTHING, "a corpse took more damage");
+}
+
+// The fall rule, which is the other half of health going down. Driven
+// against a REAL BODY falling through a real world -- phys_move and
+// phys_gravity, the same two calls the player tick makes -- and through
+// the shipped tracker rather than a copy of its arithmetic. What is
+// being tested is the number the body's y actually reaches, not what a
+// formula says about a distance nobody measured.
+static void check_fall(void) {
+    printf("falling: three blocks for nothing, and a point a block after\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the falling world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_STONE, 0);
+
+    // Drop a body from `h` blocks above the floor and see what it costs.
+    // The floor is the top of the stone at y = 20, so the feet start at
+    // 20 + h and land at 20.
+    struct {
+        int drop;
+        int want;
+    } const CASES[] = {
+        {1, 0}, {2, 0}, {3, 0}, {4, 1}, {5, 2}, {8, 5}, {20, 17},
+    };
+    for (size_t i = 0; i < sizeof CASES / sizeof CASES[0]; i++) {
+        phys_body_t b;
+        phys_body_init(&b, 8.5, 20.0 + (double)CASES[i].drop, 8.5);
+        food_t f;
+        food_reset(&f);
+        fall_t fl;
+        fall_reset(&fl, b.y);
+
+        int took = 0;
+        for (int t = 0; t < 600; t++) {
+            phys_move(&b, 0.0, (double)b.vy, 0.0);
+            phys_gravity(&b, PL_GRAVITY, PL_DRAG, PL_TERMINAL);
+            int const hurt = fall_tick(&fl, b.y, b.on_ground, false);
+            if (hurt > 0) {
+                food_hurt(&f, hurt);
+                took = hurt;
+                break;
+            }
+        }
+        CHECK(b.on_ground, "a body dropped %d blocks never landed", CASES[i].drop);
+        CHECK(took == CASES[i].want, "a fall of %d blocks took %d health, wanted %d", CASES[i].drop, took,
+              CASES[i].want);
+        CHECK(f.health == FOOD_HEALTH_MAX - CASES[i].want, "the damage did not reach the health");
+    }
+    printf("  1 to 3 blocks are free; 4 costs 1, 8 costs 5, 20 costs 17\n");
+
+    // A LEDGE HALF WAY DOWN IS TWO SHORT FALLS, not one long one -- the
+    // reason the tracker keeps a height and not a velocity. Twelve
+    // blocks in two hops of six costs twice what six costs, not what
+    // twelve costs.
+    {
+        phys_body_t b;
+        phys_body_init(&b, 8.5, 26.0, 8.5);
+        fall_t fl;
+        fall_reset(&fl, b.y);
+        int first = 0, second = 0;
+        for (int t = 0; t < 400 && first == 0; t++) {
+            phys_move(&b, 0.0, (double)b.vy, 0.0);
+            phys_gravity(&b, PL_GRAVITY, PL_DRAG, PL_TERMINAL);
+            first = fall_tick(&fl, b.y, b.on_ground, false);
+        }
+        CHECK(first == 3, "the first six-block hop took %d, wanted 3", first);
+        // Off the ledge again, the same distance.
+        b.y = 26.0;
+        b.on_ground = false;
+        b.vy = 0.0f;
+        for (int t = 0; t < 400 && second == 0; t++) {
+            phys_move(&b, 0.0, (double)b.vy, 0.0);
+            phys_gravity(&b, PL_GRAVITY, PL_DRAG, PL_TERMINAL);
+            second = fall_tick(&fl, b.y, b.on_ground, false);
+        }
+        CHECK(second == 3, "the second six-block hop took %d, wanted 3 -- the tracker banked the first", second);
+    }
+    printf("  two six-block hops cost 3 each, not 9 once\n");
+
+    // WATER IS A LANDING. The same drop with the body in water costs
+    // nothing, which is what makes a waterfall a way down.
+    {
+        phys_body_t b;
+        phys_body_init(&b, 8.5, 40.0, 8.5);
+        fall_t fl;
+        fall_reset(&fl, b.y);
+        int took = 0;
+        for (int t = 0; t < 600 && took == 0; t++) {
+            phys_move(&b, 0.0, (double)b.vy, 0.0);
+            phys_gravity(&b, PL_GRAVITY, PL_DRAG, PL_TERMINAL);
+            // Into the pool at y 22 and below.
+            took = fall_tick(&fl, b.y, b.on_ground, b.y <= 22.0);
+        }
+        CHECK(took == 0, "a twenty-block fall into water took %d health", took);
+    }
+    printf("  the same fall into water costs nothing\n");
+    chunk_store_clear();
+}
+
+// =====================================================================
+//  SAPLINGS, AND THE COMPOST BED (the user, 2026-09-29)
+// ---------------------------------------------------------------------
+//  Two things that were not renewable and now are: WOOD, because no
+//  recipe anywhere makes a log, and YELLOW FLOWERS, which a pork
+//  sausage needs for its spice and which only the generator ever put
+//  in the world.
+// =====================================================================
+static void check_saplings(void) {
+    printf("saplings: wood that grows back, and a bed of flowers\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the sapling world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    item_entity_reset();
+
+    // --- Which sapling comes off which trunk --------------------------
+    CHECK(tree_sapling_for(BLK_LOG) == BLK_SAPLING_OAK, "an oak does not leave an oak seedling");
+    CHECK(tree_sapling_for(BLK_BIRCH_LOG) == BLK_SAPLING_BIRCH, "a birch does not leave a birch seedling");
+    CHECK(tree_sapling_for(BLK_STONE) == BLK_AIR, "stone leaves a seedling");
+    CHECK(tree_is_sapling(BLK_SAPLING_OAK) && tree_is_sapling(BLK_SAPLING_BIRCH), "a sapling is not a sapling");
+    CHECK(!tree_is_sapling(BLK_WHEAT_CROP), "wheat claims to be a sapling");
+
+    // ONE OR TWO, from the world's hash and never rand(): the same spot
+    // asked twice gives the same answer, which is what makes a replay
+    // reproduce a woodpile.
+    int ones = 0, twos = 0;
+    for (int32_t i = 0; i < 400; i++) {
+        int const n = tree_drops_at(i, 20, i * 7);
+        CHECK(n >= TREE_DROP_MIN && n <= TREE_DROP_MAX, "a tree left %d seedlings", n);
+        if (n == 1) ones++;
+        if (n == 2) twos++;
+    }
+    printf("  400 trees left %d singles and %d pairs\n", ones, twos);
+    CHECK(ones > 100 && twos > 100, "one or two is not a coin toss: %d and %d", ones, twos);
+    CHECK(tree_drops_at(3, 20, 9) == tree_drops_at(3, 20, 9), "the seedling roll is not deterministic");
+
+    // --- Planting ------------------------------------------------------
+    //
+    // A SAPLING IS THE ONE SEED THAT DOES NOT WANT A TILLED FIELD.
+    CHECK(crops_plant(4, 19, 4, BLK_SAPLING_OAK) == PLANT_OK, "a sapling would not go into grass");
+    CHECK(world_block(4, 20, 4) == BLK_SAPLING_OAK, "the sapling is not standing on the grass");
+    CHECK(crop_stage(world_state(4, 20, 4)) == 0, "a planted sapling did not start at its first stage");
+
+    set_block(6, 19, 6, BLK_FARMLAND_WET, ST_PLACED);
+    CHECK(crops_plant(6, 19, 6, BLK_SAPLING_OAK) == PLANT_NEEDS_GROUND,
+          "a sapling went into a tilled field");
+    set_block(8, 19, 8, BLK_STONE, ST_PLACED);
+    CHECK(crops_plant(8, 19, 8, BLK_SAPLING_BIRCH) == PLANT_NEEDS_GROUND, "a sapling went into stone");
+
+    // --- Growing -------------------------------------------------------
+    //
+    // Driven through crops_advance, which is where every path into
+    // growth ends -- the sweep, the catch-up on load and compost.
+    for (int step = 0; step < 3; step++) crops_advance(4, 20, 4, 1);
+    uint8_t const grew = world_block(4, 20, 4);
+    CHECK(grew != BLK_SAPLING_OAK, "the sapling is still a sapling after all of its stages");
+    CHECK(grew == BLK_LOG, "the sapling became %s, wanted a trunk", block_def(grew)->name);
+
+    // A TRUNK AND A CANOPY, and the trunk is GROWN and not PLACED -- so
+    // the tree somebody planted comes down like any other (Part F).
+    int logs = 0, leaves = 0;
+    for (int y = 20; y < 32; y++) {
+        for (int dz = -3; dz <= 3; dz++) {
+            for (int dx = -3; dx <= 3; dx++) {
+                uint8_t const b = world_block(4 + dx, y, 4 + dz);
+                if (b == BLK_LOG) logs++;
+                if (b == BLK_LEAVES) leaves++;
+            }
+        }
+    }
+    printf("  a planted seedling grew %d logs and %d leaves\n", logs, leaves);
+    CHECK(logs >= 4, "the grown tree has a trunk of %d", logs);
+    CHECK(leaves > 10, "the grown tree has a canopy of %d", leaves);
+    CHECK((world_state(4, 21, 4) & ST_PLACED) == 0, "a grown tree is marked as placed and will not fell");
+
+    // AND IT FELLS AS A TREE, seedlings and all: the loop closes.
+    item_entity_reset();
+    break_result_t const fell = interact_break(4, 20, 4, ITEM_AXE_IRON);
+    CHECK(fell.was_tree, "a planted tree did not fell");
+    int seeds = 0;
+    for (int i = 0; i < ITEM_ENTITY_MAX; i++) {
+        item_entity_t const* e = item_entity_at(i);
+        if (e != NULL && e->alive && e->item == BLK_SAPLING_OAK) seeds += e->count;
+    }
+    CHECK(seeds >= TREE_DROP_MIN, "felling a planted tree left no seedling");
+    printf("  ... and felling it left %d seedling(s): the loop closes\n", seeds);
+
+    // --- No room, no tree ----------------------------------------------
+    //
+    // A sapling under a ceiling has nowhere to put a canopy. It must
+    // stay a sapling rather than growing half a tree -- and it must
+    // still be there to try again later.
+    item_entity_reset();
+    CHECK(crops_plant(12, 19, 12, BLK_SAPLING_OAK) == PLANT_OK, "the second sapling would not go in");
+    for (int y = 22; y < 26; y++) set_block(12, y, 12, BLK_STONE, ST_PLACED);
+    for (int step = 0; step < 4; step++) crops_advance(12, 20, 12, 1);
+    CHECK(world_block(12, 20, 12) == BLK_SAPLING_OAK, "a sapling under a ceiling grew anyway");
+    CHECK(world_block(12, 21, 12) == BLK_AIR, "half a tree went up under the ceiling");
+    // Take the ceiling away and the next nudge grows it.
+    for (int y = 22; y < 26; y++) set_block(12, y, 12, BLK_AIR, 0);
+    crops_advance(12, 20, 12, 1);
+    CHECK(world_block(12, 20, 12) == BLK_LOG, "a sapling that was refused never tried again");
+    printf("  a sapling under a ceiling waits, and grows when the ceiling goes\n");
+
+    // --- Compost on bare grass: a 3 x 3 of yellow flowers -------------
+    chunk_store_clear();
+    CHECK(flat_world(20) != NULL, "the flower world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+
+    // Aimed at the top of the grass at (8, 19, 8).
+    use_result_t u = interact_use_item(8.5, 21.0, 8.5, 0.0f, -1.0f, 0.0f, ITEM_COMPOST);
+    CHECK(u.acted, "compost on bare grass did nothing");
+    CHECK(u.consume, "a bed of flowers cost no compost");
+    int flowers = 0;
+    for (int dz = -1; dz <= 1; dz++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (world_block(8 + dx, 20, 8 + dz) == BLK_FLOWER_YELLOW) flowers++;
+        }
+    }
+    CHECK(flowers == 9, "compost raised %d flowers, wanted a 3 x 3", flowers);
+    CHECK(world_block(5, 20, 8) == BLK_AIR, "the bed spread further than three by three");
+    printf("  one compost raised a 3 x 3 of yellow flowers\n");
+
+    // IT DOES NOT PAVE OVER WHAT IS THERE. A second helping on the same
+    // spot has nothing left to do, and says so rather than eating the
+    // compost for nothing.
+    u = interact_use_item(8.5, 21.0, 8.5, 0.0f, -1.0f, 0.0f, ITEM_COMPOST);
+    CHECK(!u.acted && u.msg != USE_SAID_NOTHING, "a second compost on a full bed was spent for nothing");
+
+    // AND IT ONLY GROWS ON GRASS. A stone floor gets nothing.
+    for (int dz = -1; dz <= 1; dz++)
+        for (int dx = -1; dx <= 1; dx++) set_block(3 + dx, 19, 3 + dz, BLK_STONE, ST_PLACED);
+    u = interact_use_item(3.5, 21.0, 3.5, 0.0f, -1.0f, 0.0f, ITEM_COMPOST);
+    CHECK(!u.acted, "compost grew flowers on stone");
+    printf("  ... on grass, and on nothing else\n");
+    chunk_store_clear();
+    item_entity_reset();
 }
 
 static void check_replay(void) {
@@ -6366,13 +6986,28 @@ static void check_drops(void) {
            (double)t / 20.0 / 60.0);
     CHECK(t == ITEM_DESPAWN_TICKS, "a drop despawned after %u ticks, expected %u", t, ITEM_DESPAWN_TICKS);
 
-    // Felling drops every block it takes, which is the point of felling.
+    // Felling drops every block it takes, which is the point of felling
+    // -- PLUS the seedlings (world/tree.h), which are one or two per
+    // tree and not one per block.
     item_entity_reset();
     for (int y = 0; y < 5; y++) set_block(30, 8 + y, 30, BLK_LOG, 0);
     r = interact_break(30, 8, 30, ITEM_AXE_STONE);
-    printf("  felling a 5-log trunk took %d blocks and dropped %d\n", r.felled, r.dropped);
+    int saplings = 0, logs = 0;
+    for (int i = 0; i < ITEM_ENTITY_MAX; i++) {
+        item_entity_t const* e = item_entity_at(i);
+        if (e == NULL || !e->alive) continue;
+        if (e->item == BLK_SAPLING_OAK) saplings += e->count;
+        if (e->item == BLK_LOG) logs += e->count;
+    }
+    printf("  felling a 5-log trunk took %d blocks, dropped %d logs and %d seedling(s)\n", r.felled, logs,
+           saplings);
     CHECK(r.was_tree, "the trunk did not fell");
-    CHECK(r.dropped == r.felled, "felling took %d blocks but dropped %d", r.felled, r.dropped);
+    CHECK(logs == r.felled, "felling took %d blocks but dropped %d logs", r.felled, logs);
+    CHECK(saplings >= TREE_DROP_MIN && saplings <= TREE_DROP_MAX, "a felled tree left %d seedlings, wanted %d..%d",
+          saplings, TREE_DROP_MIN, TREE_DROP_MAX);
+    // ONE PER TREE, NOT ONE PER BLOCK: forty saplings off one oak would
+    // make the first tree the last one anybody had to plant.
+    CHECK(saplings < r.felled, "a fell left one seedling per block");
 
     // The pool is finite and a full one must refuse, not corrupt.
     item_entity_reset();
@@ -6768,12 +7403,45 @@ static float text_width_at(char const* s, float h) {
     return (float)w;
 }
 
+// WHICH ITEMS A LINE CAN BE ASKED TO NAME. Not all of them are all of
+// them, and the difference is what this check is for.
+typedef enum {
+    ITEMS_ANY = 0,   // anything the player can be carrying
+    ITEMS_BOOK,      // only what the crafting book can put on a line
+} item_scope_t;
+
+// Can `id` appear in the crafting book at all -- as a row's output or
+// in a row's ingredient footer?
+//
+// THE BOOK DOES NOT SHOW A MACHINE'S RECIPES. Nobody picks a row in a
+// sausage maker, and the stove has a screen of its own (step 11), so a
+// dish's name is never drawn on one of the book's lines. Scoping the
+// ROOM to the book's own recipes without scoping the NAMES was half an
+// answer: the day "Steak and potatoes" was added, the book's ingredient
+// footer failed in eleven languages over a string it can never print.
+static bool recipe_in_book(recipe_t const* r) {
+    return r->station == RS_INVENTORY || r->station == RS_TABLE || r->station == RS_FURNACE;
+}
+
+static bool in_book(uint16_t id) {
+    for (int ri = 0; ri < recipe_count(); ri++) {
+        recipe_t const* r = recipe_at(ri);
+        if (!recipe_in_book(r)) continue;
+        if (r->out == id) return true;
+        for (int i = 0; i < r->n_in; i++) {
+            if (r->in[i].item == id) return true;
+        }
+    }
+    return false;
+}
+
 // The longest thing a %s in one of these lines can be filled with.
-static char const* longest_item_label(void) {
+static char const* longest_item_label(item_scope_t scope) {
     char const* worst = "";
     float       wmax  = 0.0f;
     for (uint16_t id = 1; id < ITEM_COUNT; id++) {
         if (id == BLK_AIR || id == BLK_BARRIER) continue;
+        if (scope == ITEMS_BOOK && !in_book(id)) continue;
         sm_str_t const lab = item_label(id);
         if (lab == 0) continue;
         char const* const t = i18n_text(lab);
@@ -6787,8 +7455,8 @@ static char const* longest_item_label(void) {
 }
 
 // Fill a format string the worst way the game can fill it.
-static void expand_worst(char const* fmt, char* out, size_t cap) {
-    char const* const name = longest_item_label();
+static void expand_worst(char const* fmt, item_scope_t scope, char* out, size_t cap) {
+    char const* const name = longest_item_label(scope);
     size_t            n    = 0;
     for (char const* p = fmt; *p != '\0' && n + 1 < cap; p++) {
         if (*p != '%') {
@@ -6819,94 +7487,181 @@ static void expand_worst(char const* fmt, char* out, size_t cap) {
 #define PANEL_ROOM(f)         ((f) * 800.0f - 50.0f - 28.0f)
 #define VALUE_ROOM(f, dx)     (PANEL_ROOM(f) - (dx))
 
+// A LINE THAT IS BUILT OUT OF SEVERAL COPIES OF ONE STRING, or out of
+// several strings, rather than drawn on its own. Its width and its
+// contents are decided together, so the only honest check is to
+// assemble the real thing and measure it -- see the note in
+// check_text_fits().
+typedef enum {
+    ASM_NONE = 0,     // an ordinary line: it gets `px` to itself
+    ASM_BOOK_ING,     // the crafting book's footer: every ingredient of one recipe
+    ASM_STOVE_DISH,   // the stove picker's footer: what a dish takes, then what it is worth
+} assembled_t;
+
 static struct {
     char const* key;
     float       h;   // the height it is drawn at
-    float       px;  // the room it has
+    float       px;  // the room it has, or 0 when `asm_kind` says it is built
+    // WHICH ITEMS ITS %s CAN NAME. A machine's screen lists whatever
+    // the player is carrying, so ITEMS_ANY; the crafting book draws
+    // only its own recipes, so ITEMS_BOOK. Left out of a row means
+    // ITEMS_ANY, which is the safe way round.
+    item_scope_t scope;
+    assembled_t  asm_kind;
 } const TEXT_BUDGETS[] = {
     // The inventory screen's legend, centred on the whole display.
-    {"hud.inventory_hint", 16.0f, 800.0f - 32.0f},
+    {.key = "hud.inventory_hint", .h = 16.0f, .px = 800.0f - 32.0f},
 
     // The crafting book: the list's value column, and its footer.
-    {"craft.value_make", 28.0f, VALUE_ROOM(0.88f, 380.0f)},
-    {"craft.value_missing", 28.0f, VALUE_ROOM(0.88f, 380.0f)},
+    {.key = "craft.value_make", .h = 28.0f, .px = VALUE_ROOM(0.88f, 380.0f), .scope = ITEMS_BOOK},
+    {.key = "craft.value_missing", .h = 28.0f, .px = VALUE_ROOM(0.88f, 380.0f), .scope = ITEMS_BOOK},
     // Several of these share one line. The share is worked out from the
     // recipe table below, not guessed here, so a recipe with another
     // ingredient in it tightens this automatically.
-    {"craft.ing", 14.0f, 0.0f},
-    {"craft.hint", 14.0f, PANEL_ROOM(0.88f)},
-    {"craft.search", 18.0f, PANEL_ROOM(0.88f)},
-    {"craft.made", 14.0f, PANEL_ROOM(0.88f)},
-    {"craft.full", 14.0f, PANEL_ROOM(0.88f)},
-    {"craft.empty_sub", 14.0f, PANEL_ROOM(0.88f)},
-    {"craft.empty", 28.0f, PANEL_ROOM(0.88f)},
-    {"craft.no_match", 28.0f, PANEL_ROOM(0.88f)},
+    {.key = "craft.ing", .h = 14.0f, .px = 0.0f, .scope = ITEMS_BOOK, .asm_kind = ASM_BOOK_ING},
+    {.key = "craft.hint", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "craft.search", .h = 18.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "craft.made", .h = 14.0f, .px = PANEL_ROOM(0.88f), .scope = ITEMS_BOOK},
+    {.key = "craft.full", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "craft.empty_sub", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "craft.empty", .h = 28.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "craft.no_match", .h = 28.0f, .px = PANEL_ROOM(0.88f)},
 
     // ... and the "what it takes" panel, which is where it went wrong.
-    {"craft.detail_have", 28.0f, VALUE_ROOM(0.88f, 380.0f)},
-    {"craft.detail_sub", 18.0f, PANEL_ROOM(0.88f)},
-    {"craft.detail_hint", 14.0f, PANEL_ROOM(0.88f)},
+    {.key = "craft.detail_have", .h = 28.0f, .px = VALUE_ROOM(0.88f, 380.0f), .scope = ITEMS_BOOK},
+    {.key = "craft.detail_sub", .h = 18.0f, .px = PANEL_ROOM(0.88f), .scope = ITEMS_BOOK},
+    {.key = "craft.detail_hint", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
 
     // The chest screen, which is drawn by hand rather than by se_ui:
     // two grids of CHEST_SLOT_W, with lines centred on the display.
-    {"chest.title", 30.0f, 800.0f - 32.0f},
-    {"chest.title_trash", 30.0f, 800.0f - 32.0f},
-    {"chest.yours", 18.0f, 6.0f * 44.0f + 5.0f * 4.0f},
-    {"chest.hint", 15.0f, 800.0f - 32.0f},
-    {"chest.trash_warn", 16.0f, 800.0f - 32.0f},
-    {"chest.trash_gone", 16.0f, 800.0f - 32.0f},
-    {"chest.no_room", 16.0f, 800.0f - 32.0f},
+    {.key = "chest.title", .h = 30.0f, .px = 800.0f - 32.0f},
+    {.key = "chest.title_trash", .h = 30.0f, .px = 800.0f - 32.0f},
+    {.key = "chest.yours", .h = 18.0f, .px = 6.0f * 44.0f + 5.0f * 4.0f},
+    {.key = "chest.hint", .h = 15.0f, .px = 800.0f - 32.0f},
+    {.key = "chest.trash_warn", .h = 16.0f, .px = 800.0f - 32.0f},
+    {.key = "chest.trash_gone", .h = 16.0f, .px = 800.0f - 32.0f},
+    {.key = "chest.no_room", .h = 16.0f, .px = 800.0f - 32.0f},
 
     // The bench, and the planner's state, which shares the search line.
-    {"bench.title", 32.0f, PANEL_ROOM(0.88f)},
-    {"bench.hint", 14.0f, PANEL_ROOM(0.88f)},
-    {"bench.empty", 28.0f, PANEL_ROOM(0.88f)},
-    {"bench.gives", 18.0f, PANEL_ROOM(0.88f)},
-    {"bench.done", 18.0f, PANEL_ROOM(0.88f)},
-    {"craft.auto_on", 18.0f, PANEL_ROOM(0.88f) / 2.0f},
-    {"craft.auto_off", 18.0f, PANEL_ROOM(0.88f) / 2.0f},
-    {"craft.auto_made", 14.0f, PANEL_ROOM(0.88f)},
+    {.key = "bench.title", .h = 32.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "bench.hint", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "bench.empty", .h = 28.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "bench.gives", .h = 18.0f, .px = PANEL_ROOM(0.88f), .scope = ITEMS_BOOK},
+    {.key = "bench.done", .h = 18.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "craft.auto_on", .h = 18.0f, .px = PANEL_ROOM(0.88f) / 2.0f},
+    {.key = "craft.auto_off", .h = 18.0f, .px = PANEL_ROOM(0.88f) / 2.0f},
+    {.key = "craft.auto_made", .h = 14.0f, .px = PANEL_ROOM(0.88f), .scope = ITEMS_BOOK},
 
     // The "how many?" modal: a fixed 420 px box, so its own width and
     // not a fraction of the panel.
-    {"amount.title", 22.0f, 640.0f - 44.0f},
-    {"amount.hint", 14.0f, 640.0f - 44.0f},
+    {.key = "amount.title", .h = 22.0f, .px = 640.0f - 44.0f},
+    {.key = "amount.hint", .h = 14.0f, .px = 640.0f - 44.0f},
 
     // THE COMPASS (game/hud.c): one or two letters between ticks 32 px
     // apart, so the room is what is between two ticks less a margin. A
     // translator who writes the whole word here fails this.
-    {"dir.n.short", 13.0f, 30.0f},
-    {"dir.e.short", 13.0f, 30.0f},
-    {"dir.s.short", 13.0f, 30.0f},
-    {"dir.w.short", 13.0f, 30.0f},
+    {.key = "dir.n.short", .h = 13.0f, .px = 30.0f},
+    {.key = "dir.e.short", .h = 13.0f, .px = 30.0f},
+    {.key = "dir.s.short", .h = 13.0f, .px = 30.0f},
+    {.key = "dir.w.short", .h = 13.0f, .px = 30.0f},
 
     // The loading and saving screens: one line, centred on the display.
-    {"loading.plain", 30.0f, 800.0f - 32.0f},
-    {"loading.world", 30.0f, 800.0f - 32.0f},
-    {"loading.creating", 30.0f, 800.0f - 32.0f},
-    {"loading.saving", 30.0f, 800.0f - 32.0f},
+    {.key = "loading.plain", .h = 30.0f, .px = 800.0f - 32.0f},
+    {.key = "loading.world", .h = 30.0f, .px = 800.0f - 32.0f},
+    {.key = "loading.creating", .h = 30.0f, .px = 800.0f - 32.0f},
+    {.key = "loading.saving", .h = 30.0f, .px = 800.0f - 32.0f},
 
     // The line a block shows when it will not break, top left.
-    {"hud.needs_tool", 16.0f, 800.0f - 32.0f},
+    {.key = "hud.needs_tool", .h = 16.0f, .px = 800.0f - 32.0f},
 
     // The furnace: three rows with a value column, a subtitle that says
     // what it is doing, and the picker over the player's own stacks.
-    {"furnace.slot", 28.0f, VALUE_ROOM(0.94f, 240.0f)},
-    {"furnace.empty", 28.0f, VALUE_ROOM(0.94f, 240.0f)},
-    {"furnace.input", 28.0f, 240.0f},
-    {"furnace.fuel", 28.0f, 240.0f},
-    {"furnace.output", 28.0f, 240.0f},
-    {"furnace.smelting", 18.0f, PANEL_ROOM(0.94f)},
-    {"furnace.no_input", 18.0f, PANEL_ROOM(0.94f)},
-    {"furnace.no_fuel", 18.0f, PANEL_ROOM(0.94f)},
-    {"furnace.full", 18.0f, PANEL_ROOM(0.94f)},
-    {"furnace.took", 18.0f, PANEL_ROOM(0.94f)},
-    {"furnace.hint", 14.0f, PANEL_ROOM(0.94f)},
-    {"furnace.becomes", 14.0f, PANEL_ROOM(0.88f)},
-    {"furnace.burns", 14.0f, PANEL_ROOM(0.88f)},
-    {"furnace.pick_hint", 14.0f, PANEL_ROOM(0.88f)},
-    {"furnace.pick_none_input", 28.0f, PANEL_ROOM(0.88f)},
-    {"furnace.pick_none_fuel", 28.0f, PANEL_ROOM(0.88f)},
+    {.key = "furnace.slot", .h = 28.0f, .px = VALUE_ROOM(0.94f, 240.0f)},
+    {.key = "furnace.empty", .h = 28.0f, .px = VALUE_ROOM(0.94f, 240.0f)},
+    {.key = "furnace.input", .h = 28.0f, .px = 240.0f},
+    {.key = "furnace.fuel", .h = 28.0f, .px = 240.0f},
+    {.key = "furnace.output", .h = 28.0f, .px = 240.0f},
+    {.key = "furnace.smelting", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "furnace.no_input", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "furnace.no_fuel", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "furnace.full", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "furnace.took", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "furnace.hint", .h = 14.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "furnace.becomes", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "furnace.burns", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "furnace.pick_hint", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "furnace.pick_none_input", .h = 28.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "furnace.pick_none_fuel", .h = 28.0f, .px = PANEL_ROOM(0.88f)},
+
+    // THE TWO MAKERS (step 10), which never had budget lines -- the
+    // screen was added and this table was not, so nothing measured it
+    // for a week. Same geometry as the furnace above: a 0.94 panel with
+    // a 240 px value column, and a 0.88 picker.
+    {.key = "maker.slot", .h = 28.0f, .px = VALUE_ROOM(0.94f, 240.0f)},
+    {.key = "maker.empty", .h = 28.0f, .px = VALUE_ROOM(0.94f, 240.0f)},
+    {.key = "maker.input", .h = 28.0f, .px = 240.0f},
+    {.key = "maker.output", .h = 28.0f, .px = 240.0f},
+    {.key = "maker.extra", .h = 28.0f, .px = 240.0f},
+    {.key = "maker.cheese_title", .h = 32.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "maker.sausage_title", .h = 32.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "maker.working", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "maker.no_input", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "maker.full", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "maker.took", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "maker.bucket_back", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "maker.hint", .h = 14.0f, .px = PANEL_ROOM(0.94f)},
+    // "Needs 1 Red flower", and the line that joins two of them. `or`
+    // is filled with the longest label in BOTH of its slots, which is
+    // worse than the real thing can be -- an over-estimate is the safe
+    // way to be wrong about a line nobody can see overflow.
+    {.key = "maker.missing", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "maker.or", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "maker.take_out", .h = 28.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "maker.pick_input", .h = 32.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "maker.pick_none", .h = 28.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "maker.pick_hint", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "maker.a_day", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "maker.a_minute", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+
+    // THE KITCHEN STOVE (step 11), which Part A said would need a
+    // budget line of its own the day it existed. Same shape as the
+    // furnace above -- three rows with a value column, a subtitle that
+    // says what it is doing, and two pickers -- plus the dish list's
+    // footer, which is assembled out of two strings and is checked by
+    // building it.
+    {.key = "stove.slot", .h = 28.0f, .px = VALUE_ROOM(0.94f, 240.0f)},
+    {.key = "stove.empty", .h = 28.0f, .px = VALUE_ROOM(0.94f, 240.0f)},
+    {.key = "stove.none", .h = 28.0f, .px = VALUE_ROOM(0.94f, 240.0f)},
+    {.key = "stove.dish", .h = 28.0f, .px = 240.0f},
+    {.key = "stove.fuel", .h = 28.0f, .px = 240.0f},
+    {.key = "stove.output", .h = 28.0f, .px = 240.0f},
+    {.key = "stove.title", .h = 32.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "stove.cooking", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "stove.no_pick", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "stove.no_chest", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "stove.missing", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "stove.no_fuel", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "stove.full", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "stove.took", .h = 18.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "stove.hint", .h = 14.0f, .px = PANEL_ROOM(0.94f)},
+    {.key = "stove.pick_title", .h = 32.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "stove.pick_fuel", .h = 32.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "stove.pick_none_fuel", .h = 28.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "stove.pick_hint", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    {.key = "stove.from_chest", .h = 14.0f, .px = PANEL_ROOM(0.88f)},
+    // The dish list's rows are DISH NAMES, which is the same trap the
+    // crafting book's rows were (step 8.5): the row is the item label,
+    // so the longest one in any language is what has to fit.
+    {.key = "stove.needs", .h = 14.0f, .px = 0.0f, .scope = ITEMS_ANY, .asm_kind = ASM_STOVE_DISH},
+    {.key = "stove.feeds", .h = 18.0f, .px = PANEL_ROOM(0.88f)},
+
+    // The two lines hunger puts on the HUD, centred on the display like
+    // every other thing said under the crosshair.
+    {.key = "farm.needs_ground", .h = 16.0f, .px = 800.0f - 32.0f},
+    {.key = "food.not_hungry", .h = 16.0f, .px = 800.0f - 32.0f},
+    {.key = "food.starving", .h = 16.0f, .px = 800.0f - 32.0f},
+    {.key = "food.died", .h = 16.0f, .px = 800.0f - 32.0f},
+    {.key = "food.respawn", .h = 16.0f, .px = 800.0f - 32.0f},
 };
 
 static void check_text_fits(void) {
@@ -6929,31 +7684,93 @@ static void check_text_fits(void) {
             CHECK(found >= 0, "no string called %s -- the budget table has gone stale", key);
             if (found < 0) continue;
 
-            char filled[256];
-            expand_worst(i18n_text((sm_str_t)found), filled, sizeof(filled));
-            float const w = text_width_at(filled, TEXT_BUDGETS[bi].h);
+            // A BUDGET OF 0 MEANS "BUILD THE REAL LINE". The crafting
+            // book's ingredient footer is the one line here whose width
+            // and whose contents are decided together: it is every
+            // ingredient of ONE recipe, three spaces apart, and how
+            // much room each gets is how many that recipe has.
+            //
+            // The generic path below cannot say that. It pairs the
+            // longest label in the game with the tightest division, and
+            // those two never meet -- "Table for disassembly" is not an
+            // ingredient of the three-part recipe that made the
+            // division tight. That is how this line came to fail in
+            // thirteen languages over a sentence none of them can
+            // print, on the day the stove became the book's first
+            // recipe with three ingredients.
+            //
+            // So this assembles each book recipe's footer exactly as
+            // craft_ui.c assembles it, with the worst `have` the count
+            // can be, and asks whether THAT fits.
+            if (TEXT_BUDGETS[bi].asm_kind == ASM_STOVE_DISH) {
+                // THE STOVE PICKER'S FOOTER, assembled exactly as
+                // stove_ui.c assembles it: every ingredient of the
+                // dish under the cursor, then what eating it is worth.
+                for (int d = 0; d < stove_dish_count(); d++) {
+                    recipe_t const* r = stove_dish_at(d);
+                    char            takes[192];
+                    takes[0] = '\0';
+                    for (int i = 0; i < r->n_in; i++) {
+                        char part[64];
+                        i18n_fmt(part, sizeof(part), (sm_str_t)found, (int)r->in[i].count,
+                                 T(item_label(r->in[i].item)));
+                        if (takes[0] != '\0') strncat(takes, ", ", sizeof(takes) - strlen(takes) - 1);
+                        strncat(takes, part, sizeof(takes) - strlen(takes) - 1);
+                    }
+                    // The ingredients get the hint line to themselves;
+                    // what the dish is worth is the subtitle above it
+                    // and is checked as an ordinary budget row below.
+                    char const* const line = takes;
+                    float const lw = text_width_at(line, TEXT_BUDGETS[bi].h);
+                    float const lr = PANEL_ROOM(0.88f);
+                    CHECK(lw <= lr, "%s/%s: \"%s\" is %.0f px, room is %.0f",
+                          i18n_language_code((sm_lang_t)li), key, line, (double)lw, (double)lr);
+                    if (lr - lw < worst_slack) {
+                        worst_slack = lr - lw;
+                        worst_key   = key;
+                        worst_lang  = i18n_language_code((sm_lang_t)li);
+                    }
+                    // ... and the ROW it belongs to, which is the dish's
+                    // own name at the picker's row height.
+                    char const* const row = T(item_label(r->out));
+                    float const       rw  = text_width_at(row, 28.0f);
+                    CHECK(rw <= PANEL_ROOM(0.88f), "%s/stove dish row: \"%s\" is %.0f px, room is %.0f",
+                          i18n_language_code((sm_lang_t)li), row, (double)rw, (double)PANEL_ROOM(0.88f));
+                }
+                continue;
+            }
 
-            // A budget of 0 means "share the panel with the others on
-            // its line", which for the ingredient footer is one per
-            // ingredient of the fattest recipe there is.
-            float room = TEXT_BUDGETS[bi].px;
-            if (room == 0.0f) {
-                // ... one per ingredient of the fattest recipe THE BOOK
-                // CAN SHOW. A machine's recipes are not in the book --
-                // nobody picks a row in a sausage maker, and the stove
-                // has its own screen (step 11), which will need a
-                // budget line of its own when it exists. Counting them
-                // here tightened this line for a recipe that is never
-                // drawn on it, which is a wrong answer arrived at
-                // honestly.
-                int most = 1;
+            if (TEXT_BUDGETS[bi].asm_kind == ASM_BOOK_ING) {
                 for (int ri = 0; ri < recipe_count(); ri++) {
                     recipe_t const* r = recipe_at(ri);
-                    if (r->station != RS_INVENTORY && r->station != RS_TABLE && r->station != RS_FURNACE) continue;
-                    if (r->n_in > most) most = r->n_in;
+                    if (!recipe_in_book(r)) continue;
+                    char line[256];
+                    line[0] = '\0';
+                    for (int i = 0; i < r->n_in; i++) {
+                        char part[64];
+                        i18n_fmt(part, sizeof(part), (sm_str_t)found, T(item_label(r->in[i].item)),
+                                 ITEM_STACK_MAX, (int)r->in[i].count);
+                        if (line[0] != '\0') strncat(line, "   ", sizeof(line) - strlen(line) - 1);
+                        strncat(line, part, sizeof(line) - strlen(line) - 1);
+                    }
+                    float const lw = text_width_at(line, TEXT_BUDGETS[bi].h);
+                    float const lr = PANEL_ROOM(0.88f);
+                    CHECK(lw <= lr, "%s/%s: \"%s\" is %.0f px, room is %.0f",
+                          i18n_language_code((sm_lang_t)li), key, line, (double)lw, (double)lr);
+                    if (lr - lw < worst_slack) {
+                        worst_slack = lr - lw;
+                        worst_key   = key;
+                        worst_lang  = i18n_language_code((sm_lang_t)li);
+                    }
                 }
-                room = PANEL_ROOM(0.88f) / (float)most;
+                continue;
             }
+
+            char filled[256];
+            expand_worst(i18n_text((sm_str_t)found), TEXT_BUDGETS[bi].scope, filled, sizeof(filled));
+            float const w = text_width_at(filled, TEXT_BUDGETS[bi].h);
+
+            float const room  = TEXT_BUDGETS[bi].px;
             float const slack = room - w;
             CHECK(slack >= 0.0f, "%s/%s: \"%s\" is %.0f px, room is %.0f",
                   i18n_language_code((sm_lang_t)li), key, filled, (double)w, (double)room);
@@ -7633,6 +8450,10 @@ int main(void) {
     check_bed();
     check_animals();
     check_makers();
+    check_saplings();
+    check_stove();
+    check_hunger();
+    check_fall();
     check_replay();
     check_drops();
     check_lang();

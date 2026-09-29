@@ -278,8 +278,8 @@ static void emit_bed(mesh_t* m, int X, int Y, int Z, uint8_t top, uint8_t side, 
     emit_f(m, DIRS[3], y0, x0, x1, z0, z1, 1.0f, 1.0f, side);
     // The four sides, minus the one the other half is against: two beds
     // meeting would otherwise draw a wall down the middle of one bed.
-    int const dx = face == BED_FACE_PX ? 1 : face == BED_FACE_NX ? -1 : 0;
-    int const dz = face == BED_FACE_PZ ? 1 : face == BED_FACE_NZ ? -1 : 0;
+    int const dx = face == FACE_PX ? 1 : face == FACE_NX ? -1 : 0;
+    int const dz = face == FACE_PZ ? 1 : face == FACE_NZ ? -1 : 0;
     int const jx = head ? -dx : dx, jz = head ? -dz : dz;  // towards the other half
     if (jx != 1) emit_f(m, DIRS[0], x1, z0, z1, y0, y1, 1.0f, BED_H, side);
     if (jx != -1) emit_f(m, DIRS[1], x0, z0, z1, y0, y1, 1.0f, BED_H, side);

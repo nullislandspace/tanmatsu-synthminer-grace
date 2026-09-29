@@ -140,6 +140,34 @@ enum {
     ITEM_SARDINE,
     ITEM_SALMON,
     ITEM_SHRIMP,
+
+    // --- The stove's eleven dishes (step 11) --------------------------
+    //
+    // EVERY NUMBER IS THE USER'S (Part A's food table), and every one of
+    // these is a row here plus a row in recipes.c under RS_STOVE. There
+    // is no dish code: the stove matches what the chest beside it holds
+    // against those rows, and what a dish is worth when eaten is the two
+    // columns at the end of item_def_t.
+    //
+    // Sardines have no dish, which is not an oversight -- the user's
+    // table cooks salmon and shrimp and leaves the sardine as the thing
+    // you catch most and want least.
+    //
+    // Mutton and mash and the kebab are NOT here: they came in with the
+    // sheep and are up with the rest of step 10.
+    ITEM_BAKED_POTATO,
+    ITEM_GRILLED_TOMATOES,
+    ITEM_BAKED_BEANS,
+    ITEM_BREAD,
+    ITEM_RICE_PATTY,
+    ITEM_SMOKED_SALMON,
+    ITEM_GRILLED_SHRIMP,
+    ITEM_SASHIMI,
+    ITEM_PORK_BEANS,
+    ITEM_STEAK_POTATOES,
+    // THE SUPERFOOD (the user): 10 hunger and 8 saturation, and it
+    // wants a crop, a fish, a cow and a pig -- all four systems at once.
+    ITEM_PIZZA,
     ITEM_COUNT
 };
 

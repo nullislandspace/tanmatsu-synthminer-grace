@@ -217,6 +217,17 @@ typedef enum {
     SM_STR_ITEM_SARDINE,                // item.sardine
     SM_STR_ITEM_SALMON,                 // item.salmon
     SM_STR_ITEM_SHRIMP,                 // item.shrimp
+    SM_STR_ITEM_BAKED_POTATO,           // item.baked_potato
+    SM_STR_ITEM_GRILLED_TOMATOES,       // item.grilled_tomatoes
+    SM_STR_ITEM_BAKED_BEANS,            // item.baked_beans
+    SM_STR_ITEM_BREAD,                  // item.bread
+    SM_STR_ITEM_RICE_PATTY,             // item.rice_patty
+    SM_STR_ITEM_SMOKED_SALMON,          // item.smoked_salmon
+    SM_STR_ITEM_GRILLED_SHRIMP,         // item.grilled_shrimp
+    SM_STR_ITEM_SASHIMI,                // item.sashimi
+    SM_STR_ITEM_PORK_AND_BEANS,         // item.pork_and_beans
+    SM_STR_ITEM_STEAK_AND_POTATOES,     // item.steak_and_potatoes
+    SM_STR_ITEM_PIZZA,                  // item.pizza
     SM_STR_ITEM_FARMLAND,               // item.farmland
     SM_STR_ITEM_COMPOSTER,              // item.composter
     SM_STR_ITEM_CHEESE_MAKER,           // item.cheese_maker
@@ -224,6 +235,9 @@ typedef enum {
     SM_STR_ITEM_FENCE,                  // item.fence
     SM_STR_ITEM_FENCE_GATE,             // item.fence_gate
     SM_STR_ITEM_BED_FOOT,               // item.bed_foot
+    SM_STR_ITEM_STOVE,                  // item.stove
+    SM_STR_ITEM_SAPLING_OAK,            // item.sapling_oak
+    SM_STR_ITEM_SAPLING_BIRCH,          // item.sapling_birch
     SM_STR_ITEM_WHEAT_CROP,             // item.wheat_crop
     SM_STR_ITEM_POTATO_CROP,            // item.potato_crop
     SM_STR_ITEM_TOMATO_CROP,            // item.tomato_crop
@@ -281,6 +295,7 @@ typedef enum {
     SM_STR_FARM_TOO_DRY,                // farm.too_dry
     SM_STR_FARM_NEEDS_SOIL,             // farm.needs_soil
     SM_STR_FARM_NEEDS_WATER,            // farm.needs_water
+    SM_STR_FARM_NEEDS_GROUND,           // farm.needs_ground
     SM_STR_FARM_ALREADY_RIPE,           // farm.already_ripe
     SM_STR_MOB_PIG,                     // mob.pig
     SM_STR_MOB_COW,                     // mob.cow
@@ -309,12 +324,41 @@ typedef enum {
     SM_STR_MAKER_NO_INPUT,              // maker.no_input
     SM_STR_MAKER_FULL,                  // maker.full
     SM_STR_MAKER_TOOK,                  // maker.took
+    SM_STR_MAKER_TAKE_OUT,              // maker.take_out
+    SM_STR_MAKER_MISSING,               // maker.missing
+    SM_STR_MAKER_OR,                    // maker.or
     SM_STR_MAKER_PICK_INPUT,            // maker.pick_input
     SM_STR_MAKER_PICK_NONE,             // maker.pick_none
     SM_STR_MAKER_PICK_HINT,             // maker.pick_hint
     SM_STR_MAKER_A_DAY,                 // maker.a_day
     SM_STR_MAKER_A_MINUTE,              // maker.a_minute
     SM_STR_MAKER_BUCKET_BACK,           // maker.bucket_back
+    SM_STR_STOVE_TITLE,                 // stove.title
+    SM_STR_STOVE_DISH,                  // stove.dish
+    SM_STR_STOVE_FUEL,                  // stove.fuel
+    SM_STR_STOVE_OUTPUT,                // stove.output
+    SM_STR_STOVE_EMPTY,                 // stove.empty
+    SM_STR_STOVE_NONE,                  // stove.none
+    SM_STR_STOVE_SLOT,                  // stove.slot
+    SM_STR_STOVE_HINT,                  // stove.hint
+    SM_STR_STOVE_COOKING,               // stove.cooking
+    SM_STR_STOVE_NO_PICK,               // stove.no_pick
+    SM_STR_STOVE_NO_CHEST,              // stove.no_chest
+    SM_STR_STOVE_MISSING,               // stove.missing
+    SM_STR_STOVE_NO_FUEL,               // stove.no_fuel
+    SM_STR_STOVE_FULL,                  // stove.full
+    SM_STR_STOVE_TOOK,                  // stove.took
+    SM_STR_STOVE_PICK_TITLE,            // stove.pick_title
+    SM_STR_STOVE_PICK_HINT,             // stove.pick_hint
+    SM_STR_STOVE_PICK_FUEL,             // stove.pick_fuel
+    SM_STR_STOVE_PICK_NONE_FUEL,        // stove.pick_none_fuel
+    SM_STR_STOVE_NEEDS,                 // stove.needs
+    SM_STR_STOVE_FEEDS,                 // stove.feeds
+    SM_STR_STOVE_FROM_CHEST,            // stove.from_chest
+    SM_STR_FOOD_NOT_HUNGRY,             // food.not_hungry
+    SM_STR_FOOD_STARVING,               // food.starving
+    SM_STR_FOOD_DIED,                   // food.died
+    SM_STR_FOOD_RESPAWN,                // food.respawn
     SM_STR_FISH_CAST,                   // fish.cast
     SM_STR_FISH_NO_WORM,                // fish.no_worm
     SM_STR_FISH_NO_WATER,               // fish.no_water

@@ -97,11 +97,43 @@ int  maker_progress_pct(blockent_t const* be, uint32_t now);
 // Why it is idle, for the line under the slots.
 typedef enum {
     MAKER_IDLE_NONE = 0,  // it is working
-    MAKER_IDLE_NO_INPUT,  // nothing in it, or nothing that goes together
+    MAKER_IDLE_NO_INPUT,  // nothing in it at all
+    // SOMETHING IS IN IT AND IT IS ONE THING SHORT -- pork with no
+    // flower beside it. maker_missing() says what of (the user, after
+    // playing step 11: "it should clearly state that it needs yellow
+    // flowers as well"). Before this there was one message for both,
+    // "nothing in it that goes together", which is true of an empty
+    // machine and unhelpful of a half-loaded one.
+    MAKER_IDLE_MISSING,
     MAKER_IDLE_FULL,      // the output slot cannot take any more
 } maker_idle_t;
 
 maker_idle_t maker_idle_reason(blockent_t const* be);
+
+// The most alternatives one missing ingredient can have. Two flowers
+// today; a third would move this and nothing else.
+#define MAKER_MISSING_MAX 4
+
+// WHAT IT IS SHORT OF, as the list of items that would EACH finish a
+// recipe on their own -- a red flower or a yellow one. Fills `items`
+// and returns how many; `need` is how many of them are wanted.
+//
+// Only rows that are already part-loaded count. An empty machine is
+// short of everything, which is not a useful thing to be told, and it
+// is what MAKER_IDLE_NO_INPUT says instead.
+//
+// The alternatives are DERIVED FROM THE RECIPE TABLE, so a third
+// flower, or a second way to make a cheese, appears in the message
+// without this file being edited.
+int maker_missing(blockent_t const* be, uint16_t* items, int* need, int cap);
+
+// Is `item` part of the recipe the input slots currently satisfy?
+//
+// What the screen asks before handing something back: two beans make a
+// sausage on their own, so a flower sitting in the other slot is not an
+// ingredient of anything being made and belongs to the player (the
+// user: "these should automatically return to the player inventory").
+bool maker_uses(blockent_t const* be, uint16_t item);
 
 // Does unit `n` of the machine at (x, y, z) leave a bone? From the
 // world's own hash and never rand(), like the composter's worms: the

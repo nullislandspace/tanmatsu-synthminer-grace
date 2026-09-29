@@ -101,6 +101,16 @@ static struct {
     [VM_BED_TOP]       = {"bed_top.png", 0xFFBA3A36u},
     [VM_BED_HEAD]      = {"bed_head.png", 0xFFD8D4C8u},
     [VM_BED_SIDE]      = {"bed_side.png", 0xFF96703Eu},
+    [VM_STOVE_TOP]     = {"stove_top.png", 0xFF64646Au},
+    [VM_STOVE_FRONT]   = {"stove_front.png", 0xFF6A6A70u},
+    [VM_SAPLING_OAK_0] = {"sapling_oak_0.png", 0xFF4E7A34u},
+    [VM_SAPLING_OAK_1] = {"sapling_oak_1.png", 0xFF4E7A34u},
+    [VM_SAPLING_OAK_2] = {"sapling_oak_2.png", 0xFF477028u},
+    [VM_SAPLING_OAK_3] = {"sapling_oak_3.png", 0xFF3E6A24u},
+    [VM_SAPLING_BIRCH_0] = {"sapling_birch_0.png", 0xFF6E983Eu},
+    [VM_SAPLING_BIRCH_1] = {"sapling_birch_1.png", 0xFF6E983Eu},
+    [VM_SAPLING_BIRCH_2] = {"sapling_birch_2.png", 0xFF669034u},
+    [VM_SAPLING_BIRCH_3] = {"sapling_birch_3.png", 0xFF5C8630u},
 };
 
 // THE CACHE HAS TO HOLD EVERY MATERIAL, WITH ROOM AFTER IT. This is a

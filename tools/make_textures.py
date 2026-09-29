@@ -1777,9 +1777,16 @@ def sm_cheese():
 def sm_sausage_side():
     """The sausage maker: an iron box with a hopper mouth and a crank.
     It is the only machine made of metal, so it should not read as the
-    furnace -- hence the mouth across the top third rather than a door."""
+    furnace -- hence the mouth across the top third rather than a door.
+
+    `lum` IS AN OFFSET, not a brightness. sm_rgb adds it to the tint, so
+    these two started life as a flat 148 on top of a tint of 150 and
+    clipped to pure white in all three channels -- the user played the
+    build and reported "the sausage maker is just a white block", which
+    is exactly what it was. Every other generator here builds lum around
+    zero; these two were the odd pair out."""
     gen = sm_gen(74)
-    lum = np.full((B, B), 148, np.int32) + gen.integers(-10, 11, (B, B))
+    lum = np.zeros((B, B), np.int32) + gen.integers(-10, 11, (B, B))
     lum[0:2, :] += 22                      # a bright top edge
     lum[4:7, 2:14] -= 46                   # the mouth
     lum[7:8, 2:14] += 20                   # its lip
@@ -1790,9 +1797,10 @@ def sm_sausage_side():
 
 
 def sm_sausage_top():
-    """Plain plate with a seam, so a row of them does not shimmer."""
+    """Plain plate with a seam, so a row of them does not shimmer. An
+    OFFSET around zero, for the reason in sm_sausage_side."""
     gen = sm_gen(75)
-    lum = np.full((B, B), 140, np.int32) + gen.integers(-8, 9, (B, B))
+    lum = np.zeros((B, B), np.int32) + gen.integers(-8, 9, (B, B))
     lum[:, 7:9] -= 24
     return sm_rgb(lum, (146, 148, 154))
 
@@ -2010,6 +2018,326 @@ def sm_item_rod():
         _dot(img, 14, y, (232, 228, 216))       # the line
     _dot(img, 14, 11, (216, 56, 48))            # ... and the float
     _dot(img, 14, 12, (238, 234, 226))
+    return img
+
+
+# --- Saplings (the user, 2026-09-29) ---------------------------------------
+#
+# A seedling at each of four stages, drawn as a cut-out sprite for the
+# crossed quads a K_PLANT gets. NOT a crop from CROPS[]: a crop is a
+# sheaf of stems and this is ONE stem with leaves coming off it, which
+# is the difference a player has to see from across a field -- a row of
+# saplings must not read as a row of wheat.
+
+
+def sm_sapling(stage, trunk, leaf):
+    """One growth stage: a stem from the ground up, and a crown of
+    leaves on top of it that widens as it grows."""
+    gen = sm_gen(140 + stage + (17 if leaf[1] > 140 else 0))
+    rgb = np.zeros((B, B, 3), np.uint8)
+    holes = np.ones((B, B), bool)
+
+    def px(x, y, col, jitter=12):
+        if 0 <= x < B and 0 <= y < B:
+            rgb[y, x] = np.clip(np.array(col) + gen.integers(-jitter, jitter + 1, 3), 0, 255)
+            holes[y, x] = False
+
+    # How tall the stem is and how wide the crown, per stage. The first
+    # is a shoot with two leaves; the last is knee-high with a round top.
+    top = (11, 9, 6, 3)[stage]
+    r = (1, 1, 2, 3)[stage]
+
+    for y in range(top, B):
+        px(8, y, trunk)
+        if y > B - 4:
+            px(9, y, _shade_t(trunk, -20))
+
+    for dy in range(-1, r + 1):
+        y = top + dy
+        w = r - abs(dy) + 1
+        for x in range(8 - w, 8 + w + 1):
+            if abs(x - 8) == w and abs(dy) == r:
+                continue          # clip the corners, so the crown is round
+            px(x, y, leaf)
+    # A couple of leaves down the stem on the older two, so it is not a
+    # lollipop.
+    if stage >= 2:
+        px(7, top + r + 2, leaf)
+        px(9, top + r + 3, leaf)
+
+    out = np.dstack([rgb, np.where(holes, 0, 255).astype(np.uint8)])
+    return out
+
+
+# --- The kitchen stove (step 11) -------------------------------------------
+#
+# It stands beside a chest and has to read as a COOKER and not as a
+# second furnace at a glance: the furnace is a fire behind bars, and
+# this is a flat hotplate with rings on it and a door with a window.
+
+
+def sm_stove_top():
+    """The hotplate: a dark iron plate with two rings on it. The rings
+    are the whole picture -- a plain plate reads as the top of any
+    machine, and the stove is seen from above more than from any other
+    angle while it is being placed."""
+    lum, gen = sm_stone_lum(61)
+    lum -= 14                                   # iron, not stone
+    lum[0:2, :] += 10                           # a rim, so it is a box
+    lum[14:16, :] -= 14
+    lum[:, 0:2] += 8
+    lum[:, 14:16] -= 10
+    for cx, cy, r in ((5, 5, 3), (11, 11, 3)):
+        for y in range(B):
+            for x in range(B):
+                d2 = (x - cx) ** 2 + (y - cy) ** 2
+                if d2 <= r * r:
+                    lum[y, x] -= 34
+                if r * r < d2 <= (r + 1) * (r + 1):
+                    lum[y, x] += 20             # the bright lip of the ring
+        for k in range(-r + 1, r):              # the coil across it
+            lum[cy, (cx + k) % B] += int(gen.integers(10, 26))
+    return sm_rgb(lum, (104, 104, 110))
+
+
+def sm_stove_front():
+    """The oven door: a big window with a bar handle over it, and the
+    warm glow of the dish inside. The furnace's opening arches and has
+    a grate; this one is square, glazed and has a handle, which is the
+    difference a player has to see from two blocks away."""
+    lum, gen = sm_stone_lum(62)
+    lum -= 10
+    rgb = sm_rgb(lum, (110, 110, 116))
+    # The window: rows 6..13, inset two, warm inside and dark at the edge.
+    for y in range(6, 14):
+        for x in range(3, 13):
+            edge = y in (6, 13) or x in (3, 12)
+            d = int(gen.integers(-10, 11))
+            if edge:
+                rgb[y, x] = np.clip(np.array([48 + d, 46 + d, 48 + d]), 0, 255)
+            else:
+                # Warmer towards the bottom, where the dish sits.
+                warm = 26 if y >= 11 else 0
+                rgb[y, x] = np.clip(np.array([96 + warm + d, 66 + warm // 2 + d, 44 + d]), 0, 255)
+    # The handle, a bar across above the window with two brackets.
+    for x in range(3, 13):
+        rgb[3, x] = np.clip(np.array([196, 198, 204]), 0, 255)
+        rgb[4, x] = np.clip(np.array([132, 134, 140]), 0, 255)
+    for x in (3, 12):
+        rgb[5, x] = np.clip(np.array([150, 152, 158]), 0, 255)
+    return rgb
+
+
+# --- The eleven dishes (step 11) --------------------------------------------
+#
+# Every one of these has to be told from the others in a 16 px hotbar
+# slot, which is a harder problem than it sounds with four brown stews
+# in the list. So each has ONE shape that is only its own: the loaf is
+# a dome, the pizza is a wheel, the patty is a disc, the sashimi is
+# slices on white, and the two plated dishes differ in what is ON the
+# plate rather than in the plate.
+
+
+def _plate(img, rgb=(214, 214, 220)):
+    """A shallow oval plate, low in the slot, for the dishes that are
+    served rather than held."""
+    for x in range(2, 14):
+        _dot(img, x, 12, _shade(rgb, -18))
+    for x in range(3, 13):
+        _dot(img, x, 11, rgb)
+    _dot(img, 2, 11, _shade(rgb, -34))
+    _dot(img, 13, 11, _shade(rgb, -34))
+    return img
+
+
+def _bowl(img, rgb=(190, 150, 110)):
+    """A bowl seen from the front: a rim and a body that narrows."""
+    for x in range(3, 13):
+        _dot(img, x, 8, _shade(rgb, 30))          # the rim
+    for j, y in enumerate(range(9, 14)):
+        for x in range(3 + j, 13 - j):
+            _dot(img, x, y, _shade(rgb, -6 * j))
+    return img
+
+
+def sm_item_baked_potato():
+    """A potato split open: the same oval as the raw one, browner, with
+    a pale slit up the middle. The slit is what says cooked."""
+    img = sm_item_potato((160, 118, 68))
+    for y in range(6, 12):
+        _dot(img, 8, y, (238, 226, 190))
+        _dot(img, 9, y, (206, 190, 148))
+    _dot(img, 8, 5, (228, 214, 172))
+    return img
+
+
+def sm_item_grilled_tomatoes():
+    """Two halves, cut side up, with char bars across them. Darker than
+    the raw fruit, because the raw one is in the list too."""
+    img = _icon()
+    skin = (168, 44, 34)
+    flesh = (208, 92, 70)
+    for cx, cy in ((5, 6), (10, 11)):
+        _blob(img, skin, 3, cx, cy)
+        _blob(img, flesh, 2, cx, cy)
+        for x in range(cx - 2, cx + 3):           # the grill marks
+            _dot(img, x, cy, _shade(skin, -52))
+        _dot(img, cx, cy - 2, _shade(skin, -40))
+        _dot(img, cx, cy + 2, _shade(skin, -40))
+    return img
+
+
+def sm_item_baked_beans():
+    """A bowl of them, which is the only way beans read as a dish rather
+    than as the pods they came in."""
+    img = _icon()
+    _bowl(img, (176, 122, 84))
+    bean = (196, 150, 82)
+    sauce = (152, 74, 44)
+    for x in range(4, 12):
+        _dot(img, x, 9, sauce)
+    for x, y in ((4, 9), (6, 9), (8, 9), (10, 9), (5, 10), (7, 10), (9, 10)):
+        _dot(img, x, y, bean)
+        _dot(img, x, y + 1, _shade(bean, -40))
+    return img
+
+
+def sm_item_bread():
+    """A loaf: a dome with a flat base, a crust that is darker at the
+    bottom, and three slashes across the top. The dome is what tells it
+    from every other brown thing in the list."""
+    img = _icon()
+    crust = (200, 154, 82)
+    for j, y in enumerate(range(5, 12)):
+        w = 3 + j if j < 3 else 6
+        for x in range(8 - w, 8 + w):
+            _dot(img, x, y, _shade(crust, 16 - 7 * j))
+    for x in range(2, 14):
+        _dot(img, x, 12, _shade(crust, -58))       # the base
+    for x0 in (4, 7, 10):                          # the slashes
+        _dot(img, x0, 6, _shade(crust, 40))
+        _dot(img, x0 + 1, 7, _shade(crust, 34))
+    return img
+
+
+def sm_item_rice_patty():
+    """A pressed disc of rice, seen flat: pale, round, with the grains
+    showing at the edge so it is not a plain white coin."""
+    img = _icon()
+    gen = sm_gen(93)
+    rice = (234, 230, 212)
+    _blob(img, rice, 5, 8, 8, squash=1.35)
+    for y in range(4, 13):
+        for x in range(2, 14):
+            if img[y, x, 3] and gen.integers(0, 3) == 0:
+                _dot(img, x, y, _shade(rice, int(gen.integers(-26, 12))))
+    _dot(img, 5, 6, (252, 250, 242))
+    _dot(img, 6, 6, (248, 246, 236))
+    return img
+
+
+def sm_item_smoked_salmon():
+    """A fillet: a slab of orange with the pale connective lines across
+    it that every side of smoked salmon has. The lines are what tell it
+    from the raw fish, which is a whole fish with a tail."""
+    img = _icon()
+    flesh = (222, 118, 66)
+    for j, y in enumerate(range(5, 12)):
+        for x in range(3 + (j // 3), 14 - (j // 4)):
+            _dot(img, x, y, _shade(flesh, 10 - 4 * j))
+    for y in (6, 8, 10):
+        for x in range(3, 13, 2):
+            _dot(img, x, y, (246, 206, 176))
+    for x in range(3, 13):                          # the dark skin edge
+        _dot(img, x, 12, (96, 70, 58))
+    return img
+
+
+def sm_item_grilled_shrimp():
+    """Three on a skewer, which is also what tells it from the raw one:
+    the raw icon is a single curled prawn."""
+    img = _icon()
+    stick = (150, 112, 62)
+    for i in range(14):
+        _dot(img, 1 + i, 13 - i, stick)
+    body = (232, 130, 84)
+    for cx, cy in ((4, 11), (7, 8), (10, 5)):
+        for dx, dy in ((0, 0), (1, 0), (1, -1), (2, -1), (0, 1), (1, 1)):
+            _dot(img, cx + dx, cy + dy, _shade(body, -12 * dy))
+        _dot(img, cx, cy - 1, _shade(body, 34))
+        _dot(img, cx + 2, cy + 1, _shade(body, -46))
+    return img
+
+
+def sm_item_sashimi():
+    """Slices of salmon lying on rice: three orange bars with a white
+    bed under them. Nothing else in the list is orange ON white."""
+    img = _icon()
+    rice = (240, 238, 226)
+    for j, y in enumerate(range(10, 14)):
+        for x in range(2 + j, 14 - j):
+            _dot(img, x, y, _shade(rice, -8 * j))
+    flesh = (230, 126, 74)
+    for i, x0 in enumerate((3, 6, 9)):
+        for y in range(4 + i, 10):
+            _dot(img, x0, y, flesh)
+            _dot(img, x0 + 1, y, _shade(flesh, -26))
+        _dot(img, x0, 4 + i, (248, 196, 162))       # the pale line in the cut
+    return img
+
+
+def sm_item_pork_and_beans():
+    """A bowl again -- but with a piece of MEAT standing in it, which is
+    the whole difference from the baked beans two rows up."""
+    img = _icon()
+    _bowl(img, (186, 132, 92))
+    bean = (192, 146, 80)
+    for x, y in ((4, 9), (6, 10), (10, 9), (11, 10), (5, 11)):
+        _dot(img, x, y, bean)
+        _dot(img, x, y + 1, _shade(bean, -40))
+    meat = (206, 108, 96)
+    for y in range(6, 10):
+        for x in range(6, 11):
+            _dot(img, x, y, _shade(meat, 14 - 6 * (y - 6)))
+    _dot(img, 7, 6, (240, 226, 214))                # the fat on it
+    _dot(img, 8, 6, (232, 216, 204))
+    return img
+
+
+def sm_item_steak_and_potatoes():
+    """On a plate: a dark steak and two pale rounds beside it. The plate
+    is what makes this a dish and not a slab of raw beef."""
+    img = _icon()
+    _plate(img)
+    steak = (150, 62, 50)
+    for y in range(6, 11):
+        for x in range(2, 9):
+            _dot(img, x, y, _shade(steak, 12 - 5 * (y - 6)))
+    for x in range(3, 8):                           # the sear across it
+        _dot(img, x, 8, _shade(steak, -44))
+    spud = (206, 172, 106)
+    for cx, cy in ((11, 7), (12, 10)):
+        _blob(img, spud, 2, cx, cy)
+        _dot(img, cx - 1, cy - 1, _shade(spud, 30))
+    return img
+
+
+def sm_item_pizza():
+    """A whole wheel, seen from above: a crust ring, a red base, and
+    toppings. It is the only round red thing in the list and the only
+    one with a ring round it, which is what the superfood deserves."""
+    img = _icon()
+    crust = (206, 158, 86)
+    sauce = (186, 60, 44)
+    cheese = (232, 190, 96)
+    _blob(img, crust, 7, 8, 8)
+    _blob(img, sauce, 5, 8, 8)
+    for x, y in ((6, 6), (9, 5), (11, 8), (5, 9), (8, 11), (10, 11)):
+        _dot(img, x, y, cheese)
+        _dot(img, x + 1, y, _shade(cheese, -30))
+    for x, y in ((7, 8), (10, 7), (7, 10)):         # the sausage on it
+        _dot(img, x, y, (146, 52, 44))
+        _dot(img, x, y + 1, _shade((146, 52, 44), -30))
     return img
 
 
@@ -2263,10 +2591,131 @@ TEXTURES = {
     "item_sardine.png": lambda: sm_item_fish((186, 196, 206), (228, 234, 240)),
     "item_salmon.png": lambda: sm_item_fish((222, 124, 78), (244, 186, 150)),
     "item_shrimp.png": sm_item_shrimp,
+    # The kitchen stove, and the eleven dishes off it (step 11). The
+    # stove's CHEST half borrows the chest's own textures -- it is a
+    # chest (world/blocks.c).
+    "stove_top.png": sm_stove_top,
+    "stove_front.png": sm_stove_front,
+    "item_baked_potato.png": sm_item_baked_potato,
+    "item_grilled_tomatoes.png": sm_item_grilled_tomatoes,
+    "item_baked_beans.png": sm_item_baked_beans,
+    "item_bread.png": sm_item_bread,
+    "item_rice_patty.png": sm_item_rice_patty,
+    "item_smoked_salmon.png": sm_item_smoked_salmon,
+    "item_grilled_shrimp.png": sm_item_grilled_shrimp,
+    "item_sashimi.png": sm_item_sashimi,
+    "item_pork_and_beans.png": sm_item_pork_and_beans,
+    "item_steak_and_potatoes.png": sm_item_steak_and_potatoes,
+    "item_pizza.png": sm_item_pizza,
+    # Saplings: four stages each, and the block table's `mat` names the
+    # first of the run (world/blocks.c).
+    "sapling_oak_0.png": lambda s=0: sm_sapling(s, (110, 82, 48), (74, 122, 52)),
+    "sapling_oak_1.png": lambda s=1: sm_sapling(s, (110, 82, 48), (74, 122, 52)),
+    "sapling_oak_2.png": lambda s=2: sm_sapling(s, (110, 82, 48), (68, 114, 44)),
+    "sapling_oak_3.png": lambda s=3: sm_sapling(s, (110, 82, 48), (62, 106, 38)),
+    "sapling_birch_0.png": lambda s=0: sm_sapling(s, (206, 202, 188), (110, 152, 62)),
+    "sapling_birch_1.png": lambda s=1: sm_sapling(s, (206, 202, 188), (110, 152, 62)),
+    "sapling_birch_2.png": lambda s=2: sm_sapling(s, (206, 202, 188), (102, 144, 52)),
+    "sapling_birch_3.png": lambda s=3: sm_sapling(s, (206, 202, 188), (92, 134, 48)),
 }
 
 
+# A texture that is one flat colour is not a texture, and the way it
+# happens here is always the same: `lum` is an OFFSET that sm_rgb adds
+# to the tint, and a generator that builds it as a BRIGHTNESS instead
+# lands somewhere past 255 and clips. Every texel comes out identical
+# and the block on screen is a plain white cube.
+#
+# That shipped. The sausage maker was pure white for a week and nothing
+# said so: the texture existed, the cache had room, metadata listed it,
+# and worldcheck counted it -- every check in the chain was asking
+# whether the FILE was there, and none of them looked at the picture.
+# The user found it by playing.
+#
+# So this looks at the picture. It is deliberately one measurement --
+# how much of the texture is clipped to pure white or pure black -- and
+# NOT a contrast floor: milk and snow are legitimately pale and flat
+# (contrast 37 and 30), and a threshold that caught them would be
+# turned off inside a month.
+CLIP_MAX = 0.25
+
+
+# The block materials are named in C, in a table this script knows
+# nothing about -- and nothing checked those names against the files.
+# A typo there is invisible in exactly the way F-128's black bed and the
+# white sausage maker were: the texture fails to load, the material
+# falls back to its flat average colour, and the game runs.
+#
+# worldcheck already opens every ITEM icon the game will ask for, but it
+# cannot do the same for materials: chunk_render.c pulls in the engine
+# and the texture cache, so it is not one of the pure sources the host
+# checks link. Reading the table as text is the cheap way in, and it
+# fails loudly if the table's shape ever changes rather than quietly
+# finding nothing.
+MAT_TABLE = Path(__file__).resolve().parent.parent / "main" / "world" / "chunk_render.c"
+
+
+def check_materials():
+    """Every PNG named in MAT_FILES has to exist."""
+    import re
+
+    text = MAT_TABLE.read_text(encoding="utf-8")
+    start = text.find("MAT_FILES[VM_COUNT] = {")
+    if start < 0:
+        print("FAIL: cannot find MAT_FILES in %s -- this check has gone stale" % MAT_TABLE.name)
+        return 1
+    end = text.find("\n};", start)
+    body = text[start:end]
+    names = re.findall(r'\{"([^"]+\.png)"', body)
+    if len(names) < 50:
+        print("FAIL: found only %d materials in MAT_FILES -- this check has gone stale" % len(names))
+        return 1
+
+    bad = [n for n in names if not (OUT / n).exists()]
+    for n in bad:
+        print("FAIL: MAT_FILES names %s, which does not exist in %s/" % (n, OUT.name))
+    # A texture the generator does not make is one somebody has to
+    # remember to commit by hand, which is the thing this repo does not
+    # do -- every PNG here is generated.
+    ungenerated = [n for n in names if n not in TEXTURES]
+    for n in ungenerated:
+        print("FAIL: MAT_FILES names %s, which no generator in this script writes" % n)
+    print("materials: %d named in MAT_FILES, %d missing, %d ungenerated"
+          % (len(names), len(bad), len(ungenerated)))
+    return 0 if not bad and not ungenerated else 1
+
+
+def check_textures():
+    """Look at every committed PNG and fail on one that is clipped."""
+    bad = []
+    for name in sorted(TEXTURES):
+        path = OUT / name
+        if not path.exists():
+            bad.append("%s: missing (run tools/make_textures.py)" % name)
+            continue
+        im = Image.open(path)
+        rgb = np.asarray(im.convert("RGB")).astype(int)
+        if im.mode == "RGBA":
+            vis = np.asarray(im)[:, :, 3] > 127
+        else:
+            vis = np.ones(rgb.shape[:2], bool)
+        if not vis.any():
+            bad.append("%s: every texel is transparent" % name)
+            continue
+        v = rgb[vis]
+        for what, share in (("white", (v == 255).all(1).mean()), ("black", (v == 0).all(1).mean())):
+            if share > CLIP_MAX:
+                bad.append("%s: %.0f%% of it is clipped to pure %s -- `lum` is an offset, not a brightness"
+                           % (name, share * 100.0, what))
+    for line in bad:
+        print("FAIL: " + line)
+    print("textures: %d checked, %d clipped" % (len(TEXTURES), len(bad)))
+    return 0 if not bad else 1
+
+
 def main():
+    if "--check" in sys.argv:
+        sys.exit(check_textures() | check_materials())
     tiles = []
     for name, fn in TEXTURES.items():
         img = fn()

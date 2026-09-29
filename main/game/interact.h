@@ -84,6 +84,17 @@ bool interact_place(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoi
 // that has no such block in hand.
 bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoid, float dx, float dz);
 
+// THE OTHER HALF OF A STOVE at (x, y, z) -- its chest, given the stove,
+// or its stove, given the chest. False if that is neither.
+//
+// The same trick the bed uses and the whole of D-110's "the two store
+// each other's coordinates": both halves carry the facing that joins
+// them, so the coordinate is this cell plus one step and there is
+// nothing to keep in a record or write to a card. A partner that is not
+// resident simply is not there, and the caller finds something else in
+// the cell -- which is what makes a pair safe across a chunk border.
+bool interact_stove_other(int32_t x, int32_t y, int32_t z, int32_t* ox, int32_t* oy, int32_t* oz);
+
 // THE OTHER HALF OF THE BED at (x, y, z), or false if that is not a
 // bed. Both halves carry the same facing in their state byte, so the
 // pair needs no stored coordinates: the head is the foot's cell plus
@@ -129,10 +140,20 @@ typedef enum {
     USE_NEEDS_SOIL,      // a seed, on anything but tilled soil
     USE_NEEDS_WATER,     // rice, away from one-deep water over sand
     USE_ALREADY_RIPE,    // compost, on a crop with nowhere left to grow
-    // A BED NEEDS TWO CELLS and only one was free. A placement that
+    // A BED NEEDS TWO CELLS and only one was free -- and so does a
+    // stove, which puts its chest down beside itself. A placement that
     // does nothing and says nothing is the same bug as a swing that
     // does nothing: the player aims again at exactly the same spot.
     USE_NO_ROOM,
+    // FOOD, ON A PLAYER WHO IS NOT HUNGRY (game/food.h). Minecraft's
+    // rule, and the one that stops a full player eating a larder by
+    // leaning on the key -- which means the key has to say so.
+    USE_NOT_HUNGRY,
+    // A SAPLING, offered to anything but bare grass or dirt. It is the
+    // one seed in the game that does NOT want a tilled field, so
+    // "plant this in tilled soil" would send the player to a hoe for
+    // no reason (world/crops.h, PLANT_NEEDS_GROUND).
+    USE_NEEDS_GROUND,
 } use_msg_t;
 
 typedef struct {

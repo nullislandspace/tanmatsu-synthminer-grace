@@ -26,12 +26,13 @@ static char const* kind_name(uint8_t kind) {
         case BE_COMPOST: return "composter";
         case BE_CHEESE: return "cheese_maker";
         case BE_SAUSAGE: return "sausage_maker";
+        case BE_STOVE: return "stove";
         default: return "";
     }
 }
 
 static uint8_t kind_by_name(char const* s) {
-    for (uint8_t k = BE_FURNACE; k <= BE_SAUSAGE; k++) {
+    for (uint8_t k = BE_FURNACE; k <= BE_STOVE; k++) {
         if (strcmp(kind_name(k), s) == 0) return k;
     }
     return BE_NONE;
@@ -154,6 +155,7 @@ static int slots_used(uint8_t kind) {
     // trashcan use all of them.
     if (kind == BE_FURNACE || kind == BE_COMPOST) return 3;
     if (kind == BE_CHEESE || kind == BE_SAUSAGE) return 4;  // two in, two out
+    if (kind == BE_STOVE) return 2;                        // fuel and output; the chest holds the rest
     return BE_SLOTS;
 }
 
@@ -165,11 +167,15 @@ static void write_record(tag_writer_t* w, blockent_t const* b) {
     tag_put_i32(w, "y", b->y);
     tag_put_i32(w, "z", b->z);
     tag_put_i32(w, "stamp", (int32_t)b->stamp);
-    if (b->kind == BE_FURNACE) {
+    if (b->kind == BE_FURNACE || b->kind == BE_STOVE) {
         tag_put_i16(w, "burn", (int16_t)b->burn_left);
         tag_put_i16(w, "burnmax", (int16_t)b->burn_max);
         tag_put_i16(w, "cook", (int16_t)b->cook);
     }
+    // WHAT THE STOVE IS SET TO COOK, by the dish's stable name. Not the
+    // recipe's index: inserting a row in recipes.c would otherwise
+    // repoint every stove ever saved (blockent.h).
+    if (b->kind == BE_STOVE && b->pick != 0) tag_put_str(w, "pick", item_def(b->pick).name);
     int const n = slots_used(b->kind);
     for (int i = 0; i < n; i++) {
         inv_slot_t const* s = &b->slot[i];
@@ -296,6 +302,13 @@ static void read_record(uint8_t const* data, size_t len) {
             tmp.burn_max = (uint16_t)tag_get_i16(&r);
         } else if (t == TAG_I16 && strcmp(name, "cook") == 0) {
             tmp.cook = (uint16_t)tag_get_i16(&r);
+        } else if (t == TAG_STR && strcmp(name, "pick") == 0) {
+            char buf[32];
+            tag_get_str(&r, buf, sizeof(buf));
+            // A dish this build does not have reads as "nothing chosen",
+            // which is the right answer: the stove simply waits to be
+            // told again rather than cooking something else.
+            tmp.pick = item_by_name(buf);
         } else if (t == TAG_COMPOUND && name[0] == 's' && name[1] >= '0' && name[1] <= '9') {
             int const i = atoi(name + 1);
             if (i >= 0 && i < BE_SLOTS) {

@@ -44,7 +44,7 @@ uint16_t maker_returns(uint8_t kind, uint16_t item) {
 }
 
 // How many of `item` are in the input slots.
-static int have(blockent_t const* be, int slots_in, uint16_t item) {
+static int have_in(blockent_t const* be, int slots_in, uint16_t item) {
     int n = 0;
     for (int i = 0; i < slots_in; i++) {
         inv_slot_t const* s = &be->slot[BE_MAKER_IN_A + i];
@@ -76,7 +76,7 @@ recipe_t const* maker_match(blockent_t const* be) {
         if (r->station != d->station) continue;
         bool all = true;
         for (int j = 0; j < r->n_in && all; j++) {
-            all = have(be, d->slots_in, r->in[j].item) >= r->in[j].count;
+            all = have_in(be, d->slots_in, r->in[j].item) >= r->in[j].count;
         }
         // FIRST MATCH WINS, and the table's order is what decides
         // between two rows that both fit -- pork and a red flower
@@ -115,10 +115,62 @@ bool maker_extra_for(int32_t x, int32_t y, int32_t z, uint32_t n) {
     return (h % MAKER_BONE_ONE_IN) == 0u;
 }
 
+bool maker_uses(blockent_t const* be, uint16_t item) {
+    recipe_t const* r = maker_match(be);
+    if (r == NULL || item == 0) return false;
+    for (int j = 0; j < r->n_in; j++) {
+        if (r->in[j].item == item) return true;
+    }
+    return false;
+}
+
+int maker_missing(blockent_t const* be, uint16_t* items, int* need, int cap) {
+    if (need != NULL) *need = 0;
+    maker_def_t const* d = be != NULL ? maker_def(be->kind) : NULL;
+    if (d == NULL || items == NULL || cap <= 0) return 0;
+
+    int n = 0;
+    for (int i = 0; i < recipe_count() && n < cap; i++) {
+        recipe_t const* r = recipe_at(i);
+        if (r->station != d->station) continue;
+
+        // Short of exactly ONE distinct ingredient, and holding at
+        // least one of the others. A row nothing has been started on is
+        // not a row this machine is "short of" -- it is a row the
+        // player has not chosen.
+        int      shorts = 0, started = 0, want = 0;
+        uint16_t missing = 0;
+        for (int j = 0; j < r->n_in; j++) {
+            int const have = have_in(be, d->slots_in, r->in[j].item);
+            if (have >= r->in[j].count) {
+                if (have > 0) started++;
+                continue;
+            }
+            if (have > 0) started++;
+            shorts++;
+            missing = r->in[j].item;
+            want    = r->in[j].count - have;
+        }
+        if (shorts != 1 || started == 0) continue;
+
+        bool seen = false;
+        for (int k = 0; k < n; k++) {
+            if (items[k] == missing) seen = true;
+        }
+        if (seen) continue;
+        if (n == 0 && need != NULL) *need = want;
+        items[n++] = missing;
+    }
+    return n;
+}
+
 maker_idle_t maker_idle_reason(blockent_t const* be) {
     if (be == NULL || maker_def(be->kind) == NULL) return MAKER_IDLE_NO_INPUT;
     recipe_t const* r = maker_match(be);
-    if (r == NULL) return MAKER_IDLE_NO_INPUT;
+    if (r == NULL) {
+        uint16_t what[MAKER_MISSING_MAX];
+        return maker_missing(be, what, NULL, MAKER_MISSING_MAX) > 0 ? MAKER_IDLE_MISSING : MAKER_IDLE_NO_INPUT;
+    }
     if (!slot_has_room(be, BE_MAKER_OUT, r->out, r->out_n)) return MAKER_IDLE_FULL;
     return MAKER_IDLE_NONE;
 }
@@ -150,7 +202,7 @@ void maker_catch_up(blockent_t* be, uint32_t now) {
 
         // THE RARE ONE IS ROLLED BEFORE THE INGREDIENTS ARE TAKEN,
         // because whether it can happen depends on what went in.
-        bool const bone = d->extra != 0 && have(be, d->slots_in, d->extra_from) > 0 &&
+        bool const bone = d->extra != 0 && have_in(be, d->slots_in, d->extra_from) > 0 &&
                           maker_extra_for(be->x, be->y, be->z, unit);
 
         for (int j = 0; j < r->n_in; j++) take(be, d->slots_in, r->in[j].item, r->in[j].count);

@@ -50,13 +50,15 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     [ITEM_HOE_STONE - BLK_COUNT] = {"hoe_stone", SM_STR_ITEM_HOE_STONE, 1, TOOL_HOE, 2, 130, 0, 0xFF949CA4u},
     [ITEM_HOE_IRON - BLK_COUNT]  = {"hoe_iron", SM_STR_ITEM_HOE_IRON, 1, TOOL_HOE, 3, 250, 0, 0xFFDEDEE4u},
 
-    // Seeds and harvests. None of them is food yet: eating arrives with
-    // the hunger loop in step 10, and these are its ingredients.
+    // Seeds and harvests. The TOMATO is the only one of them a player
+    // can eat raw -- 1 hunger, no saturation -- and cooking it doubles
+    // that (the user). Everything else here is an ingredient and the
+    // stove is what turns it into a meal.
     [ITEM_WHEAT_SEEDS - BLK_COUNT]  = {"wheat_seeds", SM_STR_ITEM_WHEAT_SEEDS, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFB8B070u, 1},
     [ITEM_WHEAT - BLK_COUNT]        = {"wheat", SM_STR_ITEM_WHEAT, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFD8BC5Cu, 1},
     [ITEM_POTATO - BLK_COUNT]       = {"potato", SM_STR_ITEM_POTATO, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC89A54u, 1},
     [ITEM_TOMATO_SEEDS - BLK_COUNT] = {"tomato_seeds", SM_STR_ITEM_TOMATO_SEEDS, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC0A878u, 1},
-    [ITEM_TOMATO - BLK_COUNT]       = {"tomato", SM_STR_ITEM_TOMATO, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFD03C2Cu, 1},
+    [ITEM_TOMATO - BLK_COUNT]       = {"tomato", SM_STR_ITEM_TOMATO, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFD03C2Cu, 1, 1, 0},
     [ITEM_BEANS - BLK_COUNT]        = {"beans", SM_STR_ITEM_BEANS, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF9C6A38u, 1},
     [ITEM_RICE - BLK_COUNT]         = {"rice", SM_STR_ITEM_RICE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE8E4D0u, 1},
 
@@ -71,10 +73,16 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     // crop there is.
     [ITEM_PORK - BLK_COUNT]        = {"pork", SM_STR_ITEM_PORK, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE0847Cu},
     [ITEM_BEEF - BLK_COUNT]        = {"beef", SM_STR_ITEM_BEEF, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFB0403Cu},
-    [ITEM_BUCKET_MILK - BLK_COUNT] = {"bucket_milk", SM_STR_ITEM_BUCKET_MILK, 1, TOOL_NONE, 0, 0, 0, 0xFFF2F0E6u},
-    [ITEM_CHEESE - BLK_COUNT]      = {"cheese", SM_STR_ITEM_CHEESE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE8B84Cu},
-    [ITEM_SAUSAGE - BLK_COUNT]     = {"sausage", SM_STR_ITEM_SAUSAGE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFA85440u},
-    [ITEM_SAUSAGE_VEG - BLK_COUNT] = {"sausage_veg", SM_STR_ITEM_SAUSAGE_VEG, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF986A40u},
+    // MILK IS DRUNK, and the pail comes back empty -- which is a rule
+    // in one place (game/food.h, FOOD_LEFTOVERS) rather than a case
+    // here, because the same thing will be true of a bottle.
+    [ITEM_BUCKET_MILK - BLK_COUNT] = {"bucket_milk", SM_STR_ITEM_BUCKET_MILK, 1, TOOL_NONE, 0, 0, 0, 0xFFF2F0E6u, 0, 1, 0},
+    // The three things the two slow machines make, all of them food
+    // with no stove involved: 2 hunger and 2 saturation each, and the
+    // fake sausage is worth exactly what the pork one is (the user).
+    [ITEM_CHEESE - BLK_COUNT]      = {"cheese", SM_STR_ITEM_CHEESE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE8B84Cu, 0, 2, 2},
+    [ITEM_SAUSAGE - BLK_COUNT]     = {"sausage", SM_STR_ITEM_SAUSAGE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFA85440u, 0, 2, 2},
+    [ITEM_SAUSAGE_VEG - BLK_COUNT] = {"sausage_veg", SM_STR_ITEM_SAUSAGE_VEG, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF986A40u, 0, 2, 2},
     // A bone is a TOOL of no class: it breaks nothing and wears at
     // nothing, and the one thing it does -- taming a dog -- is a use,
     // not a swing (game/mob.h).
@@ -115,6 +123,44 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     [ITEM_SARDINE - BLK_COUNT] = {"sardine", SM_STR_ITEM_SARDINE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFB8C0C8u},
     [ITEM_SALMON - BLK_COUNT]  = {"salmon", SM_STR_ITEM_SALMON, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE08858u},
     [ITEM_SHRIMP - BLK_COUNT]  = {"shrimp", SM_STR_ITEM_SHRIMP, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFF0A078u},
+
+    // --- What comes off the stove (step 11) ---------------------------
+    //
+    // The last two numbers are HUNGER and SATURATION, and both are the
+    // user's. Read the table down and it is a ladder: one crop cooked
+    // alone is worth 1 or 2, two things together are worth 4 or 5, and
+    // the two dishes that want four different ingredients are worth 8
+    // and 10.
+    //
+    // NONE OF THEM COMPOSTS. A dish is worth too much to rot, and a
+    // player who has cooked a pizza is not looking for fertiliser.
+    //
+    // Smoked salmon is the odd one and is meant to be: 2 hunger but 4
+    // saturation, which is more reserve per drumstick than the pizza
+    // gives. It is what you carry when travelling; the pizza is what
+    // you eat when starving.
+    [ITEM_BAKED_POTATO - BLK_COUNT]     = {"baked_potato", SM_STR_ITEM_BAKED_POTATO, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0,
+                                           0xFFC8944Cu, 0, 1, 1},
+    [ITEM_GRILLED_TOMATOES - BLK_COUNT] = {"grilled_tomatoes", SM_STR_ITEM_GRILLED_TOMATOES, ITEM_STACK_MAX, TOOL_NONE,
+                                           0, 0, 0, 0xFFB43424u, 0, 2, 0},
+    [ITEM_BAKED_BEANS - BLK_COUNT]      = {"baked_beans", SM_STR_ITEM_BAKED_BEANS, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0,
+                                           0xFFA85C30u, 0, 2, 0},
+    [ITEM_BREAD - BLK_COUNT]            = {"bread", SM_STR_ITEM_BREAD, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC69A52u,
+                                           0, 2, 1},
+    [ITEM_RICE_PATTY - BLK_COUNT]       = {"rice_patty", SM_STR_ITEM_RICE_PATTY, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0,
+                                           0xFFE6DCB8u, 0, 3, 1},
+    [ITEM_SMOKED_SALMON - BLK_COUNT]    = {"smoked_salmon", SM_STR_ITEM_SMOKED_SALMON, ITEM_STACK_MAX, TOOL_NONE, 0, 0,
+                                           0, 0xFFD2764Cu, 0, 2, 4},
+    [ITEM_GRILLED_SHRIMP - BLK_COUNT]   = {"grilled_shrimp", SM_STR_ITEM_GRILLED_SHRIMP, ITEM_STACK_MAX, TOOL_NONE, 0,
+                                           0, 0, 0xFFE8864Cu, 0, 2, 2},
+    [ITEM_SASHIMI - BLK_COUNT]          = {"sashimi", SM_STR_ITEM_SASHIMI, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0,
+                                           0xFFEC9C74u, 0, 4, 0},
+    [ITEM_PORK_BEANS - BLK_COUNT]       = {"pork_and_beans", SM_STR_ITEM_PORK_AND_BEANS, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0,
+                                           0xFFB06438u, 0, 5, 2},
+    [ITEM_STEAK_POTATOES - BLK_COUNT]   = {"steak_and_potatoes", SM_STR_ITEM_STEAK_AND_POTATOES, ITEM_STACK_MAX, TOOL_NONE,
+                                           0, 0, 0, 0xFF9A4E34u, 0, 5, 2},
+    [ITEM_PIZZA - BLK_COUNT]            = {"pizza", SM_STR_ITEM_PIZZA, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFD8A040u,
+                                           0, 10, 8},
 };
 
 // A bucket and what is in it. Adding lava is this row plus a row in the
@@ -203,6 +249,8 @@ static uint32_t const BLOCK_ARGB[BLK_COUNT] = {
     [BLK_FENCE] = 0xFF9A7848u,          [BLK_FENCE_GATE] = 0xFF9A7848u,
     [BLK_FENCE_GATE_OPEN] = 0xFF9A7848u,
     [BLK_BED_FOOT] = 0xFFBE3A36u,       [BLK_BED_HEAD] = 0xFFBE3A36u,
+    [BLK_STOVE] = 0xFF6A6A70u,          [BLK_STOVE_CHEST] = 0xFF926A3Au,
+    [BLK_SAPLING_OAK] = 0xFF4E7A34u,    [BLK_SAPLING_BIRCH] = 0xFF6E983Eu,
 };
 
 // What each block is CALLED on screen, beside the colour above. A
@@ -252,6 +300,16 @@ static sm_str_t const BLOCK_LABEL[BLK_COUNT] = {
     // One name for both halves: it is one bed.
     [BLK_BED_FOOT] = SM_STR_ITEM_BED_FOOT,
     [BLK_BED_HEAD] = SM_STR_ITEM_BED_FOOT,
+    // ONE NAME FOR BOTH HALVES of the stove, as for both halves of the
+    // bed: it is one item and one thing, and "Kitchen stove chest" is
+    // not a thing anybody owns (D-110).
+    [BLK_STOVE] = SM_STR_ITEM_STOVE,
+    [BLK_STOVE_CHEST] = SM_STR_ITEM_STOVE,
+    // A NAME EACH, unlike the two halves of the bed or the stove: these
+    // are two different things a player chooses between, and "Sapling"
+    // on both would make a birch wood an accident.
+    [BLK_SAPLING_OAK] = SM_STR_ITEM_SAPLING_OAK,
+    [BLK_SAPLING_BIRCH] = SM_STR_ITEM_SAPLING_BIRCH,
     // Air and the barrier are never in anybody's hands and have none.
 };
 

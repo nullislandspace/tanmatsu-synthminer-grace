@@ -132,6 +132,17 @@ typedef enum {
 // it. Breaking either takes both, and only the lower one drops.
 #define BF2_TALL_TOP    (1u << 7)
 
+// AND THAT IS THE LAST BIT OF flags2. The next behaviour that wants one
+// widens this field to 16 bits -- every row uses designated
+// initialisers, so it is a one-line change -- rather than borrowing a
+// meaning from a bit that already has one.
+//
+// A SAPLING needed no bit for exactly this reason: which tree it grows
+// is a two-column table in world/tree.c, and "is this a sapling" is
+// that table answering. The same shape as block_record_kind() below,
+// and for the same reason -- a question with a payload is a table, not
+// a flag plus a switch somewhere else.
+
 // THE CELL IS FULL OF WATER AS WELL AS THIS BLOCK. Rice, and nothing
 // else so far: it grows in water one block deep, so the cell has to be
 // water for the pond it stands in and rice for the player.
@@ -329,15 +340,38 @@ enum {
     // THE BED, and it is two blocks like a real one: the half you lie
     // on and the half your head is at. Which is which is the id, and
     // which way round they lie is two bits of the state byte
-    // (BED_FACE_*), so the pair needs no pointers -- the head is always
+    // (FACE_*), so the pair needs no pointers -- the head is always
     // the foot's cell plus its facing, and the foot is the head's minus
     // it. That is enough because a bed is always placed as a unit and
-    // both halves know the same direction (contrast D-110, where the
-    // stove and its chest really do need each other's coordinates: a
-    // player can put two stoves side by side).
+    // both halves know the same direction.
     BLK_BED_FOOT        = 45,
     BLK_BED_HEAD        = 46,
-    // New blocks here: BLK_SOMETHING = 47, and a line in tools/ids.txt.
+    // THE KITCHEN STOVE AND ITS CHEST (step 11, D-105 and D-110), which
+    // is the bed's trick again and for a better reason. The user's
+    // design: food is cooked on a stove that "takes its raw resources"
+    // out of a chest standing next to it -- and the chest is not one
+    // the player has to supply. ONE ITEM PUTS DOWN BOTH, chest on the
+    // left as they see it while placing, and each half carries the
+    // facing that names the other (FACE_* above). Breaking either takes
+    // both; only the stove half pays out the item, so nothing can be
+    // duplicated at a chunk border where the partner is not resident.
+    BLK_STOVE           = 47,
+    BLK_STOVE_CHEST     = 48,
+    // SAPLINGS (the user, 2026-09-29): *"cutting trees should drop one
+    // or two seedlings that can be planted to grow into a new tree"*.
+    // Which makes wood the last thing in the game that could be used up
+    // and never got back -- there is no other way to make a log.
+    //
+    // ONE PER SPECIES, because a birch wood that grew back as oak is
+    // not the wood anybody planted. They are CROPS as far as the tick
+    // is concerned (BF_CROP, world/crops.h): stages in the state byte,
+    // the chunk's own slow clock, and a chunk away for an hour comes
+    // back an hour further on. What is different is what happens at the
+    // last stage -- a wheat plant stops there and waits to be cut, and
+    // this one turns into a tree (world/tree.h).
+    BLK_SAPLING_OAK     = 49,
+    BLK_SAPLING_BIRCH   = 50,
+    // New blocks here: BLK_SOMETHING = 51, and a line in tools/ids.txt.
     BLK_COUNT
 };
 
@@ -434,20 +468,50 @@ static inline float block_collide_top(uint8_t id) {
 #define BARREL_MILK   1u
 #define BARREL_CHEESE 2u
 
-// WHICH WAY A BED LIES, in the state byte of BOTH halves: the direction
-// from the foot to the head. The mesher draws the frame the right way
-// round with it, and interact.c finds one half from the other.
-#define BED_FACE_PX 0u
-#define BED_FACE_NX 1u
-#define BED_FACE_PZ 2u
-#define BED_FACE_NZ 3u
+// WHICH WAY A TWO-CELL BLOCK LIES, in the state byte of BOTH halves:
+// the direction from the first half to the second. Two bits, four
+// answers, and it is how a pair of cells finds itself.
+//
+// THE BED USES IT (foot -> head) AND SO DOES THE STOVE (stove -> its
+// chest), which is what D-110 asked for at no cost: "the two store each
+// other's coordinates" is satisfied by storing the DIRECTION, because
+// the coordinate is this cell plus one step of it. blocks.h used to say
+// the stove would "really need coordinates" on the grounds that a
+// player can put two stoves side by side -- they can, and it does not
+// matter: each stove's facing points at its OWN chest, and two stoves
+// cannot occupy one cell, so `chest | stove | chest | stove` reads
+// correctly from either end.
+#define FACE_PX 0u
+#define FACE_NX 1u
+#define FACE_PZ 2u
+#define FACE_NZ 3u
 
-// The step from the foot of a bed to its head, for a facing.
-static inline int bed_step_x(uint8_t face) {
-    return face == BED_FACE_PX ? 1 : face == BED_FACE_NX ? -1 : 0;
+// The step from a cell to its partner, for a facing.
+static inline int face_step_x(uint8_t face) {
+    return face == FACE_PX ? 1 : face == FACE_NX ? -1 : 0;
 }
-static inline int bed_step_z(uint8_t face) {
-    return face == BED_FACE_PZ ? 1 : face == BED_FACE_NZ ? -1 : 0;
+static inline int face_step_z(uint8_t face) {
+    return face == FACE_PZ ? 1 : face == FACE_NZ ? -1 : 0;
+}
+
+// The facing a flattened look direction points along: which of the four
+// compass steps is most nearly the way the player is walking.
+static inline uint8_t face_from_dir(float dx, float dz) {
+    float const ax = dx < 0.0f ? -dx : dx, az = dz < 0.0f ? -dz : dz;
+    return ax > az ? (dx > 0.0f ? FACE_PX : FACE_NX) : (dz > 0.0f ? FACE_PZ : FACE_NZ);
+}
+
+// The way back: PX <-> NX, PZ <-> NZ. The pairs are numbered so that
+// this is one bit, which is why they are in that order.
+static inline uint8_t face_opposite(uint8_t face) {
+    return (uint8_t)(face ^ 1u);
+}
+
+// ... and the one at right angles to it, to the player's LEFT. The
+// engine's basis has right = (fz, -fx) (game/player.c), so left is
+// (-fz, fx) -- which is where the stove puts its chest (D-110).
+static inline uint8_t face_left_of(float dx, float dz) {
+    return face_from_dir(-dz, dx);
 }
 
 static inline bool block_usable(uint8_t id) {

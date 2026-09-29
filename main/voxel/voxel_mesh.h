@@ -145,6 +145,22 @@ typedef enum {
     VM_BED_TOP,
     VM_BED_HEAD,
     VM_BED_SIDE,
+    // The kitchen stove: a hotplate on top, an oven door at the front,
+    // iron and stone round the rest of it. Its CHEST half borrows the
+    // chest's own textures, because it is a chest (blocks.c).
+    VM_STOVE_TOP,
+    VM_STOVE_FRONT,
+    // A sapling, at each of its four stages -- a crop run, like wheat
+    // (VM_WHEAT_0..3): the mesher takes the stage out of the state byte
+    // and adds it to the first material.
+    VM_SAPLING_OAK_0,
+    VM_SAPLING_OAK_1,
+    VM_SAPLING_OAK_2,
+    VM_SAPLING_OAK_3,
+    VM_SAPLING_BIRCH_0,
+    VM_SAPLING_BIRCH_1,
+    VM_SAPLING_BIRCH_2,
+    VM_SAPLING_BIRCH_3,
     VM_COUNT
 } vox_mat_t;
 

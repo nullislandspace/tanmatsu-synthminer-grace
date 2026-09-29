@@ -108,3 +108,18 @@ item fishing_rod
 item sardine
 item salmon
 item shrimp
+block 47 stove
+block 48 stove_chest
+item baked_potato
+item grilled_tomatoes
+item baked_beans
+item bread
+item rice_patty
+item smoked_salmon
+item grilled_shrimp
+item sashimi
+item pork_and_beans
+item steak_and_potatoes
+item pizza
+block 49 sapling_oak
+block 50 sapling_birch

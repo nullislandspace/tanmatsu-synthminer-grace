@@ -6,7 +6,9 @@
 
 #include "items/items.h"
 #include "world/chunk_codec.h"
+#include "world/chunk_worker.h"
 #include "world/fluid.h"
+#include "world/tree.h"
 
 #define SLOT_COUNT (CH_RING * CH_RING)
 
@@ -37,6 +39,23 @@ uint8_t crops_block_for_seed(uint16_t seed) {
     return BLK_AIR;
 }
 
+// A RIPE SAPLING IS A TREE THAT HAS NOT HAPPENED YET. Every path into
+// growth ends here: the sweep, the catch-up on load, and the compost a
+// player throws at it.
+//
+// IT MAY FAIL, and failing has to be harmless. A sapling under an
+// overhang has nowhere to put a canopy, so tree_grow refuses and the
+// sapling is left standing -- which is why the sweep asks again every
+// time it passes (walk_chunk) rather than only when a stage is owed.
+// Without that, one planted in the wrong place would sit at its last
+// stage for ever with nothing ever looking at it again.
+static void try_tree(int32_t x, int32_t y, int32_t z) {
+    uint8_t const b = world_block(x, y, z);
+    if (!tree_is_sapling(b)) return;
+    if (!crop_is_ripe(b, world_state(x, y, z))) return;
+    tree_grow(x, y, z, chunk_worker_seed());
+}
+
 int crops_advance(int32_t x, int32_t y, int32_t z, int steps) {
     if (steps <= 0) return 0;
     uint8_t const b = world_block(x, y, z);
@@ -45,7 +64,13 @@ int crops_advance(int32_t x, int32_t y, int32_t z, int steps) {
     uint8_t const max = block_def(b)->growth_max;
     uint8_t const st  = world_state(x, y, z);
     uint8_t const was = crop_stage(st);
-    if (was >= max) return 0;
+    if (was >= max) {
+        // Already at its last stage. For a wheat plant that is the end
+        // of the story; for a sapling it is the moment it has been
+        // waiting for, and it may have been refused before.
+        try_tree(x, y, z);
+        return 0;
+    }
 
     int want = (int)was + steps;
     if (want > (int)max) want = (int)max;
@@ -63,6 +88,7 @@ int crops_advance(int32_t x, int32_t y, int32_t z, int steps) {
             if (crop_stage(ost) != (uint8_t)want) world_set(x, oy, z, other, crop_state_with(ost, (uint8_t)want));
         }
     }
+    if (want >= (int)max) try_tree(x, y, z);
     return want - (int)was;
 }
 
@@ -93,7 +119,17 @@ static int walk_chunk(chunk_t* c, uint32_t prev, uint32_t now, int* ripe_out) {
                     uint8_t const st = c->st[CH_IDX(lx, y, lz)];
                     crops_advance(wx, y, wz, crop_steps_between(col[y], st, prev, now));
                 }
-                if (crop_is_ripe(col[y], c->st[CH_IDX(lx, y, lz)])) ripe++;
+                // A SAPLING THAT IS READY BECOMES A TREE, asked every
+                // pass and not only when a stage is owed -- see the
+                // note on try_tree(). The cell stops being a crop as it
+                // goes, and the loop simply does not match it again.
+                if (crop_is_ripe(col[y], c->st[CH_IDX(lx, y, lz)])) {
+                    if (tree_is_sapling(col[y])) {
+                        try_tree(wx, y, wz);
+                        if (!block_crop(col[y])) continue;  // it grew; the cell is a trunk now
+                    }
+                    ripe++;
+                }
             }
         }
     }
@@ -278,6 +314,25 @@ plant_result_t crops_plant(int32_t x, int32_t y, int32_t z, uint16_t seed) {
         uint8_t const st = planted_state(crop);
         world_set(x, y, z, crop, st);
         if (above_id != BLK_AIR) world_set(x, y + 1, z, above_id, st);
+        return PLANT_OK;
+    }
+
+    // A SAPLING GOES IN THE GROUND, not in a field. Grass or dirt, and
+    // no hoe -- a tree that needed tilling and a moat would be a tree
+    // nobody planted, and a forest is not a crop you tend.
+    //
+    // It is the one thing here that plants on something a hoe has NOT
+    // been at, which is why it is a branch and not a column: every
+    // other seed in the game wants wet farmland, and a "what does this
+    // plant on" column with one exception in it would be a column with
+    // one exception in it.
+    if (tree_is_sapling(crop)) {
+        if (at != BLK_GRASS && at != BLK_DIRT) return PLANT_NEEDS_GROUND;
+        if (y + 1 >= CH_H) return PLANT_BLOCKED;
+        uint8_t const above = world_block(x, y + 1, z);
+        if (above != BLK_AIR && !block_replaceable(above)) return PLANT_BLOCKED;
+        if (block_liquid(above)) return PLANT_BLOCKED;
+        world_set(x, y + 1, z, crop, planted_state(crop));
         return PLANT_OK;
     }
 

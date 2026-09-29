@@ -86,8 +86,8 @@ PURE_SRCS       := main/math/xform.c main/math/mesh.c main/voxel/voxel_mesh.c \
                    main/world/blocks.c main/world/chunk.c main/common/rng.c main/common/tags.c \
                    main/common/trace.c \
                    main/world/worldgen.c main/world/farlands.c main/world/chunk_codec.c main/world/region.c main/world/blockent.c \
-                   main/world/vfs_compat.c main/world/light.c main/world/blockupdate.c main/world/fluid.c main/world/crops.c main/world/worldstore.c main/world/datadir.c main/world/chunkmesh.c main/world/chunk_worker.c \
-                   main/game/physics.c main/game/raycast.c main/game/interact.c main/game/furnace.c main/game/composter.c main/game/maker.c main/game/mob.c main/game/fishing.c main/game/daytime.c main/game/replay.c \
+                   main/world/vfs_compat.c main/world/tree.c main/world/light.c main/world/blockupdate.c main/world/fluid.c main/world/crops.c main/world/worldstore.c main/world/datadir.c main/world/chunkmesh.c main/world/chunk_worker.c \
+                   main/game/physics.c main/game/raycast.c main/game/interact.c main/game/furnace.c main/game/composter.c main/game/maker.c main/game/stove.c main/game/food.c main/game/mob.c main/game/fishing.c main/game/daytime.c main/game/replay.c \
                    main/items/items.c main/items/inventory.c main/items/item_entity.c main/items/recipes.c \
                    main/i18n/i18n.c main/i18n/strings_gen.c main/i18n/fold.c \
                    main/audio/midi_seq.c \
@@ -96,7 +96,7 @@ MESHCHECK_SRCS  := tools/meshcheck.c $(PURE_SRCS)
 WORLDCHECK_SRCS := tools/worldcheck.c $(PURE_SRCS)
 
 .PHONY: check
-check: hostpurity lang metadata meshcheck worldcheck
+check: hostpurity lang metadata texcheck meshcheck worldcheck
 
 # ---------------------------------------------------------------------
 # The translations. lang/*.txt is the source and main/i18n/strings_gen.*
@@ -346,6 +346,17 @@ metadatacheck:
 .PHONY: textures
 textures:
 	python3 tools/make_textures.py
+
+# ... and LOOK AT THEM. Not whether the file is there -- four separate
+# checks already ask that, and the sausage maker still shipped as a
+# plain white cube for a week because every one of them was asking
+# about the file rather than about the picture. This opens each PNG and
+# fails on one that is clipped to pure white or pure black, which is
+# what a generator does when it builds `lum` as a brightness instead of
+# as an offset.
+.PHONY: texcheck
+texcheck:
+	python3 tools/make_textures.py --check
 
 # The launcher's icons, likewise committed. They are drawn from the game's
 # own pickaxe and stone, so this reads make_textures.py.

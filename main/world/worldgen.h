@@ -91,6 +91,21 @@ typedef enum {
     BIOME_COUNT
 } biome_t;
 
+// ONE CELL OF A GENERATED SHAPE, handed to whoever is writing it.
+// `overwrite` says whether it may replace something already there --
+// a trunk may, a leaf may not.
+typedef void (*worldgen_cell_fn)(void* ctx, int32_t wx, int y, int32_t wz, uint8_t block, bool overwrite);
+
+// THE SHAPE OF A TREE, and the only copy of it. The generator stamps it
+// into one chunk; a sapling grows it through world_set (world/tree.h).
+// See the note in worldgen.c for why it is a callback and not a write.
+void worldgen_tree_shape(int32_t wx, int sy, int32_t wz, int h, uint8_t log, uint8_t leaf, uint32_t seed,
+                         worldgen_cell_fn emit, void* ctx);
+
+// How tall the tree at (wx, wz) is, from the world's own hash -- so a
+// sapling grown on a spot makes the tree that spot would have had.
+int worldgen_tree_height(int32_t wx, int32_t wz, uint32_t seed);
+
 typedef struct {
     char const* name;
     uint8_t     surface;      // the top block, above the waterline

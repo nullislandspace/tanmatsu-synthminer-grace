@@ -30,6 +30,15 @@ static int  s_pick[INV_SLOTS];
 static int  s_pick_n;
 // Which ingredient row the picker is filling.
 static int  s_pick_row;
+// ROW 0 OF THE PICKER IS "TAKE IT OUT", when there is something in the
+// slot to take (the user, after playing: "each slot needs an 'empty'
+// pseudo-entry to take out materials").
+//
+// Until this, the only way an ingredient came back was to put a
+// DIFFERENT one in the same slot and let the swap hand the old one
+// back -- so twenty pork with no flowers and no beans in your pack left
+// breaking the machine as the only way to the pork again.
+static bool s_pick_can_empty;
 
 #define ACT_UP   0x01u
 #define ACT_DOWN 0x02u
@@ -123,13 +132,29 @@ void maker_ui_event(bsp_input_event_t const* ev) {
 }
 
 // What the player is carrying that this machine takes at all.
-static void build_pick(inventory_t const* inv, uint8_t kind) {
-    s_pick_n = 0;
+static void build_pick(inventory_t const* inv, blockent_t const* be, int slot) {
+    inv_slot_t const* in = &be->slot[slot];
+    s_pick_can_empty     = in->item != 0 && in->count > 0;
+    s_pick_n             = 0;
     for (int i = 0; i < INV_SLOTS; i++) {
         inv_slot_t const* s = &inv->slot[i];
         if (s->item == 0 || s->count == 0) continue;
-        if (maker_accepts(kind, s->item)) s_pick[s_pick_n++] = i;
+        if (maker_accepts(be->kind, s->item)) s_pick[s_pick_n++] = i;
     }
+}
+
+// How many rows the picker shows, and which stack a cursor position
+// means (-1 for the "take it out" row).
+static int pick_rows(void) {
+    return s_pick_n + (s_pick_can_empty ? 1 : 0);
+}
+
+static int pick_stack(int cursor) {
+    if (s_pick_can_empty) {
+        if (cursor == 0) return -1;
+        cursor--;
+    }
+    return (cursor >= 0 && cursor < s_pick_n) ? s_pick[cursor] : -1;
 }
 
 static void put_in(inventory_t* inv, blockent_t* be, int slot, int inv_slot, int want) {
@@ -188,6 +213,39 @@ static void put_in(inventory_t* inv, blockent_t* be, int slot, int inv_slot, int
     }
 }
 
+// WHAT THE MACHINE IS NOT USING GOES BACK TO THE PLAYER (the user:
+// "when you put in beans and there are yellow flowers, these should
+// automatically return to the player inventory").
+//
+// Two beans make a sausage on their own, so a flower left in the other
+// slot is not an ingredient of anything being made -- it is the
+// player's, and it was only in there because the machine took it.
+// Handed over HERE, because this is where the hands are: game/maker.c
+// may not touch an inventory, which is the same reason the milk pail
+// comes back through put_in and not through the recipe.
+//
+// Only when a recipe actually matches. A half-loaded machine is
+// somebody part way through deciding, and emptying its slots under them
+// would be worse than useless.
+static void return_unused(inventory_t* inv, blockent_t* be) {
+    maker_def_t const* d = maker_def(be->kind);
+    if (d == NULL || maker_match(be) == NULL) return;
+    for (int i = 0; i < d->slots_in && i < 2; i++) {
+        inv_slot_t* sl = &be->slot[BE_MAKER_IN_A + i];
+        if (sl->item == 0 || sl->count == 0) continue;
+        if (maker_uses(be, sl->item)) continue;
+        int const left = inv_add(inv, sl->item, sl->count, sl->wear);
+        // A FULL PACK KEEPS IT IN THE MACHINE rather than dropping it on
+        // the floor behind the player: it is doing no harm where it is,
+        // and a stack that lands in a field is a stack somebody loses.
+        sl->count = (uint8_t)left;
+        if (sl->count == 0) {
+            sl->item = 0;
+            sl->wear = 0;
+        }
+    }
+}
+
 static void take_out(inventory_t* inv, blockent_t* be, int slot) {
     inv_slot_t* o = &be->slot[slot];
     if (o->item == 0 || o->count == 0) {
@@ -236,6 +294,7 @@ void maker_ui_update(inventory_t* inv, uint32_t now) {
         if (want > 0) {
             put_in(inv, be, s_pick_row, s_ask_slot, want);
             maker_catch_up(be, now);
+            return_unused(inv, be);
             blockent_touch(be);
             sync_barrel(be);
             sfx_play(SFX_PLACE);
@@ -245,28 +304,42 @@ void maker_ui_update(inventory_t* inv, uint32_t now) {
     }
 
     if (s_picking) {
-        build_pick(inv, be->kind);
+        build_pick(inv, be, s_pick_row);
         if (s_act & ACT_BACK) {
             s_picking = false;
             s_act     = 0;
             return;
         }
-        if (s_pick_n > 0) {
+        if (pick_rows() > 0) {
             if (s_act & ACT_UP) s_pick_cursor--;
             if (s_act & ACT_DOWN) s_pick_cursor++;
             if (s_pick_cursor < 0) s_pick_cursor = 0;
-            if (s_pick_cursor >= s_pick_n) s_pick_cursor = s_pick_n - 1;
+            if (s_pick_cursor >= pick_rows()) s_pick_cursor = pick_rows() - 1;
             if (s_act & ACT_OK) {
-                inv_slot_t const* src = &inv->slot[s_pick[s_pick_cursor]];
+                int const which = pick_stack(s_pick_cursor);
+                if (which < 0) {
+                    // "- take it out -": the slot empties into the pack,
+                    // and never asks how many. There is no reason to
+                    // leave half a stack of pork in a machine, which is
+                    // the same rule the output rows have always had.
+                    take_out(inv, be, s_pick_row);
+                    maker_catch_up(be, now);
+                    sync_barrel(be);
+                    s_picking = false;
+                    s_act     = 0;
+                    return;
+                }
+                inv_slot_t const* src = &inv->slot[which];
                 if (src->count > 1 && maker_returns(be->kind, src->item) == 0) {
                     s_asking   = true;
-                    s_ask_slot = s_pick[s_pick_cursor];
+                    s_ask_slot = which;
                     amount_open(src->item, src->count);
                     s_act = 0;
                     return;
                 }
-                put_in(inv, be, s_pick_row, s_pick[s_pick_cursor], 1);
+                put_in(inv, be, s_pick_row, which, 1);
                 maker_catch_up(be, now);
+                return_unused(inv, be);
                 blockent_touch(be);
                 sync_barrel(be);
                 sfx_play(SFX_PLACE);
@@ -298,7 +371,7 @@ void maker_ui_update(inventory_t* inv, uint32_t now) {
             s_picking     = true;
             s_pick_row    = slot;
             s_pick_cursor = 0;
-            build_pick(inv, be->kind);
+            build_pick(inv, be, slot);
         }
     }
     s_act = 0;
@@ -317,6 +390,14 @@ static void draw_picker(pax_buf_t* fb, inventory_t const* inv, blockent_t const*
     static char   labels[INV_SLOTS][64];
 
     int n = 0;
+    // The way OUT, first, so it is where the cursor already is when the
+    // screen opens on a full slot.
+    if (s_pick_can_empty) {
+        memset(&rows[n], 0, sizeof(rows[n]));
+        rows[n].label = T(SM_STR_MAKER_TAKE_OUT);
+        rows[n].kind  = SE_MENU_VAL_NONE;
+        n++;
+    }
     for (int i = 0; i < s_pick_n; i++) {
         inv_slot_t const* s = &inv->slot[s_pick[i]];
         i18n_fmt(labels[n], sizeof(labels[n]), SM_STR_MAKER_SLOT, (int)s->count, T(item_label(s->item)));
@@ -333,7 +414,7 @@ static void draw_picker(pax_buf_t* fb, inventory_t const* inv, blockent_t const*
 
     char foot[128];
     sm_str_t const rate = be->kind == BE_CHEESE ? SM_STR_MAKER_A_DAY : SM_STR_MAKER_A_MINUTE;
-    snprintf(foot, sizeof(foot), "%s", T(s_pick_n > 0 ? rate : SM_STR_MAKER_PICK_HINT));
+    snprintf(foot, sizeof(foot), "%s", T(pick_rows() > 0 ? rate : SM_STR_MAKER_PICK_HINT));
 
     se_menu_def_t const def = {
         .title        = T(SM_STR_MAKER_PICK_INPUT),
@@ -347,7 +428,7 @@ static void draw_picker(pax_buf_t* fb, inventory_t const* inv, blockent_t const*
         .panel_h      = 0.92f,
         .visible_rows = 8,
     };
-    se_menu_t const m = {.def = &def, .cursor = s_pick_n > 0 ? s_pick_cursor : n};
+    se_menu_t const m = {.def = &def, .cursor = pick_rows() > 0 ? s_pick_cursor : n};
     se_menu_draw(&m, fb);
 }
 
@@ -376,12 +457,28 @@ void maker_ui_draw(pax_buf_t* fb, inventory_t const* inv, uint32_t now) {
         rows[i].value = vals[i];
     }
 
-    char footer[96];
+    char footer[160];
     if (showtime_now() < s_msg_until) {
         snprintf(footer, sizeof(footer), "%s", s_msg);
     } else {
         switch (maker_idle_reason(be)) {
             case MAKER_IDLE_NO_INPUT: snprintf(footer, sizeof(footer), "%s", T(SM_STR_MAKER_NO_INPUT)); break;
+            case MAKER_IDLE_MISSING: {
+                // IT NAMES WHAT IS MISSING, and names every alternative:
+                // a pork sausage wants a flower and either colour will
+                // do, so "Needs 1 Red flower or Yellow flower". Built
+                // out of the recipe table, so a third flower says so by
+                // itself.
+                uint16_t what[MAKER_MISSING_MAX];
+                int      need = 0;
+                int const cnt = maker_missing(be, what, &need, MAKER_MISSING_MAX);
+                i18n_fmt(footer, sizeof(footer), SM_STR_MAKER_MISSING, need, T(item_label(what[0])));
+                for (int i = 1; i < cnt; i++) {
+                    char joined[160];
+                    i18n_fmt(joined, sizeof(joined), SM_STR_MAKER_OR, footer, T(item_label(what[i])));
+                    snprintf(footer, sizeof(footer), "%s", joined);
+                }
+            } break;
             case MAKER_IDLE_FULL: snprintf(footer, sizeof(footer), "%s", T(SM_STR_MAKER_FULL)); break;
             default: i18n_fmt(footer, sizeof(footer), SM_STR_MAKER_WORKING, maker_progress_pct(be, now)); break;
         }

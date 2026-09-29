@@ -160,6 +160,7 @@ typedef enum {
     PLANT_NEEDS_SOIL,   // it wants tilled soil and this is not
     PLANT_TOO_DRY,      // tilled soil, but no water within four blocks
     PLANT_NEEDS_WATER,  // rice: one-deep water standing on sand
+    PLANT_NEEDS_GROUND, // a sapling: grass or dirt, and NOT a tilled field
     PLANT_BLOCKED,      // something is already in the way
 } plant_result_t;
 

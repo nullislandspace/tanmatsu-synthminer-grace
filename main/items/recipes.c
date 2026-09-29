@@ -268,12 +268,80 @@ static recipe_t const RECIPES[] = {
      .n_in    = 1,
      .in      = {{ITEM_WOOL, 1}}},
 
-    // --- On a stove that does not exist yet (step 11) ----------------
+    // --- The kitchen stove, and its chest (step 11, D-105 and D-110) --
     //
-    // Both are the user's numbers, given with the sheep. They are worth
-    // more than anything else mutton could be: the kebab is second only
-    // to the pizza, and it wants a crop, a fruit and a bean as well as
-    // the meat.
+    // ONE ITEM THAT PUTS DOWN TWO BLOCKS. The price is the user's -- 3
+    // iron, 6 stone, 8 planks -- and the 8 planks in it ARE the chest,
+    // which is why there is no second recipe and no second thing to
+    // carry: "which chest?" is a question this recipe makes unaskable
+    // (interact.c places the pair).
+    {.out     = BLK_STOVE, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 3,
+     .in      = {{ITEM_IRON_INGOT, 3}, {BLK_STONE, 6}, {BLK_PLANKS, 8}}},
+
+    // --- The thirteen dishes (step 11) --------------------------------
+    //
+    // EVERY ONE OF THESE IS THE USER'S, numbers and all (Part A's food
+    // table). A dish is a row here and a row in items.c and nothing
+    // else: the stove reads its ingredients out of the chest beside it
+    // and has no idea what a pizza is.
+    //
+    // The order is the table's, which is also roughly cheapest first --
+    // and order matters for exactly one pair, the pizza's two rows
+    // below, where first match wins (game/stove.c).
+    {.out     = ITEM_BAKED_POTATO, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 1,
+     .in      = {{ITEM_POTATO, 1}}},
+
+    // ONE FRUIT IN, ONE DISH OUT (the user). This file first guessed
+    // two, on the reasoning that a raw tomato at 1 hunger would be
+    // pointless beside a cooked one at 2 for the same fruit. That
+    // reasoning was backwards: doubling what a tomato is worth is what
+    // cooking is FOR, and the raw one is the option you have with no
+    // stove and no fuel.
+    {.out     = ITEM_GRILLED_TOMATOES, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 1,
+     .in      = {{ITEM_TOMATO, 1}}},
+
+    // Beans have no raw form at all, so one bean for 2 hunger is the
+    // floor the rest of the table stands on.
+    {.out     = ITEM_BAKED_BEANS, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 1,
+     .in      = {{ITEM_BEANS, 1}}},
+
+    {.out     = ITEM_BREAD, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 1,
+     .in      = {{ITEM_WHEAT, 3}}},
+
+    {.out     = ITEM_RICE_PATTY, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 1,
+     .in      = {{ITEM_RICE, 2}}},
+
+    // 2 hunger and FOUR saturation, which is more reserve per drumstick
+    // than the pizza gives: the thing to carry when travelling.
+    {.out     = ITEM_SMOKED_SALMON, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 1,
+     .in      = {{ITEM_SALMON, 1}}},
+
+    {.out     = ITEM_GRILLED_SHRIMP, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 1,
+     .in      = {{ITEM_SHRIMP, 3}}},
+
+    {.out     = ITEM_SASHIMI, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 2,
+     .in      = {{ITEM_SALMON, 1}, {ITEM_RICE, 1}}},
+
+    {.out     = ITEM_PORK_BEANS, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 2,
+     .in      = {{ITEM_PORK, 1}, {ITEM_BEANS, 1}}},
+
+    {.out     = ITEM_STEAK_POTATOES, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 2,
+     .in      = {{ITEM_BEEF, 1}, {ITEM_POTATO, 1}}},
+
+    // The two that arrived with the sheep, and the kebab is the first
+    // recipe in the game with four ingredients: a crop, a fruit, a bean
+    // and the meat.
     {.out     = ITEM_MUTTON_MASH, .out_n = 1, .station = RS_STOVE,
      .n_in    = 2,
      .in      = {{ITEM_MUTTON, 1}, {ITEM_POTATO, 2}}},
@@ -281,6 +349,22 @@ static recipe_t const RECIPES[] = {
     {.out     = ITEM_KEBAB, .out_n = 1, .station = RS_STOVE,
      .n_in    = 4,
      .in      = {{ITEM_MUTTON, 1}, {ITEM_BEANS, 1}, {ITEM_WHEAT, 2}, {ITEM_TOMATO, 1}}},
+
+    // THE SUPERFOOD, and it is TWO ROWS because "the fake sausage
+    // counts as a pizza's sausage" (the user). There is no "either of
+    // these" in a multiset and there should not be -- the sausage maker
+    // says the same thing about flowers three screens up.
+    //
+    // It was never going to make the pizza vegetarian: there are two
+    // shrimp in it. Refusing would only have been a trap for somebody
+    // who had done everything right.
+    {.out     = ITEM_PIZZA, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 4,
+     .in      = {{ITEM_WHEAT, 2}, {ITEM_SAUSAGE, 1}, {ITEM_CHEESE, 1}, {ITEM_SHRIMP, 2}}},
+
+    {.out     = ITEM_PIZZA, .out_n = 1, .station = RS_STOVE,
+     .n_in    = 4,
+     .in      = {{ITEM_WHEAT, 2}, {ITEM_SAUSAGE_VEG, 1}, {ITEM_CHEESE, 1}, {ITEM_SHRIMP, 2}}},
 };
 
 #define RECIPE_N ((int)(sizeof(RECIPES) / sizeof(RECIPES[0])))

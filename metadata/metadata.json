@@ -4,7 +4,7 @@
   "categories": [
     "games"
   ],
-  "version": "0.1.0",
+  "version": "0.2.0",
   "icon": {
     "16x16": "icon16.png",
     "32x32": "icon32.png",
@@ -18,7 +18,7 @@
         "tanmatsu",
         "konsool"
       ],
-      "revision": 1,
+      "revision": 2,
       "type": "script",
       "interpreter": "at.cavac.graceloader",
       "executable": "app.so",
@@ -189,6 +189,14 @@
           "target_file": "textures/item_axe_wood.png"
         },
         {
+          "source_file": "textures/item_baked_beans.png",
+          "target_file": "textures/item_baked_beans.png"
+        },
+        {
+          "source_file": "textures/item_baked_potato.png",
+          "target_file": "textures/item_baked_potato.png"
+        },
+        {
           "source_file": "textures/item_beans.png",
           "target_file": "textures/item_beans.png"
         },
@@ -203,6 +211,10 @@
         {
           "source_file": "textures/item_bone.png",
           "target_file": "textures/item_bone.png"
+        },
+        {
+          "source_file": "textures/item_bread.png",
+          "target_file": "textures/item_bread.png"
         },
         {
           "source_file": "textures/item_bucket.png",
@@ -239,6 +251,14 @@
         {
           "source_file": "textures/item_fishing_rod.png",
           "target_file": "textures/item_fishing_rod.png"
+        },
+        {
+          "source_file": "textures/item_grilled_shrimp.png",
+          "target_file": "textures/item_grilled_shrimp.png"
+        },
+        {
+          "source_file": "textures/item_grilled_tomatoes.png",
+          "target_file": "textures/item_grilled_tomatoes.png"
         },
         {
           "source_file": "textures/item_hoe_iron.png",
@@ -281,8 +301,16 @@
           "target_file": "textures/item_pickaxe_wood.png"
         },
         {
+          "source_file": "textures/item_pizza.png",
+          "target_file": "textures/item_pizza.png"
+        },
+        {
           "source_file": "textures/item_pork.png",
           "target_file": "textures/item_pork.png"
+        },
+        {
+          "source_file": "textures/item_pork_and_beans.png",
+          "target_file": "textures/item_pork_and_beans.png"
         },
         {
           "source_file": "textures/item_potato.png",
@@ -293,12 +321,20 @@
           "target_file": "textures/item_rice.png"
         },
         {
+          "source_file": "textures/item_rice_patty.png",
+          "target_file": "textures/item_rice_patty.png"
+        },
+        {
           "source_file": "textures/item_salmon.png",
           "target_file": "textures/item_salmon.png"
         },
         {
           "source_file": "textures/item_sardine.png",
           "target_file": "textures/item_sardine.png"
+        },
+        {
+          "source_file": "textures/item_sashimi.png",
+          "target_file": "textures/item_sashimi.png"
         },
         {
           "source_file": "textures/item_sausage.png",
@@ -327,6 +363,14 @@
         {
           "source_file": "textures/item_shrimp.png",
           "target_file": "textures/item_shrimp.png"
+        },
+        {
+          "source_file": "textures/item_smoked_salmon.png",
+          "target_file": "textures/item_smoked_salmon.png"
+        },
+        {
+          "source_file": "textures/item_steak_and_potatoes.png",
+          "target_file": "textures/item_steak_and_potatoes.png"
         },
         {
           "source_file": "textures/item_stick.png",
@@ -457,6 +501,38 @@
           "target_file": "textures/sandstone.png"
         },
         {
+          "source_file": "textures/sapling_birch_0.png",
+          "target_file": "textures/sapling_birch_0.png"
+        },
+        {
+          "source_file": "textures/sapling_birch_1.png",
+          "target_file": "textures/sapling_birch_1.png"
+        },
+        {
+          "source_file": "textures/sapling_birch_2.png",
+          "target_file": "textures/sapling_birch_2.png"
+        },
+        {
+          "source_file": "textures/sapling_birch_3.png",
+          "target_file": "textures/sapling_birch_3.png"
+        },
+        {
+          "source_file": "textures/sapling_oak_0.png",
+          "target_file": "textures/sapling_oak_0.png"
+        },
+        {
+          "source_file": "textures/sapling_oak_1.png",
+          "target_file": "textures/sapling_oak_1.png"
+        },
+        {
+          "source_file": "textures/sapling_oak_2.png",
+          "target_file": "textures/sapling_oak_2.png"
+        },
+        {
+          "source_file": "textures/sapling_oak_3.png",
+          "target_file": "textures/sapling_oak_3.png"
+        },
+        {
           "source_file": "textures/sausage_side.png",
           "target_file": "textures/sausage_side.png"
         },
@@ -495,6 +571,14 @@
         {
           "source_file": "textures/stone.png",
           "target_file": "textures/stone.png"
+        },
+        {
+          "source_file": "textures/stove_front.png",
+          "target_file": "textures/stove_front.png"
+        },
+        {
+          "source_file": "textures/stove_top.png",
+          "target_file": "textures/stove_top.png"
         },
         {
           "source_file": "textures/table_side.png",

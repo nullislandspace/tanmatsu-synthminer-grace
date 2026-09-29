@@ -47,6 +47,7 @@ void player_spawn(player_t* p, double x, double z, float yaw) {
     p->aim_valid   = false;
     p->mining      = false;
     p->mine_ticks  = 0;
+    fall_reset(&p->fall, p->body.y);
 }
 
 bool player_place(player_t* p, double x, double y, double z, float yaw, float pitch) {
@@ -73,12 +74,13 @@ bool player_place(player_t* p, double x, double y, double z, float yaw, float pi
     p->aim_valid   = false;
     p->mining      = false;
     p->mine_ticks  = 0;
+    fall_reset(&p->fall, p->body.y);
     return true;
 }
 
 void player_reset(player_t* p) {
-    p->health     = PL_HEALTH_MAX;
-    p->hunger     = PL_HUNGER_MAX;
+    food_reset(&p->food);
+    fall_reset(&p->fall, p->body.y);
     p->aim_valid  = false;
     p->mining     = false;
     p->mine_ticks = 0;
@@ -103,6 +105,43 @@ float player_mine_progress(player_t const* p) {
     return f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
 }
 
+// --- Survival, which happens whatever else the tick did ---------------
+//
+// ONE PLACE, CALLED FROM BOTH PATHS. The inventory screen and the
+// crafting book freeze the player and return early from player_tick --
+// and a player who opened a screen over a hole still falls, which is a
+// rule main.c has had since step 4. If the fall and the hunger loop
+// lived only in the ordinary path, opening the inventory on the way
+// down would be a parachute and a bottomless larder at once.
+//
+// `moved` is how far the feet travelled horizontally this tick, which
+// is what exhaustion is bought with (game/food.h).
+static void survival(player_t* p, float moved, bool swimming, bool jumped) {
+    // --- The fall ----------------------------------------------------
+    //
+    // The rule is in game/food.c, where the host check can drive it
+    // against a real body rather than against a copy of the arithmetic.
+    int const hurt = fall_tick(&p->fall, p->body.y, p->body.on_ground, swimming);
+    if (hurt > 0) {
+        food_event_t const e = food_hurt(&p->food, hurt);
+        p->food_msg          = (uint8_t)e;
+        p->food_msg_ticks    = USE_MSG_TICKS;
+        sfx_play(e == FOOD_DIED ? SFX_DENY : SFX_HIT);
+    }
+
+    // --- Hunger, saturation, regeneration and starving ---------------
+    food_event_t const e = food_tick(&p->food, moved, swimming, jumped);
+    // ONLY THE TWO THAT HURT ARE WORTH SAYING. A heal happens every
+    // four seconds and a drumstick goes every ninety, and a line on the
+    // HUD for either would be wallpaper by the second minute -- the
+    // bars are what show those, which is what bars are for.
+    if (e == FOOD_STARVED || e == FOOD_DIED) {
+        p->food_msg       = (uint8_t)e;
+        p->food_msg_ticks = USE_MSG_TICKS;
+        sfx_play(SFX_DENY);
+    }
+}
+
 void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     // ONE TICK'S WORTH, CLEARED FIRST. It used to be cleared further
     // down, in the branch that does the actual using -- which the
@@ -123,6 +162,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     if (p->use_msg_ticks > 0 && --p->use_msg_ticks == 0) p->use_msg = USE_SAID_NOTHING;
     if (p->fish_msg_ticks > 0 && --p->fish_msg_ticks == 0) p->fish_msg = FISH_NOTHING;
     if (p->mob_msg_ticks > 0 && --p->mob_msg_ticks == 0) p->mob_msg = MOB_USE_NOTHING;
+    if (p->food_msg_ticks > 0 && --p->food_msg_ticks == 0) p->food_msg = FOOD_NOTHING;
 
     // --- The inventory screen ----------------------------------------
     //
@@ -175,6 +215,12 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         p->body.vz = 0.0f;
         phys_move(&p->body, 0.0, (double)p->body.vy, 0.0);
         phys_gravity(&p->body, PL_GRAVITY, PL_DRAG, PL_TERMINAL);
+        // ... and land on it, and starve over it. Nothing moved
+        // horizontally, so this tick costs no exhaustion.
+        survival(p, 0.0f,
+                 block_liquid(world_block((int32_t)floor(p->body.x), (int32_t)floor(p->body.y + PL_WADE_Y),
+                                          (int32_t)floor(p->body.z))),
+                 false);
         if (item_entity_tick(&p->inv, p->body.x, p->body.y, p->body.z) > 0) sfx_play(SFX_PICKUP);
         p->aim_valid = false;
         return;
@@ -277,8 +323,11 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         // goes up, sneak goes down; let go and you sink slowly.
         if (act_held(mask, SM_JUMP)) p->body.vy += PL_SWIM_UP;
         else if (p->sneaking) p->body.vy -= PL_SWIM_UP;
-    } else if (act_held(mask, SM_JUMP) && p->body.on_ground) {
+    }
+    bool jumped = false;
+    if (!in_water && act_held(mask, SM_JUMP) && p->body.on_ground) {
         p->body.vy = PL_JUMP;
+        jumped     = true;  // a take-off costs exhaustion (game/food.h)
     }
 
     p->in_air_last = !p->body.on_ground;
@@ -296,6 +345,16 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         phys_gravity(&p->body, PL_WATER_GRAV, PL_WATER_DRAG, PL_WATER_TERM);
     } else {
         phys_gravity(&p->body, PL_GRAVITY, PL_DRAG, PL_TERMINAL);
+    }
+
+    // THE FALL AND THE HUNGER LOOP, as soon as the body has settled and
+    // before anything below can return early -- a swing at iron with a
+    // wooden pickaxe does (the needs_tool branch), and a tick that
+    // skipped the landing would be a free fall for anyone holding the
+    // break key on the way down.
+    {
+        double const mx = p->body.x - p->prev_x, mz = p->body.z - p->prev_z;
+        survival(p, sqrtf((float)(mx * mx + mz * mz)), in_water, jumped);
     }
 
     // --- The hotbar ---------------------------------------------------
@@ -380,8 +439,11 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
             if (r.ok) {
                 trace_edit('B', p->aim.x, p->aim.y, p->aim.z, block_def(aimed)->name, r.felled);
                 // One use per BREAK, not per felled block: a tree is
-                // one swing of the axe, not forty.
+                // one swing of the axe, not forty. The same goes for
+                // what it costs the player to swing (game/food.h):
+                // felling a tree is one blow, not a canopy's worth.
                 inv_wear_held(&p->inv, 1);
+                food_exhaust(&p->food, FOOD_EXHAUST_MINE);
                 // A whole tree coming down is a different sound from one
                 // block breaking, and it should be: the rule that made it
                 // fall is the game's one deliberate departure from
@@ -496,6 +558,48 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                 used_creature = true;
             }
         }
+        // --- EATING, which is a tap ----------------------------------
+        //
+        // A BLOCK WITH A SCREEN BEHIND IT WINS. Walking up to your own
+        // chest holding a pizza and having the pizza eaten instead of
+        // the chest opened is exactly the trap Minecraft avoids by the
+        // same rule, and the cost of getting it wrong is a meal.
+        //
+        // Everything else loses to food: a dish is not a block, not a
+        // bucket and not a seed, so there is nothing below this that
+        // could also want the key.
+        bool const at_screen = p->aim_valid && block_usable(p->aim.block);
+        if (!used_creature && !at_screen && food_is_food(held)) {
+            food_eat_t const fe = food_eat(&p->food, held);
+            if (fe.ate) {
+                // THE PAIL COMES BACK when milk is drunk, swapped in
+                // place -- a bucket does not stack, so there is exactly
+                // one of them here and no second slot to find. This is
+                // the bucket's own rule (interact.c) reached through
+                // food_leftover(), which is a table and not a case.
+                if (fe.leftover != 0) {
+                    inv_slot_t* sl = inv_held(&p->inv);
+                    sl->item       = fe.leftover;
+                    sl->count      = 1;
+                    sl->wear       = 0;
+                    inv_mark_seen(&p->inv, fe.leftover);
+                } else {
+                    inv_consume_held(&p->inv);
+                }
+                p->food_msg       = FOOD_NOTHING;
+                p->food_msg_ticks = 0;
+                sfx_play(SFX_PICKUP);
+            } else if (fe.full) {
+                // A REFUSAL THAT SAYS WHY. Eating with full drumsticks
+                // looks exactly like a key that did not register, and
+                // the player's next move is to press it again.
+                p->use_msg       = USE_NOT_HUNGRY;
+                p->use_msg_ticks = USE_MSG_TICKS;
+                sfx_play(SFX_DENY);
+            }
+            used_creature = true;  // the meal has answered
+        }
+
         if (!used_creature) {
             // THE HELD ITEM GETS FIRST REFUSAL, and it gets it before the
             // crosshair is consulted at all -- a bucket casts its own ray,
@@ -548,12 +652,13 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                         trace_edit('P', p->aim.px, p->aim.py, p->aim.pz, block_def(block)->name, 1);
                         inv_consume_held(&p->inv);
                         sfx_play_place(block);
-                    } else if (block == BLK_BED_FOOT) {
-                        // A BED WANTS TWO CELLS and this spot had one.
-                        // Every other placement that fails is obvious --
-                        // the cell is full, or you are standing in it --
-                        // but half a bed's worth of room looks exactly
-                        // like enough.
+                    } else if (block == BLK_BED_FOOT || block == BLK_STOVE) {
+                        // A BED WANTS TWO CELLS and this spot had one,
+                        // and so does a stove -- its chest goes down
+                        // beside it (D-110). Every other placement that
+                        // fails is obvious -- the cell is full, or you
+                        // are standing in it -- but half a bed's worth
+                        // of room looks exactly like enough.
                         p->use_msg       = USE_NO_ROOM;
                         p->use_msg_ticks = USE_MSG_TICKS;
                         sfx_play(SFX_DENY);

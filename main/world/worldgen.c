@@ -466,6 +466,53 @@ static void stamp(chunk_t* c, int32_t wx, int y, int32_t wz, uint8_t block, bool
     c->st[i] = 0;
 }
 
+// A cell of a tree, handed to whoever is writing it.
+static void stamp_cell(void* ctx, int32_t wx, int y, int32_t wz, uint8_t block, bool overwrite) {
+    stamp((chunk_t*)ctx, wx, y, wz, block, overwrite);
+}
+
+int worldgen_tree_height(int32_t wx, int32_t wz, uint32_t seed) {
+    return TREE_MIN_H + (int)(sm_rand2(wx + 1, wz - 1, seed ^ S_TREE) * (TREE_MAX_H - TREE_MIN_H + 1));
+}
+
+// THE SHAPE OF A TREE, and the only copy of it.
+//
+// It is emitted cell by cell rather than written, because there are two
+// writers and they could not be less alike: the GENERATOR stamps into
+// one chunk's arrays on the core-1 worker and silently drops whatever
+// falls outside (a tree at a chunk border is written twice, once by
+// each side, and that is what makes it seamless); a SAPLING grows
+// through world_set on the main task, so the lighting, the mesher and
+// the save all hear about it.
+//
+// Two writers and one shape. The alternative was a second copy of the
+// canopy loop in world/tree.c, which would have been right for exactly
+// as long as nobody touched either.
+void worldgen_tree_shape(int32_t wx, int sy, int32_t wz, int h, uint8_t log, uint8_t leaf, uint32_t seed,
+                         worldgen_cell_fn emit, void* ctx) {
+    int const top = sy + h;
+    if (top + 2 >= CH_H) return;
+
+    // Canopy first, trunk after, so the trunk wins where they meet.
+    for (int dy = -2; dy <= 1; dy++) {
+        int const y = top + dy;
+        int const r = (dy <= -1) ? 2 : 1;
+        for (int dz = -r; dz <= r; dz++) {
+            for (int dx = -r; dx <= r; dx++) {
+                // Clip the corners of the widest layers, so the canopy
+                // is round rather than a slab.
+                if (r == 2 && dx * dx + dz * dz > 5) continue;
+                if (r == 2 && dx * dx + dz * dz == 5 && sm_rand3(wx + dx, y, wz + dz, seed ^ S_TREE) < 0.45f) continue;
+                emit(ctx, wx + dx, y, wz + dz, leaf, false);
+            }
+        }
+    }
+    for (int y = sy; y < top; y++) emit(ctx, wx, y, wz, log, true);
+    // Dirt under the trunk: a tree on a single grass block looks wrong
+    // once the grass is gone.
+    emit(ctx, wx, sy - 1, wz, BLK_DIRT, true);
+}
+
 // One tree, rooted at (wx, wz). Called for every candidate in the 3 x 3
 // neighbourhood; stamp() drops whatever lands outside this chunk.
 static void place_tree(chunk_t* c, int32_t wx, int32_t wz, uint32_t seed) {
@@ -482,28 +529,8 @@ static void place_tree(chunk_t* c, int32_t wx, int32_t wz, uint32_t seed) {
     if (sy <= CH_SEA_LEVEL + 1) return;  // no trees on the beach or in the water
     if (sy >= (int)bd->rock_above) return;  // nor above the treeline
 
-    int const h = TREE_MIN_H + (int)(sm_rand2(wx + 1, wz - 1, seed ^ S_TREE) * (TREE_MAX_H - TREE_MIN_H + 1));
-    int const top = sy + h;
-    if (top + 2 >= CH_H) return;
-
-    // Canopy first, trunk after, so the trunk wins where they meet.
-    for (int dy = -2; dy <= 1; dy++) {
-        int const   y = top + dy;
-        int const   r = (dy <= -1) ? 2 : 1;
-        for (int dz = -r; dz <= r; dz++) {
-            for (int dx = -r; dx <= r; dx++) {
-                // Clip the corners of the widest layers, so the canopy
-                // is round rather than a slab.
-                if (r == 2 && dx * dx + dz * dz > 5) continue;
-                if (r == 2 && dx * dx + dz * dz == 5 && sm_rand3(wx + dx, y, wz + dz, seed ^ S_TREE) < 0.45f) continue;
-                stamp(c, wx + dx, y, wz + dz, bd->leaf_block, false);
-            }
-        }
-    }
-    for (int y = sy; y < top; y++) stamp(c, wx, y, wz, bd->log_block, true);
-    // Dirt under the trunk: a tree on a single grass block looks wrong
-    // once the grass is gone.
-    stamp(c, wx, sy - 1, wz, BLK_DIRT, true);
+    worldgen_tree_shape(wx, sy, wz, worldgen_tree_height(wx, wz, seed), bd->log_block, bd->leaf_block, seed,
+                        stamp_cell, c);
 }
 
 // A plant that stands more than one block: the cactus, so far. Placed

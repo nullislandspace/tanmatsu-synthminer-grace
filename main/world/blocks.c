@@ -466,6 +466,77 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                       .tool     = TOOL_AXE,
                       .sound    = SND_SOFT,
                       .flags2   = BF2_USABLE},
+
+    // --- The kitchen stove and its chest (step 11, D-105, D-110) ------
+    //
+    // Two blocks, ONE item, and the item is the stove: the chest half
+    // is placed with it and drops nothing of its own, the way the head
+    // of a bed does. Both are usable -- walking up to the chest end of
+    // your own kitchen and finding it inert would be a puzzle with no
+    // answer.
+    //
+    // The chest half really is a chest: the same record kind, the same
+    // twenty-seven slots, the same screen. What makes it the STOVE's
+    // chest is the facing in its state byte, and nothing else.
+    // NO TOOL LEVEL, which the furnace has and this deliberately does
+    // not. A pair breaks as ONE thing, so whichever half is swung at
+    // takes both -- and the two halves want different tools: stone
+    // wants a pickaxe and a chest wants an axe. A level on either would
+    // mean that breaking the kitchen from the wrong end destroyed a
+    // stove and dropped nothing, at a price of 3 iron, 6 stone and 8
+    // planks. A pickaxe is still FASTER; it is simply not a permission
+    // slip.
+    [BLK_STOVE] = {.name     = "stove", .drop_item = BLK_STOVE, .drop_min = 1, .drop_max = 1,
+                   .kind     = K_CUBE,
+                   .mat      = M3(VM_STOVE_TOP, VM_STOVE_FRONT, VM_STOVE_TOP),
+                   .hardness = 180,
+                   .tool     = TOOL_PICK,
+                   .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_STONE,
+                   .flags2   = BF2_USABLE | BF2_RECORD},
+
+    [BLK_STOVE_CHEST] = {.name     = "stove_chest",
+                         .kind     = K_CUBE,
+                         .mat      = M3(VM_CHEST_TOP, VM_CHEST_SIDE, VM_CHEST_TOP),
+                         .hardness = 50,
+                         .tool     = TOOL_AXE,
+                         .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_WOOD,
+                         .flags2   = BF2_USABLE | BF2_RECORD},
+
+    // --- The saplings (world/tree.h) ----------------------------------
+    //
+    // A CROP, as far as everything that grows is concerned: BF_CROP,
+    // four stages in the state byte, the chunk's slow clock, and
+    // grow_ticks a stage. What it does at the last stage is the only
+    // thing about it that is not a crop, and that lives in a table in
+    // tree.c rather than in a flag here.
+    //
+    // ONE IN-GAME DAY, which is wheat's: three stages of
+    // CROP_TICKS_DAY. Twenty minutes is already a long time to look at
+    // a twig, and wood is wanted by the stack.
+    //
+    // seed_item is ITSELF -- a sapling plants a sapling, the way a
+    // potato plants a potato -- and it drops itself whole at any stage,
+    // so pulling one up by mistake costs the time and not the seedling.
+    [BLK_SAPLING_OAK] = {.name       = "sapling_oak", .drop_item = BLK_SAPLING_OAK, .drop_min = 1, .drop_max = 1,
+                         .kind       = K_PLANT,
+                         .mat        = M1(VM_SAPLING_OAK_0),
+                         .hardness   = 1,
+                         .flags      = BF_REPLACEABLE | BF_CROP,
+                         .growth_max = 3,
+                         .seed_item  = BLK_SAPLING_OAK,
+                         .grow_ticks = CROP_TICKS_DAY,
+                         .sound      = SND_SOFT},
+
+    [BLK_SAPLING_BIRCH] = {.name       = "sapling_birch", .drop_item = BLK_SAPLING_BIRCH, .drop_min = 1,
+                           .drop_max   = 1,
+                           .kind       = K_PLANT,
+                           .mat        = M1(VM_SAPLING_BIRCH_0),
+                           .hardness   = 1,
+                           .flags      = BF_REPLACEABLE | BF_CROP,
+                           .growth_max = 3,
+                           .seed_item  = BLK_SAPLING_BIRCH,
+                           .grow_ticks = CROP_TICKS_DAY,
+                           .sound      = SND_SOFT},
 };
 
 // Which kind of record each block keeps. A function rather than a
@@ -480,6 +551,11 @@ uint8_t block_record_kind(uint8_t id) {
         case BLK_COMPOSTER: return BE_COMPOST;
         case BLK_CHEESE_MAKER: return BE_CHEESE;
         case BLK_SAUSAGE_MAKER: return BE_SAUSAGE;
+        case BLK_STOVE: return BE_STOVE;
+        // The stove's own chest is a CHEST, with the same record and the
+        // same screen. Only the facing in its state byte says whose it
+        // is (D-110).
+        case BLK_STOVE_CHEST: return BE_CHEST;
         default: return BE_NONE;
     }
 }

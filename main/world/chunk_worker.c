@@ -93,6 +93,10 @@ typedef struct {
 } result_t;
 
 static uint32_t s_seed;
+
+uint32_t chunk_worker_seed(void) {
+    return s_seed;
+}
 static int32_t  s_farlands_x = FARLANDS_X_DEFAULT;
 // Generation time, ordinary chunks [0] and Far Lands [1], since boot.
 // Written by the worker, read by the stats log: a torn read costs one

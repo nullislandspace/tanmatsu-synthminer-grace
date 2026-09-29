@@ -164,6 +164,9 @@ void player_state_defaults(player_state_t* p, world_meta_t const* meta) {
     p->pitch       = 0.0f;
     p->health      = 20;
     p->hunger      = 20;
+    // A new player has full drumsticks and NO reserve behind them,
+    // which is Minecraft's own starting state (game/food.c).
+    p->saturation  = 0;
     p->has_bed     = false;
     p->time_of_day = 0;
     p->placed      = false;
@@ -350,6 +353,7 @@ static void write_player(NbtWriter* w, player_state_t const* p) {
     nbt_write_double(w, "pitch", (double)p->pitch);
     nbt_write_int32(w, "health", p->health);
     nbt_write_int32(w, "hunger", p->hunger);
+    nbt_write_int32(w, "saturation", p->saturation);
     nbt_write_int32(w, "has_bed", p->has_bed ? 1 : 0);
     nbt_write_int32(w, "bed_x", p->bed_x);
     nbt_write_int32(w, "bed_y", p->bed_y);
@@ -377,6 +381,10 @@ static void read_player(NbtReader* r, player_state_t* p) {
             int32_t const v = nbt_read_int32(r);
             if (strcmp(name, "health") == 0) p->health = v;
             else if (strcmp(name, "hunger") == 0) p->hunger = v;
+            // A save from before step 11 has no reserve in it and reads
+            // as zero, which is exactly right: full drumsticks and
+            // nothing behind them.
+            else if (strcmp(name, "saturation") == 0) p->saturation = v;
             else if (strcmp(name, "has_bed") == 0) p->has_bed = v != 0;
             else if (strcmp(name, "bed_x") == 0) p->bed_x = v;
             else if (strcmp(name, "bed_y") == 0) p->bed_y = v;

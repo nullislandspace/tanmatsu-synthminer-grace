@@ -310,6 +310,18 @@ item.fishing_rod = Fishing rod
 item.sardine = Sardine
 item.salmon = Salmon
 item.shrimp = Shrimp
+# The eleven dishes off the kitchen stove
+item.baked_potato = Baked potato
+item.grilled_tomatoes = Grilled tomatoes
+item.baked_beans = Baked beans
+item.bread = Bread
+item.rice_patty = Rice patty
+item.smoked_salmon = Smoked salmon
+item.grilled_shrimp = Grilled shrimp
+item.sashimi = Sashimi
+item.pork_and_beans = Pork and beans
+item.steak_and_potatoes = Steak and potatoes
+item.pizza = Pizza
 # Tilled soil, wet or dry: one name for both, since it is one thing
 item.farmland = Farmland
 item.composter = Composter
@@ -319,6 +331,11 @@ item.fence = Fence
 item.fence_gate = Fence gate
 # One name for both halves of the bed
 item.bed_foot = Bed
+# One name for the stove and the chest it comes with: it is one item
+item.stove = Kitchen stove
+# The seedlings a felled tree leaves, one kind per species
+item.sapling_oak = Oak sapling
+item.sapling_birch = Birch sapling
 # The growing plants, which are blocks rather than things you carry
 item.wheat_crop = Wheat plant
 item.potato_crop = Potato plant
@@ -406,6 +423,9 @@ farm.too_dry = Too dry to plant
 farm.needs_soil = Plant this in tilled soil
 # Rice, which goes in shallow water standing on sand
 farm.needs_water = Plant rice in water one block deep, on sand
+# Said when a sapling is used on anything but bare grass or dirt. It is
+# the one seed that does not want a tilled field
+farm.needs_ground = Plant a sapling on grass or dirt
 # Said when compost is used on a plant that is already ripe
 farm.already_ripe = It is ripe already
 
@@ -452,6 +472,14 @@ maker.working = making it, %d%%
 maker.no_input = nothing in it that goes together
 maker.full = the output is full
 maker.took = Took %d %s
+# The first row of the slot picker: takes back what is in that slot
+maker.take_out = - take it out -
+# Said when something is in it and it is one ingredient short.
+# %d is how many more, %s is what
+maker.missing = Needs %d %s
+# ... and when either of two things would do. %1$s is the line so far,
+# %2$s the other thing that would work
+maker.or = %s or %s
 maker.pick_input = What to put in
 maker.pick_none = Nothing here goes in one of these
 maker.pick_hint = enter chooses   esc goes back
@@ -459,6 +487,48 @@ maker.a_day = one cheese a day
 maker.a_minute = one sausage a minute
 # Said when a bucket of milk goes in and the empty pail comes back
 maker.bucket_back = The bucket comes straight back
+
+# --- The kitchen stove ------------------------------------------------------
+stove.title = Kitchen stove
+# The three rows: which dish it is set to, what burns, and what is ready
+stove.dish = Dish
+stove.fuel = Fuel
+stove.output = Output
+stove.empty = - empty -
+# The dish row, before anything has been chosen
+stove.none = - choose one -
+# a slot with something in it: %d how many, %s what
+stove.slot = %d %s
+stove.hint = enter chooses or takes out   esc closes
+# %d is how far through the current dish it is, 0 to 100
+stove.cooking = cooking, %d%%
+stove.no_pick = choose a dish to cook
+# The chest it came with has been broken, or is not loaded yet
+stove.no_chest = no chest beside it
+# What the chest is short of: %d how many more, %s what
+stove.missing = the chest is short of %d %s
+stove.no_fuel = nothing to burn
+stove.full = the output is full
+stove.took = Took %d %s
+stove.pick_title = What to cook
+stove.pick_hint = enter chooses   esc goes back
+stove.pick_fuel = What to burn
+stove.pick_none_fuel = Nothing here burns
+# Under the dish being chosen: what it takes, and what it is worth
+stove.needs = %d %s
+stove.feeds = %d hunger, %d in reserve
+# Said on the dish row, so the chest is never a mystery
+stove.from_chest = it cooks out of the chest beside it
+
+# --- Hunger -----------------------------------------------------------------
+# Said when food is used on a player whose hunger is already full
+food.not_hungry = You are not hungry
+# ... when an empty stomach starts taking health
+food.starving = You are starving
+# ... and when the last of the health goes, however it went
+food.died = You died
+# Said when the player wakes up again, which is at their bed or at spawn
+food.respawn = You wake up with half your strength
 
 # --- Fishing ----------------------------------------------------------------
 # Said when the line goes out, which costs one worm

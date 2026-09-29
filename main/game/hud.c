@@ -436,15 +436,25 @@ void hud_player(pax_buf_t* fb, player_t const* p) {
     // Health and hunger, above the hotbar: hearts from the left, food
     // from the right, as everyone expects them.
     int const row_y = BAR_Y - 16;
-    for (int i = 0; i < PL_HEALTH_MAX / 2; i++) {
-        bool const full = p->health >= (i + 1) * 2;
-        bool const half = !full && p->health == i * 2 + 1;
+    for (int i = 0; i < FOOD_HEALTH_MAX / 2; i++) {
+        bool const full = p->food.health >= (i + 1) * 2;
+        bool const half = !full && p->food.health == i * 2 + 1;
         heart(fb, x0 + i * 12, row_y, full ? 0xFFE03030u : half ? 0xFF803030u : 0xFF404040u);
     }
-    for (int i = 0; i < PL_HUNGER_MAX / 2; i++) {
-        bool const full = p->hunger >= (i + 1) * 2;
-        drumstick(fb, x0 + total - 11 - i * 12, row_y, full ? 0xFFC08030u : 0xFF404040u);
+    for (int i = 0; i < FOOD_HUNGER_MAX / 2; i++) {
+        bool const full = p->food.hunger >= (i + 1) * 2;
+        bool const half = !full && p->food.hunger == i * 2 + 1;
+        // HALF A DRUMSTICK, which the hearts have had since step 4.3 and
+        // these did not -- because nothing moved them, so an odd number
+        // was not a state that existed. It is now: one point of hunger
+        // at a time is exactly how the bar goes down.
+        drumstick(fb, x0 + total - 11 - i * 12, row_y, full ? 0xFFC08030u : half ? 0xFF6C4A20u : 0xFF404040u);
     }
+    // SATURATION IS NOT DRAWN, which is Minecraft's choice and the right
+    // one: it is the reserve that makes a good meal last, and a player
+    // who can see it starts playing the number instead of the game.
+    // What it does is visible -- the drumsticks do not move while it
+    // lasts.
 
     // SNEAKING IS A TOGGLE (game/player.h), and the thing a toggle has
     // to do that a held key never has to is say it is still on. The

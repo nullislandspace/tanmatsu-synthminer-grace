@@ -59,6 +59,12 @@ typedef enum {
     // the sausage -- so they share a module and a screen.
     BE_CHEESE,
     BE_SAUSAGE,
+    // The kitchen stove (game/stove.h). Two slots of its own -- fuel
+    // and output -- and its INGREDIENTS are in the chest beside it,
+    // which is an ordinary BE_CHEST record found through the facing in
+    // the stove's state byte (D-110). So the stove is the first record
+    // here that reads another one.
+    BE_STOVE,
 } be_kind_t;
 
 typedef struct {
@@ -72,9 +78,22 @@ typedef struct {
     // a furnace in a chunk nobody has visited costs nothing at all.
     uint32_t   stamp;
 
-    uint16_t   burn_left;  // furnace: ticks of fuel still alight
+    uint16_t   burn_left;  // furnace and stove: ticks of fuel still alight
     uint16_t   burn_max;   // ... and what it started at, for the flame
-    uint16_t   cook;       // furnace: ticks into the item being smelted
+    uint16_t   cook;       // furnace and stove: ticks into the thing being made
+
+    // THE STOVE'S RECIPE SELECTOR, as the OUTPUT ITEM of the chosen
+    // dish (0 for "nothing chosen yet"). The user's design has a stove
+    // pick what it is cooking rather than infer it, because a chest
+    // full of a farm's produce fits a dozen recipes at once and
+    // guessing which one is wanted is not a thing a machine can do.
+    //
+    // An item id and NOT a recipe index, for the reason every save in
+    // this game keys on names: a recipe inserted in the middle of the
+    // table would silently repoint every stove in the world. The save
+    // writes the item's name and reads it back the same way
+    // (blockent.c), so even renumbering the items is safe.
+    uint16_t   pick;
 } blockent_t;
 
 // The slots a furnace uses, by name. A chest uses all BE_SLOTS.
@@ -100,6 +119,12 @@ typedef struct {
 #define BE_MAKER_IN_B  1
 #define BE_MAKER_OUT   2
 #define BE_MAKER_EXTRA 3
+
+// AND THE STOVE'S TWO. There is no input slot: what goes in is whatever
+// is in the chest beside it, which is the whole of the user's idea
+// (D-105). A stove is therefore the cheapest record in the pool.
+#define BE_STOVE_FUEL 0
+#define BE_STOVE_OUT  1
 
 // Take the pool (once, at world open) and give it back. Safe to call
 // twice either way.

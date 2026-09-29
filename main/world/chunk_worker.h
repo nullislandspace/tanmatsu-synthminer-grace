@@ -48,6 +48,12 @@ void chunk_worker_stop(void);
 // drain, clear the store, then set this.
 void chunk_worker_set_world(uint32_t seed, int32_t farlands_x);
 
+// The world's seed, for anything that has to make the same decision the
+// generator would have made -- a sapling growing the tree its spot
+// would have grown (world/tree.h). It lives here because this is what
+// owns it; mob_populate_chunk has read it the same way since step 10.
+uint32_t chunk_worker_seed(void);
+
 // How many chunks the worker has generated since boot, and the time it
 // took, ordinary and Far Lands apart (the badge only; 0 on the host).
 void chunk_worker_gen_stats(int* n_ord, int64_t* us_ord, int* n_far, int64_t* us_far);

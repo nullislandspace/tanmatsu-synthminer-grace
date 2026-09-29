@@ -8,6 +8,7 @@
 #include "items/item_entity.h"
 #include "world/blockent.h"
 #include "world/chunk.h"
+#include "world/tree.h"
 #include "world/crops.h"
 #include "world/fluid.h"
 
@@ -82,14 +83,55 @@ static int drop_for(uint8_t block, uint8_t state, int32_t x, int32_t y, int32_t 
     return item_entity_spawn(x, y, z, d->drop_item, n, 0);
 }
 
+// Spill what a block was holding onto the ground and forget the record.
+// Hoisted out of interact_break the day a second cell had to be emptied
+// in the same swing: a stove and its chest are one thing to break and
+// two records to give back (D-110).
+static void empty_record(int32_t x, int32_t y, int32_t z) {
+    blockent_t* be = blockent_at(x, y, z);
+    if (be == NULL) return;
+    for (int i = 0; i < BE_SLOTS; i++) {
+        inv_slot_t const* sl = &be->slot[i];
+        if (sl->item != 0 && sl->count > 0) item_entity_spawn(x, y, z, sl->item, sl->count, sl->wear);
+    }
+    blockent_remove(x, y, z);
+}
+
+// Is the cell (x, y, z) inside `avoid`? A helper rather than eight
+// lines in place, because a stove puts down TWO cells and both of them
+// have to miss the player (D-110).
+static bool inside_body(phys_body_t const* avoid, int32_t x, int32_t y, int32_t z) {
+    if (avoid == NULL) return false;
+    double const hw = (double)avoid->w * 0.5;
+    double const x0 = avoid->x - hw, x1 = avoid->x + hw;
+    double const y0 = avoid->y, y1 = avoid->y + (double)avoid->h;
+    double const z0 = avoid->z - hw, z1 = avoid->z + hw;
+    return fl(x0) <= x && x <= fl(x1) && fl(y0) <= y && y <= fl(y1 - 1e-9) && fl(z0) <= z && z <= fl(z1);
+}
+
+bool interact_stove_other(int32_t x, int32_t y, int32_t z, int32_t* ox, int32_t* oy, int32_t* oz) {
+    uint8_t const b = world_block(x, y, z);
+    if (b != BLK_STOVE && b != BLK_STOVE_CHEST) return false;
+    // EACH HALF'S FACING POINTS AT THE OTHER -- the stove's at its
+    // chest, the chest's back at its stove (interact_place_dir writes
+    // the opposite into the second cell). So there is no sign to get
+    // right here, unlike the bed, where both halves carry the SAME
+    // facing and the head has to step backwards along it.
+    uint8_t const face = (uint8_t)(st_data(world_state(x, y, z)) & 0x03u);
+    if (ox != NULL) *ox = x + face_step_x(face);
+    if (oy != NULL) *oy = y;
+    if (oz != NULL) *oz = z + face_step_z(face);
+    return true;
+}
+
 bool interact_bed_other(int32_t x, int32_t y, int32_t z, int32_t* ox, int32_t* oy, int32_t* oz) {
     uint8_t const b = world_block(x, y, z);
     if (b != BLK_BED_FOOT && b != BLK_BED_HEAD) return false;
     uint8_t const face = (uint8_t)(st_data(world_state(x, y, z)) & 0x03u);
     int const     s    = b == BLK_BED_FOOT ? 1 : -1;  // foot -> head, or back
-    if (ox != NULL) *ox = x + s * bed_step_x(face);
+    if (ox != NULL) *ox = x + s * face_step_x(face);
     if (oy != NULL) *oy = y;
-    if (oz != NULL) *oz = z + s * bed_step_z(face);
+    if (oz != NULL) *oz = z + s * face_step_z(face);
     return true;
 }
 
@@ -191,21 +233,29 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
         r.felled    = interact_fell(x, y, z);
         r.was_tree  = true;
         r.ok        = true;
-        r.dropped   = item_entity_live() - before;
+
+        // ONE OR TWO SEEDLINGS PER TREE (the user, 2026-09-29), which
+        // is what makes wood renewable -- there is no recipe anywhere
+        // that makes a log, so a cleared forest was cleared for good.
+        //
+        // PER TREE, not per block. A fell is one swing of the axe and
+        // forty blocks, and forty saplings off one oak would make the
+        // first tree the last one anybody ever had to plant. Rolled
+        // from the world's own hash like the composter's worms, so a
+        // replay reproduces a woodpile (Part T), and OF THE SPECIES
+        // FELLED -- a birch wood grows back birch.
+        uint8_t const sapling = tree_sapling_for(b);
+        if (sapling != BLK_AIR) {
+            item_entity_spawn(x, y, z, sapling, tree_drops_at(x, y, z), 0);
+        }
+        r.dropped = item_entity_live() - before;
         return r;
     }
 
     // A container gives back what is in it BEFORE it stops existing.
     // Breaking a furnace full of iron and getting an empty furnace is
     // the sort of loss a player never forgives and cannot undo.
-    blockent_t* be = blockent_at(x, y, z);
-    if (be != NULL) {
-        for (int i = 0; i < BE_SLOTS; i++) {
-            inv_slot_t const* sl = &be->slot[i];
-            if (sl->item != 0 && sl->count > 0) item_entity_spawn(x, y, z, sl->item, sl->count, sl->wear);
-        }
-        blockent_remove(x, y, z);
-    }
+    empty_record(x, y, z);
 
     uint8_t const st = world_state(x, y, z);
     world_set(x, y, z, BLK_AIR, 0);
@@ -240,7 +290,7 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
     if (b == BLK_BED_FOOT || b == BLK_BED_HEAD) {
         uint8_t const face = (uint8_t)(st_data(st) & 0x03u);
         int const     s    = b == BLK_BED_FOOT ? 1 : -1;
-        int32_t const bx = x + s * bed_step_x(face), bz = z + s * bed_step_z(face);
+        int32_t const bx = x + s * face_step_x(face), bz = z + s * face_step_z(face);
         uint8_t const other = world_block(bx, y, bz);
         // A half whose partner is missing simply finds something else
         // there, which is what makes this safe at a chunk border.
@@ -248,6 +298,32 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
             uint8_t const ost = world_state(bx, y, bz);
             world_set(bx, y, bz, BLK_AIR, 0);
             if (other == BLK_BED_FOOT) drop_for(other, ost, bx, y, bz, tool_item);
+            r.felled++;
+        }
+    }
+
+    // AND THE OTHER HALF OF A STOVE, which is the bed's rule again with
+    // one difference that matters: both halves hold THINGS. The chest
+    // has twenty-seven slots of a farm's produce in it and the stove
+    // has fuel and a finished dish, so both are emptied onto the ground
+    // -- and only the STOVE half pays out the item, because the recipe
+    // made one item out of two blocks (D-110).
+    //
+    // That asymmetry is also what makes this safe at a chunk border. If
+    // the partner is not resident, `other` is the barrier or something
+    // else entirely and nothing happens to it: breaking the stove
+    // leaves an orphan chest, breaking the chest leaves an orphan stove
+    // that says "no chest" when it is opened. Neither can duplicate the
+    // item, because only one of the two ever drops it.
+    if (b == BLK_STOVE || b == BLK_STOVE_CHEST) {
+        uint8_t const face = (uint8_t)(st_data(st) & 0x03u);
+        int32_t const sx = x + face_step_x(face), sz = z + face_step_z(face);
+        uint8_t const other = world_block(sx, y, sz);
+        if ((b == BLK_STOVE && other == BLK_STOVE_CHEST) || (b == BLK_STOVE_CHEST && other == BLK_STOVE)) {
+            uint8_t const ost = world_state(sx, y, sz);
+            empty_record(sx, y, sz);
+            world_set(sx, y, sz, BLK_AIR, 0);
+            if (other == BLK_STOVE) drop_for(other, ost, sx, y, sz, tool_item);
             r.felled++;
         }
     }
@@ -323,16 +399,7 @@ bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* 
 
     // Not inside the player. Only matters for solid blocks -- a torch
     // or a flower may share the cell.
-    if (avoid != NULL && block_solid(block)) {
-        double const hw = (double)avoid->w * 0.5;
-        double const x0 = avoid->x - hw, x1 = avoid->x + hw;
-        double const y0 = avoid->y, y1 = avoid->y + (double)avoid->h;
-        double const z0 = avoid->z - hw, z1 = avoid->z + hw;
-        bool const   over_x = fl(x0) <= x && x <= fl(x1);
-        bool const   over_y = fl(y0) <= y && y <= fl(y1 - 1e-9);
-        bool const   over_z = fl(z0) <= z && z <= fl(z1);
-        if (over_x && over_y && over_z) return false;
-    }
+    if (block_solid(block) && inside_body(avoid, x, y, z)) return false;
 
     // --- Which way up does it go, and will it stay there? ------------
     //
@@ -381,16 +448,45 @@ bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* 
     // are facing. If that second cell is not free, or has nothing to
     // stand on, NOTHING is placed -- half a bed is not a thing.
     if (block == BLK_BED_FOOT) {
-        float const   ax   = dx < 0.0f ? -dx : dx, az = dz < 0.0f ? -dz : dz;
-        uint8_t const face = ax > az ? (dx > 0.0f ? BED_FACE_PX : BED_FACE_NX)
-                                     : (dz > 0.0f ? BED_FACE_PZ : BED_FACE_NZ);
-        int32_t const hx = x + bed_step_x(face), hz = z + bed_step_z(face);
+        uint8_t const face = face_from_dir(dx, dz);
+        int32_t const hx = x + face_step_x(face), hz = z + face_step_z(face);
         if (chunk_find(chunk_of(hx), chunk_of(hz)) == NULL) return false;
         if (!block_replaceable(world_block(hx, y, hz))) return false;
         if (!block_solid(world_block(hx, y - 1, hz))) return false;
         state = (uint8_t)(ST_PLACED | (uint8_t)(face << ST_DATA_SHIFT));
         world_set(x, y, z, BLK_BED_FOOT, state);
         world_set(hx, y, hz, BLK_BED_HEAD, state);
+        return true;
+    }
+
+    // A STOVE IS TWO CELLS TOO, and its second one is a CHEST (D-110).
+    // The user's refinement kills the "which chest?" question by making
+    // it unaskable: the recipe includes the chest's eight planks, and
+    // the item puts both down at once.
+    //
+    // ON THE LEFT AS THE PLAYER SEES IT while placing -- their left,
+    // not the world's -- so that a kitchen built by walking along a
+    // wall comes out as `chest stove chest stove` with every pair the
+    // right way round. Each half's facing names the other, so a row of
+    // them needs no untangling (blocks.h, FACE_*).
+    //
+    // ALL OR NOTHING. If the second cell is taken, or the player is
+    // standing in it, or the record pool is full, NOTHING is placed:
+    // half a kitchen is a stove that can never cook.
+    if (block == BLK_STOVE) {
+        uint8_t const face = face_left_of(dx, dz);
+        int32_t const cx = x + face_step_x(face), cz = z + face_step_z(face);
+        if (chunk_find(chunk_of(cx), chunk_of(cz)) == NULL) return false;
+        if (!block_replaceable(world_block(cx, y, cz))) return false;
+        if (inside_body(avoid, cx, y, cz)) return false;
+        if (blockent_add(x, y, z, BE_STOVE) == NULL) return false;
+        if (blockent_add(cx, y, cz, BE_CHEST) == NULL) {
+            blockent_remove(x, y, z);  // the stove's record goes back, or the pool leaks
+            return false;
+        }
+        world_set(x, y, z, BLK_STOVE, (uint8_t)(ST_PLACED | (uint8_t)(face << ST_DATA_SHIFT)));
+        world_set(cx, y, cz, BLK_STOVE_CHEST,
+                  (uint8_t)(ST_PLACED | (uint8_t)(face_opposite(face) << ST_DATA_SHIFT)));
         return true;
     }
 
@@ -451,6 +547,7 @@ use_result_t interact_use_item(double ex, double ey, double ez, float dx, float 
             case PLANT_OK: break;
             case PLANT_TOO_DRY: r.msg = USE_TOO_DRY; return r;
             case PLANT_NEEDS_WATER: r.msg = USE_NEEDS_WATER; return r;
+            case PLANT_NEEDS_GROUND: r.msg = USE_NEEDS_GROUND; return r;
             case PLANT_BLOCKED:
             case PLANT_NEEDS_SOIL:
             case PLANT_NOT_SEED:
@@ -468,9 +565,55 @@ use_result_t interact_use_item(double ex, double ey, double ez, float dx, float 
         return r;
     }
 
-    // --- Compost: one stage, at once ---------------------------------
+    // --- Compost: one stage at once, or a bed of flowers -------------
     if (item == ITEM_COMPOST) {
         uint8_t const at = world_block(h.x, h.y, h.z);
+
+        // ON BARE GRASS IT RAISES A 3 x 3 OF YELLOW FLOWERS (the user,
+        // 2026-09-29: "throwing compost onto the ground should grow a
+        // 3x3 grid of yellow flowers").
+        //
+        // Which makes the second non-renewable thing renewable. A
+        // yellow flower is what a pork sausage needs for its spice, and
+        // until now the only ones in the world were the ones the
+        // generator happened to scatter -- pick the meadow and the
+        // sausage maker stops.
+        //
+        // WHAT IT CAN REACH is every cell of the nine whose ground is
+        // grass and whose air is free; the rest are skipped rather than
+        // refusing the whole thing, so a patch at the edge of a pond
+        // does what it can. It only fails, and says so, when it could
+        // do nothing at all.
+        if (at == BLK_GRASS && h.face == MESH_DIR_PY) {
+            int grown = 0;
+            for (int dz = -1; dz <= 1; dz++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int32_t const fx = h.x + dx, fz = h.z + dz;
+                    if (chunk_find(chunk_of(fx), chunk_of(fz)) == NULL) continue;
+                    if (world_block(fx, h.y, fz) != BLK_GRASS) continue;
+                    if (h.y + 1 >= CH_H) continue;
+                    uint8_t const above = world_block(fx, h.y + 1, fz);
+                    // Air, or the undergrowth a placement would overwrite
+                    // anyway -- but never a flower that is already there,
+                    // which would be a use that looked like it did nothing.
+                    if (above != BLK_AIR && !block_replaceable(above)) continue;
+                    if (above == BLK_FLOWER_YELLOW) continue;
+                    world_set(fx, h.y + 1, fz, BLK_FLOWER_YELLOW, 0);
+                    grown++;
+                }
+            }
+            if (grown == 0) {
+                r.msg = USE_ALREADY_RIPE;  // nine cells and nothing to do in any of them
+                return r;
+            }
+            r.acted   = true;
+            r.consume = true;
+            r.sound   = SND_SOFT;
+            r.block   = BLK_FLOWER_YELLOW;
+            r.x = h.x, r.y = h.y + 1, r.z = h.z;
+            return r;
+        }
+
         if (!block_crop(at)) {
             r.msg = USE_NEEDS_SOIL;
             return r;

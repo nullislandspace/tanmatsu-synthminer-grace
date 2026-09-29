@@ -106,6 +106,14 @@ typedef struct {
     bool    placed;
     int32_t health;
     int32_t hunger;
+    // THE INVISIBLE RESERVE (game/food.h), which is what makes a good
+    // meal last longer than its drumsticks say. Saved because losing it
+    // on every reload would make reloading a way to get hungry.
+    //
+    // EXHAUSTION IS NOT SAVED and should not be: it is worth at most one
+    // drumstick, and a float in a save file for a fifth of a hunger
+    // point is a field to maintain for ever in exchange for nothing.
+    int32_t saturation;
     int32_t bed_x, bed_y, bed_z;
     bool    has_bed;
     // Where the world's clock used to be kept. Read from old saves only,

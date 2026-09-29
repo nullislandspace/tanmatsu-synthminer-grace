@@ -65,6 +65,7 @@
 #include "ui/composter_ui.h"
 #include "fred/beast.h"
 #include "ui/maker_ui.h"
+#include "ui/stove_ui.h"
 #include "ui/furnace_ui.h"
 #include "se_stream.h"
 #include "ui/menu.h"
@@ -1129,8 +1130,10 @@ static bool enter_world(int slot, bool create, char const* name, uint32_t seed) 
     // WHO THEY WERE. Health, hunger and what they carry come back from
     // the save; a player with nothing saved gets the starting kit.
     player_reset(&s_player);
-    s_player.health = s_saved.health;
-    s_player.hunger = s_saved.hunger;
+    food_reset(&s_player.food);
+    s_player.food.health     = s_saved.health;
+    s_player.food.hunger     = s_saved.hunger;
+    s_player.food.saturation = s_saved.saturation;
     if (s_saved.has_inv) {
         memcpy(s_player.inv.slot, s_saved.inv, sizeof(s_player.inv.slot));
         memcpy(s_player.inv.seen, s_saved.seen, sizeof(s_player.inv.seen));
@@ -1474,8 +1477,9 @@ static void save_world_state(void) {
         s_saved.yaw   = s_player.yaw;
         s_saved.pitch = s_player.pitch;
     }
-    s_saved.health = s_player.health;
-    s_saved.hunger = s_player.hunger;
+    s_saved.health     = s_player.food.health;
+    s_saved.hunger     = s_player.food.hunger;
+    s_saved.saturation = s_player.food.saturation;
     // Only once they have stood somewhere real: saving during the
     // entering freeze must not turn the spawn guess into a position.
     s_saved.placed = s_saved.placed || s_player_ready;
@@ -1609,6 +1613,36 @@ static void saving_step(void) {
 static void hud_say(char const* text) {
     snprintf(s_shot_msg, sizeof(s_shot_msg), "%s", text != NULL ? text : "");
     s_shot_msg_until = showtime_now() + 2.5;
+}
+
+// WHERE THE PLAYER COMES BACK TO: the bed they last slept in, or the
+// column the world was created around. The same pair the compass calls
+// HOME (render()), because they are the same answer to the same
+// question and two of them would eventually disagree.
+static void home_column(double* x, double* z) {
+    *x = (double)(s_saved.has_bed ? s_saved.bed_x : s_meta.spawn_x) + 0.5;
+    *z = (double)(s_saved.has_bed ? s_saved.bed_z : s_meta.spawn_z) + 0.5;
+}
+
+// DEATH, which fall damage and starvation made reachable in step 11.
+// The design has said since day one what it does (Part A): you wake up
+// at your spawn WITH HALF YOUR HEALTH and you keep what you were
+// carrying -- this game does not scatter an inventory on the ground and
+// never will, which is the user's call from D-08.
+//
+// HUNGER GOES BACK TO FULL, which the design does not say and which the
+// one obvious alternative makes necessary: waking up starving is waking
+// up two seconds from dying again, and a death loop is not a penalty,
+// it is a bug with a story.
+static void player_died(void) {
+    trace_note("X died at %.1f %.1f %.1f", s_player.body.x, s_player.body.y, s_player.body.z);
+    double hx, hz;
+    home_column(&hx, &hz);
+    player_spawn(&s_player, hx, hz, s_player.yaw);
+    food_reset(&s_player.food);
+    s_player.food.health = FOOD_HEALTH_MAX / 2;
+    hud_say(T(SM_STR_FOOD_RESPAWN));
+    sfx_play(SFX_DENY);
 }
 
 static void use_bed(int32_t x, int32_t y, int32_t z) {
@@ -1914,10 +1948,11 @@ static void on_update(float dt, void* user) {
     // The cheese maker and the sausage maker: the same trick again, a
     // day and a minute (game/maker.h).
     if (maker_ui_active()) maker_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
+    if (stove_ui_active()) stove_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
     if (bench_ui_active()) bench_ui_update(&s_player.inv);
     if (cheat_ui_active()) cheat_ui_update(&s_player.inv);
     s_player.ui_open = craft_ui_active() || furnace_ui_active() || chest_ui_active() || bench_ui_active() ||
-                       cheat_ui_active() || composter_ui_active() || maker_ui_active();
+                       cheat_ui_active() || composter_ui_active() || maker_ui_active() || stove_ui_active();
 
     // The menus. Whatever changes the world or the game's running state
     // comes back as a command and is acted on here, in one place.
@@ -2067,6 +2102,11 @@ static void on_update(float dt, void* user) {
             sm_audio_mob_tick(s_player.body.x, s_player.body.z);
             player_tick(&s_player, mask, input_pressed());
             sm_audio_player_tick(&s_player);  // footsteps and landings, AFTER the tick
+            // AND WHETHER THAT TICK KILLED HIM. Checked here rather than
+            // in player.c for the reason used_block is: respawning is a
+            // decision about the world and the save, and player.c knows
+            // about neither.
+            if (s_player.food.health <= 0) player_died();
             // A block the player opened. The registry says WHICH blocks
             // open something (BF2_USABLE); what each one opens is here.
             // Only if it is not already showing: OPENING a screen
@@ -2080,7 +2120,15 @@ static void on_update(float dt, void* user) {
             } else if (s_player.used_block == BLK_FURNACE && !furnace_ui_active()) {
                 s_player.inv.open = false;
                 furnace_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
-            } else if ((s_player.used_block == BLK_CHEST || s_player.used_block == BLK_TRASH) &&
+            } else if (s_player.used_block == BLK_STOVE && !stove_ui_active()) {
+                s_player.inv.open = false;
+                stove_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
+            } else if ((s_player.used_block == BLK_CHEST || s_player.used_block == BLK_TRASH ||
+                        // THE STOVE'S OWN CHEST IS A CHEST (D-110): the
+                        // same record, the same screen. Walking up to
+                        // the chest end of your kitchen and finding it
+                        // inert would be a puzzle with no answer.
+                        s_player.used_block == BLK_STOVE_CHEST) &&
                        !chest_ui_active()) {
                 s_player.inv.open = false;
                 chest_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
@@ -2183,6 +2231,10 @@ static void on_input(bsp_input_event_t const* ev, void* user) {
     }
     if (composter_ui_active()) {
         composter_ui_event(ev);
+        return;
+    }
+    if (stove_ui_active()) {
+        stove_ui_event(ev);
         return;
     }
     if (maker_ui_active()) {
@@ -2621,9 +2673,9 @@ static void on_render(pax_buf_t* fb, void* user) {
         // same answer to "where do I come back to", which is what the
         // mark is for -- use_bed() moves it and this follows.
         {
-            double const hx = (double)(s_saved.has_bed ? s_saved.bed_x : s_meta.spawn_x) + 0.5;
-            double const hz = (double)(s_saved.has_bed ? s_saved.bed_z : s_meta.spawn_z) + 0.5;
-            float        cyaw = s_player.yaw;
+            double hx, hz;
+            home_column(&hx, &hz);
+            float cyaw = s_player.yaw;
             player_eye(&s_player, tick_alpha(&s_tick), NULL, NULL, NULL, &cyaw, NULL);
             hud_compass(fb, cyaw, s_player_ready, hx - s_player.body.x, hz - s_player.body.z);
         }
@@ -2633,6 +2685,7 @@ static void on_render(pax_buf_t* fb, void* user) {
         if (furnace_ui_active()) furnace_ui_draw(fb, &s_player.inv);
         if (composter_ui_active()) composter_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
         if (maker_ui_active()) maker_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
+        if (stove_ui_active()) stove_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
         if (chest_ui_active()) chest_ui_draw(fb, &s_player.inv);
         if (bench_ui_active()) bench_ui_draw(fb, &s_player.inv);
         if (cheat_ui_active()) cheat_ui_draw(fb);
@@ -2651,10 +2704,18 @@ static void on_render(pax_buf_t* fb, void* user) {
                 case USE_TOO_DRY: key = SM_STR_FARM_TOO_DRY; break;
                 case USE_NEEDS_WATER: key = SM_STR_FARM_NEEDS_WATER; break;
                 case USE_ALREADY_RIPE: key = SM_STR_FARM_ALREADY_RIPE; break;
+                case USE_NOT_HUNGRY: key = SM_STR_FOOD_NOT_HUNGRY; break;
                 case USE_NEEDS_SOIL:
                 default: break;
             }
             char const* const line = T(key);
+            hud_text_lines(fb, &line, 1);
+        } else if (s_player.food_msg_ticks > 0) {
+            // STARVING, AND DYING OF IT. Above the creature line,
+            // because an empty stomach matters more than what is under
+            // the crosshair -- and below needs_tool and use_msg, which
+            // are both answers to a key the player has just pressed.
+            char const* const line = T(s_player.food_msg == FOOD_DIED ? SM_STR_FOOD_DIED : SM_STR_FOOD_STARVING);
             hud_text_lines(fb, &line, 1);
         } else if (s_player.mob_msg_ticks > 0) {
             // ... and the same for a creature: milking, feeding and
