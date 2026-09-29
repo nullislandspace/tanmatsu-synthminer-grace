@@ -353,6 +353,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     // table with planks in hand could never be opened at all -- which
     // is Minecraft's rule too, and the reason sneaking exists there.
     if (act_held(pressed, SM_USE)) {
+        bool used_creature = false;
         // A CREATURE IN FRONT OF EVERYTHING. Use on a cow with a bucket
         // is a milking and not a water bucket looking for a lake, and
         // use on a dog with a bone is a taming and not a bone being
@@ -372,60 +373,62 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                 p->mob_msg       = mu.what;
                 p->mob_msg_ticks = USE_MSG_TICKS;
                 sfx_play(mu.what == MOB_USE_MILKED ? SFX_PICKUP : SFX_CLICK);
-                return;
+                used_creature = true;
             }
         }
-        // THE HELD ITEM GETS FIRST REFUSAL, and it gets it before the
-        // crosshair is consulted at all -- a bucket casts its own ray,
-        // because the one that drew the highlight box looked straight
-        // through the water it is after (raycast.h, RAY_FLUID).
-        use_result_t const u = interact_use_item(ex, ey, ez, dx, dy, dz, held);
-        if (u.acted) {
-            // The stack is swapped IN PLACE: a bucket does not stack,
-            // empty or full (items.c), so there is exactly one of them
-            // here and no second slot to find.
-            inv_slot_t* s = inv_held(&p->inv);
-            if (u.becomes != 0) {
-                s->item  = u.becomes;
-                s->count = 1;
-                s->wear  = 0;
-                inv_mark_seen(&p->inv, u.becomes);
-            }
-            // A SEED OR A COMPOST IS SPENT, one from the stack -- the
-            // other way a use can change what is in the hand, and the
-            // ordinary one for everything that is not a bucket.
-            if (u.consume) inv_consume_held(&p->inv);
-            // A HOE WEARS LIKE ANY OTHER TOOL, once per job. Tilling is
-            // the only thing it does, so this is the whole of its life.
-            if (u.wear) inv_wear_held(&p->inv, 1);
-            p->use_msg       = USE_SAID_NOTHING;
-            p->use_msg_ticks = 0;
-            trace_edit('U', u.x, u.y, u.z, block_def(u.block)->name, 1);
-            if (u.sound != SND_NONE) sfx_play_place(u.block);
-        } else if (u.msg != USE_SAID_NOTHING) {
-            // It refused, and it has a reason. Held for about two
-            // seconds, and repeated presses keep it up rather than
-            // making it flicker.
-            p->use_msg       = u.msg;
-            p->use_msg_ticks = USE_MSG_TICKS;
-            sfx_play(SFX_DENY);
-        } else if (p->aim_valid) {
-            if (block_usable(p->aim.block)) {
-                // A GATE OPENS RATHER THAN OPENING SOMETHING. It is the
-                // first usable block with no screen behind it, so it is
-                // answered here and never reaches main.c.
-                if (interact_toggle_gate(p->aim.x, p->aim.y, p->aim.z)) {
-                    trace_edit('U', p->aim.x, p->aim.y, p->aim.z, block_def(p->aim.block)->name, 1);
-                    sfx_play_place(BLK_FENCE_GATE);
-                } else {
-                    p->used_block = p->aim.block;
+        if (!used_creature) {
+            // THE HELD ITEM GETS FIRST REFUSAL, and it gets it before the
+            // crosshair is consulted at all -- a bucket casts its own ray,
+            // because the one that drew the highlight box looked straight
+            // through the water it is after (raycast.h, RAY_FLUID).
+            use_result_t const u = interact_use_item(ex, ey, ez, dx, dy, dz, held);
+            if (u.acted) {
+                // The stack is swapped IN PLACE: a bucket does not stack,
+                // empty or full (items.c), so there is exactly one of them
+                // here and no second slot to find.
+                inv_slot_t* s = inv_held(&p->inv);
+                if (u.becomes != 0) {
+                    s->item  = u.becomes;
+                    s->count = 1;
+                    s->wear  = 0;
+                    inv_mark_seen(&p->inv, u.becomes);
                 }
-            } else {
-                uint8_t const block = item_block(held);
-                if (block != BLK_AIR && interact_place_dir(&p->aim, block, &p->body, dx, dz)) {
-                    trace_edit('P', p->aim.px, p->aim.py, p->aim.pz, block_def(block)->name, 1);
-                    inv_consume_held(&p->inv);
-                    sfx_play_place(block);
+                // A SEED OR A COMPOST IS SPENT, one from the stack -- the
+                // other way a use can change what is in the hand, and the
+                // ordinary one for everything that is not a bucket.
+                if (u.consume) inv_consume_held(&p->inv);
+                // A HOE WEARS LIKE ANY OTHER TOOL, once per job. Tilling is
+                // the only thing it does, so this is the whole of its life.
+                if (u.wear) inv_wear_held(&p->inv, 1);
+                p->use_msg       = USE_SAID_NOTHING;
+                p->use_msg_ticks = 0;
+                trace_edit('U', u.x, u.y, u.z, block_def(u.block)->name, 1);
+                if (u.sound != SND_NONE) sfx_play_place(u.block);
+            } else if (u.msg != USE_SAID_NOTHING) {
+                // It refused, and it has a reason. Held for about two
+                // seconds, and repeated presses keep it up rather than
+                // making it flicker.
+                p->use_msg       = u.msg;
+                p->use_msg_ticks = USE_MSG_TICKS;
+                sfx_play(SFX_DENY);
+            } else if (p->aim_valid) {
+                if (block_usable(p->aim.block)) {
+                    // A GATE OPENS RATHER THAN OPENING SOMETHING. It is the
+                    // first usable block with no screen behind it, so it is
+                    // answered here and never reaches main.c.
+                    if (interact_toggle_gate(p->aim.x, p->aim.y, p->aim.z)) {
+                        trace_edit('U', p->aim.x, p->aim.y, p->aim.z, block_def(p->aim.block)->name, 1);
+                        sfx_play_place(BLK_FENCE_GATE);
+                    } else {
+                        p->used_block = p->aim.block;
+                    }
+                } else {
+                    uint8_t const block = item_block(held);
+                    if (block != BLK_AIR && interact_place_dir(&p->aim, block, &p->body, dx, dz)) {
+                        trace_edit('P', p->aim.px, p->aim.py, p->aim.pz, block_def(block)->name, 1);
+                        inv_consume_held(&p->inv);
+                        sfx_play_place(block);
+                    }
                 }
             }
         }

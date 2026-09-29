@@ -116,10 +116,18 @@ void sm_audio_mob_tick(double px, double pz) {
     if (!s_up) return;
     int spoken = 0;
     for (int i = 0; i < MOB_MAX && spoken < MOB_VOICES_PER_TICK; i++) {
-        mob_t const* m = mob_at(i);
-        if (m == NULL || !m->alive || m->say == MOB_SAY_NONE) continue;
+        // NOT `alive`: the last thing a creature does is die, and
+        // mob_hit sets `say` on the way out. The slot keeps the word
+        // until it is spoken, and this is what takes it back -- without
+        // that, a dead pig would squeal once a tick until something
+        // else was born into its slot.
+        mob_t* m = mob_at_mut(i);
+        if (m == NULL || m->say == MOB_SAY_NONE) continue;
         double const dx = m->body.x - px, dz = m->body.z - pz;
-        if (dx * dx + dz * dz > MOB_HEAR_RANGE * MOB_HEAR_RANGE) continue;
+        if (dx * dx + dz * dz > MOB_HEAR_RANGE * MOB_HEAR_RANGE) {
+            m->say = MOB_SAY_NONE;  // too far to hear, and not saved up
+            continue;
+        }
 
         sfx_id_t id;
         switch (m->say) {
@@ -133,6 +141,7 @@ void sm_audio_mob_tick(double px, double pz) {
         // up, which costs nothing and is most of what tells you from
         // across a field that there is a young one in the herd.
         sfx_play_pitched(id, m->baby ? 5.0f : 0.0f);
+        m->say = MOB_SAY_NONE;
         spoken++;
     }
 }
