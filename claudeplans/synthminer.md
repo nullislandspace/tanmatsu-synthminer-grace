@@ -1473,7 +1473,7 @@ as a guess at lava and milk; it is the milk half being cashed in.
 
 | block | recipe | fuel | in | out | time |
 |---|---|---|---|---|---|
-| Kitchen stove | 3 iron + 6 stone | **yes** | an adjacent chest, plus a recipe selector | 1 slot | 1 in-game minute |
+| Kitchen stove + its chest | 3 iron + 6 stone + 8 planks, **one item, two blocks** (D-110) | **yes** | its own chest half, plus a recipe selector | 1 slot | 1 in-game minute |
 | Cheese maker | 7 wooden planks | no | 1 bucket of milk (**the bucket comes straight back**) | cheese | 1 in-game day |
 | Sausage maker | 9 iron ingots | not stated | 1 pork + 1 flower of any colour, or 2 beans | 1 sausage | 1 in-game minute |
 | Composter | 7 wooden planks | no | up to a stack of compostables | compost + 0-2 worms | 1 in-game day per unit |
@@ -1499,11 +1499,31 @@ for the same reason iron refusing a wooden pick needed a line on the HUD
 (step 8.4): a machine that does nothing and says nothing reads as
 broken.
 
-Mechanically it is the furnace's record plus a recipe id, and the chest
-is found through `blockent_find` on the four horizontal neighbours. Its
-picker should be **the crafting book's list**, searched the same way,
-not a new widget (Part C already solved searching on a keyboard with one
-alphabet).
+Mechanically it is the furnace's record plus a recipe id. Its picker
+should be **the crafting book's list**, searched the same way, not a new
+widget (Part C already solved searching on a keyboard with one alphabet).
+
+**The chest is not any chest -- it arrives with the stove** (D-110), the
+user's own refinement, and it removes a question instead of answering
+it. The recipe includes the chest's 8 planks, the item puts down **two
+blocks** -- chest half on the left, stove on the right, as the player
+sees it while placing -- and **the two store each other's coordinates**.
+Breaking either takes both.
+
+That link is what makes a row of stoves work at all. `chest | stove |
+chest | stove` has adjacencies that are wrong three times in four, and
+no rule that looks at neighbours can untangle it; a pointer needs no
+untangling. It also means *"no chest next to the stove"* stops being
+something a player can provoke, so the missing-ingredient message does
+all the real work.
+
+Two things follow. A pair is **two block ids and two `BE_MAX` records**,
+not one of each. And a pair can **straddle a chunk border**, so breaking
+one half while the other is not resident leaves an orphan -- dealt with
+the way D-99 deals with fluids at a seam: each half checks its partner
+when its chunk arrives, the half the player breaks drops the item and
+its contents, and an orphan found at load drops **only** its contents
+and vanishes, so nothing can be duplicated.
 
 ### Fishing, and what the reorder costs (D-109)
 
@@ -1511,8 +1531,13 @@ The user: *"i want to implement 'Fishing' before 'Mobs and Combat', so
 switch the order of those two."* Done -- fishing is step 12, mobs are
 step 13.
 
-Bait is **worms, held in the inventory**. The catch is one of
-**sardines, salmon, shrimp**.
+Bait is **worms, held in the inventory**, and it is **one worm per
+cast** (the user) -- not per catch, so a cast that brings nothing up
+still costs one. That is the number that makes the composter matter:
+**worms are the throttle on fishing**, and a rod of three sticks is
+not.
+
+The catch is one of **sardines, salmon, shrimp**.
 
 The reorder has one consequence, and the user has already ruled on it:
 **there is no string in this game until spiders arrive in step 13**, and
@@ -1585,9 +1610,10 @@ stays a table row.
 
 ### What it costs
 
-- **About eleven permanent block ids** (D-74, and a line each in
-  `tools/ids.txt`): farmland wet and dry, four machines, five crops.
-  Ids 31 up, the first spent since step 35.
+- **About twelve permanent block ids** (D-74, and a line each in
+  `tools/ids.txt`): farmland wet and dry, five machine blocks -- the
+  stove is two of them, D-110 -- and five crops. Ids 31 up, the first
+  spent since step 35.
 - **About thirty item ids**: three hoes, a rod, compost, worms, seeds
   for wheat and tomatoes, five harvests, pork, beef, milk, cheese, two
   sausages, three fish, eleven dishes.
@@ -1607,12 +1633,8 @@ stays a table row.
 Written down so they are decided on purpose rather than by whoever
 types the code:
 
-- **Which chest** the stove uses when more than one touches it.
-  Proposed: a fixed order (+X, -X, +Z, -Z), with the screen naming the
-  one it found.
-- **One worm per catch, or per cast?** And does a rod wear out? At three
-  sticks it is cheap enough that durability would be theatre, so
-  probably not.
+- **Does a rod wear out?** At three sticks it is cheap enough that
+  durability would be theatre, so probably not.
 - **The rod's real recipe**, once string exists in step 13 (D-109).
 - **Whether the fake sausage may be a pizza's sausage.** It should be:
   the pizza has shrimp in it, so it is not a vegetarian dish either way,
@@ -1702,10 +1724,10 @@ types the code:
 | 31 | **How many to move, and a cheat console** | done | 2026-09-23, asked for by the user. `ui/amount_ui.{c,h}`: moving a stack of more than one into or out of a chest, or into a furnace, asks first -- a slider AND a number, because one answers "about half" and the other answers "exactly seventeen" and neither answers both. It starts at everything, which is what the key did before it asked, and a stack of ONE never asks: there is nothing to decide and the modal would be a keypress added to every move. Taking a furnace's output never asks either (the user's rule: there is no reason to leave half a smelt behind). `ui/cheat_ui.{c,h}` on the backtick: every item in the game, searched by its STABLE name -- "pickaxe_wood", "iron_ore" -- which is English already, is what the save format keys on, is unambiguous, and needs no translation, which is exactly what the user asked for. |
 | 8.6 | The 8.4 screens in all 32 languages | done | 2026-09-23: 24 more keys each. Three languages spell "disassembly bench" wider than the column that holds an item name (Portuguese, Greek, Bulgarian) and were shortened rather than the column widened -- it is already the widest layout in the game. F-83. |
 | 8.5 | Item names and the crafting UI in all 32 languages | done | 2026-09-23: 63 keys x 31 languages -- every block and item a player can carry, the crafting book, the furnace and its picker. **Six overflowed and the check caught all six** before the badge did (French, Irish, Albanian, Greek, Bulgarian, Serbian), and widening the two crafting panels to hold them exposed something nothing had been measuring: **the book's row labels are ITEM NAMES**, and Russian "Деревянная лопата" is half as wide again as "Wooden shovel". `item.` joined `LABEL_COLUMNS`, the panels went to the wide layout, and the fold table grew to cover 82978 characters across the 32 languages. |
-| 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | todo | Designed 2026-09-29 from the user's own re-imagining -- **Part A** has all of it, D-104 and D-106 and D-107 the choices. Not Minecraft's list and not its fertiliser: wheat, potatoes, tomatoes, beans and **rice that grows in one-deep water**, planted only in tilled soil **within four blocks of water on the same level** -- checked when the soil is tilled or a seed is offered and **nowhere else**, with dry soil refusing the seed, which is the user's own amendment and leaves the fluid scheduler untouched (D-106) -- and fed by **compost from a composter** rather than bone meal -- the same machine that makes the **worms** step 12 needs for bait. The crop blocks are nearly free (`BF_CROP` and `growth_max` have been sitting unused in `block_def_t` since step 0.3, and the data plane the mesher needs to draw a stage by is the one the fluids already handed it, D-101). **The real cost is time, not stage**: a crop is a block, so there is nowhere in a cell to write when it last grew, and lazy catch-up needs **a per-chunk stamp** -- a new skippable chunk section, no format bump (D-30), and old worlds gain one on their first write, which since step 49 is immediately. About eleven permanent block ids (D-74). |
-| 10 | **Food, hunger, and the kitchen stove** | todo | Designed 2026-09-29, and the user's verdict on the alternative was blunt: cooking on a crafting table or in a furnace *"makes absolutely no sense"*. So food is made on a **stove that reads its ingredients out of the chest beside it** (D-105) -- a recipe selector, a fuel slot, an output slot, one in-game minute a dish, and **a message naming what is missing** when a recipe is short or no chest touches it, for the same reason iron refusing a wooden pick needed a line on the HUD. Eleven dishes, every number the user's, with **pizza as the superfood** at 10 hunger and 8 saturation because it needs a crop, a fish, a cow and a pig -- all four systems at once. `item_def_t` gains `hunger` and `saturation`, so a food is a table row. The hunger loop is Minecraft's model, which D-08 committed to on day one; the HUD has drawn both bars since 4.3 with nothing moving them. |
+| 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | todo | Designed 2026-09-29 from the user's own re-imagining -- **Part A** has all of it, D-104 and D-106 and D-107 the choices. Not Minecraft's list and not its fertiliser: wheat, potatoes, tomatoes, beans and **rice that grows in one-deep water**, planted only in tilled soil **within four blocks of water on the same level** -- checked when the soil is tilled or a seed is offered and **nowhere else**, with dry soil refusing the seed, which is the user's own amendment and leaves the fluid scheduler untouched (D-106) -- and fed by **compost from a composter** rather than bone meal -- the same machine that makes the **worms** step 12 needs for bait. The crop blocks are nearly free (`BF_CROP` and `growth_max` have been sitting unused in `block_def_t` since step 0.3, and the data plane the mesher needs to draw a stage by is the one the fluids already handed it, D-101). **The real cost is time, not stage**: a crop is a block, so there is nowhere in a cell to write when it last grew, and lazy catch-up needs **a per-chunk stamp** -- a new skippable chunk section, no format bump (D-30), and old worlds gain one on their first write, which since step 49 is immediately. About twelve permanent block ids (D-74). |
+| 10 | **Food, hunger, and the kitchen stove** | todo | Designed 2026-09-29, and the user's verdict on the alternative was blunt: cooking on a crafting table or in a furnace *"makes absolutely no sense"*. So food is made on a **stove that reads its ingredients out of the chest beside it** (D-105) -- and the chest is not one a player has to supply: **the recipe includes it, the item places two blocks, and each holds the other's coordinates** (D-110, the user's refinement, which kills the "which chest?" question by making it unaskable and makes a row of stoves possible). Breaking either half takes both, contents drop as every container in this game already does, and a pair that straddles a chunk border repairs itself on load the way D-99 repairs fluids at a seam -- the broken half drops the item, an orphan drops only its contents, so nothing duplicates -- a recipe selector, a fuel slot, an output slot, one in-game minute a dish, and **a message naming what is missing** when a recipe is short or no chest touches it, for the same reason iron refusing a wooden pick needed a line on the HUD. Eleven dishes, every number the user's, with **pizza as the superfood** at 10 hunger and 8 saturation because it needs a crop, a fish, a cow and a pig -- all four systems at once. `item_def_t` gains `hunger` and `saturation`, so a food is a table row. The hunger loop is Minecraft's model, which D-08 committed to on day one; the HUD has drawn both bars since 4.3 with nothing moving them. |
 | 11 | **Animals: pigs, cows, chickens; milk, cheese and sausages; dogs** | todo | Pigs give pork, cows give beef, and **a cow used with a bucket gives milk** -- which D-100 already paid for: a filled bucket is its own item id, so `ITEM_BUCKET_MILK` is one row in `BUCKETS[]` and the held model colours its own contents from the block table. Two slow machines of their own (D-108): the **cheese maker**, 7 planks, an open square barrel that shows white, then yellow-orange, then empty, takes a bucket of milk (**returning the bucket at once**) and an in-game day; and the **sausage maker**, which turns pork and a flower into a sausage in a minute, or **two beans into a vegetarian one with identical stats**. Breeding, and dogs found wild and tamed with steak, are unchanged from the original requirement. |
-| 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, which is why the composter in step 9 has two output slots. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. One thing the reorder exposes: **there is no string in this game until spiders arrive in step 13**, so Minecraft's rod recipe is unavailable -- the user's ruling is **three sticks for now**, *"this recipe will get updated later when we have string"*, which keeps step 12 free of step 13 and makes the worms the scarce input rather than the tackle. |
+| 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, **one per cast and not per catch**, which is why the composter in step 9 has two output slots and why its 0-2 worms a day is the dial that sets how much fishing anyone does. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. One thing the reorder exposes: **there is no string in this game until spiders arrive in step 13**, so Minecraft's rod recipe is unavailable -- the user's ruling is **three sticks for now**, *"this recipe will get updated later when we have string"*, which keeps step 12 free of step 13 and makes the worms the scarce input rather than the tackle. |
 | 13 | **Mobs: zombies, skeletons, spiders; spawning, pathing, combat; beds and spawn; death keeps the inventory** | todo | Now after fishing (D-109). Unchanged otherwise, and still the biggest single block left: it is the first thing in the game that needs an entity with a mind rather than a record with a timer. |
 | 14 | **Audio: sound effects, and music that is mostly silence** (D-82, D-83, D-84, D-85) | done | 2026-09-23: the mixer starts at boot. 21 effects as table rows (`audio/sfx.c`), and which one a block makes is its own registry row (`block_def_t.sound`), so a new block brings its sounds with it. Music is eleven public-domain MIDI files played by a ported sequencer and a six-shape synth: 72 KB for half an hour, against megabytes for the same music as MP3. `worldcheck`'s `check_midi` proves every shipped file parses, ends, rewinds identically and survives truncation at any length (F-72). The raw voice sum clipped, so the synth carries a master gain and a cubic soft limiter (F-73). **Three volume sliders** in Settings -> Audio (D-85): the badge's own, then how loudly the music and the effects are each mixed in. The effects turned out to be inaudible whenever the music was off -- the amplifier was asleep and eating them (F-75) -- which is why the engine is 2.2. Two checks came out of the round and stay behind: `tools/symcheck.sh`, after an unexported `strcasecmp` made the app link clean and then refuse to start with no message at all (F-74), and `check_label_widths()`, after the sliders' labels turned out to be the least of it -- three settings screens had been overlapping their own text in a dozen languages since the day the language count went to 32 (F-76). |
 | 15 | Block and sky lighting | done | 2026-09-22, asked for by the user (torches that light the area, computed when a block changes). Pulled forward from the end of the plan: a light plane per chunk (sky and block light, 0..15 each, D-69), flooded when a chunk arrives -- its own light on core 1, the border exchange on the main task (F-58) -- and updated with the two-queue flood on every block change. The mesher keys faces on light; a per-frame table turns light into brightness for the time of day, through the engine's new `SE_TRI_LIGHT`. Host-tested: fall-off, removal, a shaft opened and capped, across a chunk border and into a chunk arriving late. On the badge: a placed torch lights the ground at night. |
@@ -4860,11 +4882,16 @@ types the code:
   six hotbar keys: shuffling twelve ingredients into slots.
 
   Mechanically it costs very little, which is why it is worth doing
-  early: the record is the furnace's plus a recipe id, and the chest is
-  `blockent_find` on the four horizontal neighbours. Its picker should be
-  **the crafting book's list and search**, not a new widget -- Part C
+  early: the record is the furnace's plus a recipe id. Its picker should
+  be **the crafting book's list and search**, not a new widget -- Part C
   already solved searching on a keyboard with one alphabet, and this is
   the same question asked again.
+
+  **Amended the same day by D-110**: the chest is not whichever one a
+  player happens to put there. It comes with the stove, as one item and
+  two blocks that point at each other. This decision asked which chest a
+  stove reads when two touch it; D-110 answers by making the question
+  impossible to ask.
 
   The info message is not politeness. Iron refusing a wooden pick needed
   a line on the HUD for exactly this reason (step 8.4): **a machine that
@@ -5007,6 +5034,90 @@ types the code:
   that a rod this cheap means **the worms are the scarce input to
   fishing**, not the tackle -- so the composter's 0-2 per day is the dial
   that sets how much fishing anyone does.
+
+  **And the worms are spent per cast, not per catch** (the user, the same
+  day). A cast that brings nothing up still costs one, which is what
+  makes the throttle a throttle: paying only for successes would make
+  fishing free as long as you were patient, and the composter's 0-2 a day
+  would stop meaning anything. It also gives a bad fishing spot a cost,
+  so where you fish is a decision.
+
+- **D-110** 2026-09-29, **the user**, replacing the open question in
+  D-105: **the stove and its chest are one item, placed as two blocks
+  that know each other.**
+
+  Their words: *"Can we make the recipe also include the wood for the
+  chest, then place it as a combined item, stove-chest on the left,
+  actual stove on the right. Dismantling either block also dismantles
+  the other. (internally, they point to each others coordinates or
+  relative direction, so that placing multiple stoves side by side does
+  not end with orphans on dismantling)"*
+
+  This is better than what D-105 described and it **deletes a question
+  rather than answering it.** D-105 left open which chest a stove reads
+  when two touch it; a stove that arrives with its own chest and a
+  pointer to it never has to ask. The user's parenthesis is the whole
+  reason: `stove chest | stove | stove chest | stove` in a row is four
+  blocks where three of the adjacencies are wrong, and no rule based on
+  looking at neighbours can sort that out. A link can.
+
+  So: **3 iron + 6 stone + 8 planks** (the chest's own price, unchanged
+  from step 8.4), one item, and placing it puts down two blocks -- the
+  chest half on the left and the stove on the right **as the player sees
+  it while placing**, which means the pair has a facing and the facing is
+  the opposite of where the player is looking.
+
+  **Two block ids, not one** (so Part A's eleven becomes twelve), because
+  the chest half has its own texture and its own break behaviour, and
+  **two block-entity records**, which is the cost worth knowing: a pair
+  is 2 of `BE_MAX`'s 192, not 1.
+
+  What the link stores: **the partner's cell**, not a direction. A
+  direction is two bits and looks cheaper, but it has to be correct in
+  two records that are written at different times by different code
+  paths, and a coordinate can be checked against the block actually
+  standing there. Cheap either way -- a tagged field in a record that is
+  already being saved.
+
+  **Breaking:** either half takes the other with it. That is not a new
+  kind of rule here -- `BF2_STACKED` already brings a column of cactus
+  down when the block under it goes (step 55's neighbour, the user's own
+  rule), so the break path has a precedent for touching more than the
+  cell that was hit. Contents drop, because that is what every container
+  in this game already does, under a comment in `interact.c` that is
+  worth keeping in mind: *"Breaking a furnace full of iron and getting an
+  empty furnace is the sort of loss a player never forgives and cannot
+  undo."* An accidental swing at the chest half therefore costs the
+  stove as well and empties the larder onto the floor; mining takes a
+  progress bar's worth of time, so this is survivable, and the
+  alternative -- refusing to break a non-empty pair -- would be the first
+  block in the game that cannot be removed, which is worse.
+
+  **The seam is the part that needs designing, and D-99 is the pattern.**
+  A pair can straddle a chunk border, so a player can break one half
+  while the other's chunk is not resident, where it reads as
+  `BLK_BARRIER` and cannot be touched. Refusing to place across a border
+  is not acceptable -- it would be an invisible rule with no explanation
+  on screen. So each half **validates its partner when its chunk
+  arrives** and an orphan removes itself, with the drops split so nothing
+  can be duplicated:
+
+  - the half **the player breaks** drops the combined item, plus its
+    contents if it is the chest;
+  - an **orphan found at load** drops its contents only and vanishes. It
+    never drops the item, because the item was already dropped by the
+    half that was broken.
+
+  Two host checks fall out of it and are the ones to write first: two
+  pairs side by side, break one, the other is untouched and still
+  cooking; and a pair across a chunk border, broken with the far chunk
+  evicted, then the far chunk loaded -- one item on the ground, not two,
+  and no stove left pointing at nothing.
+
+  One thing this **removes** from D-105: *"no chest next to the stove"*
+  stops being a message a player can provoke. A stove always has its
+  chest. The message stays as the orphan case's report and the missing-
+  ingredient message does all the real work.
 
 - **D-96** 2026-09-26, out of the user's question and then their
   instruction: **the audio codec is ours, and it is public domain.**
