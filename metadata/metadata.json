@@ -309,6 +309,22 @@
           "target_file": "textures/rice_3.png"
         },
         {
+          "source_file": "textures/rice_top_0.png",
+          "target_file": "textures/rice_top_0.png"
+        },
+        {
+          "source_file": "textures/rice_top_1.png",
+          "target_file": "textures/rice_top_1.png"
+        },
+        {
+          "source_file": "textures/rice_top_2.png",
+          "target_file": "textures/rice_top_2.png"
+        },
+        {
+          "source_file": "textures/rice_top_3.png",
+          "target_file": "textures/rice_top_3.png"
+        },
+        {
           "source_file": "textures/sand.png",
           "target_file": "textures/sand.png"
         },

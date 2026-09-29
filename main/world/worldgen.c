@@ -544,8 +544,13 @@ static void place_rice(chunk_t* c, int lx, int lz, int32_t wx, int32_t wz, uint3
         if (col[y - 1] != BLK_SAND) continue;   // a sandy bottom, not stone or dirt
         if (col[y + 1] != BLK_AIR) continue;    // one block deep, and no deeper
         if (sm_rand2(wx - 11, wz + 5, seed ^ S_CROP) > 0.0016f) return;
-        col[y] = BLK_RICE_CROP;
+        // BOTH HALVES: rice stands two blocks tall, the lower one in the
+        // water and the upper one in the air above it (blocks.h).
+        uint8_t const top = block_def(BLK_RICE_CROP)->tall_other;
+        col[y]            = BLK_RICE_CROP;
         c->st[CH_IDX(lx, y, lz)] = st_with_data(0, block_def(BLK_RICE_CROP)->growth_max);
+        col[y + 1]                   = top;
+        c->st[CH_IDX(lx, y + 1, lz)] = st_with_data(0, block_def(top)->growth_max);
         return;
     }
 }

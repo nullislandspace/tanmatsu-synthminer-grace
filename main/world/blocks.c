@@ -340,8 +340,23 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                        .mat      = M3(VM_RICE_0, VM_RICE_3, VM_RICE_0),
                        .hardness = 1,
                        .flags    = BF_CROP, .growth_max = 3, .seed_item = ITEM_RICE,
+                       .tall_other = BLK_RICE_TOP,
                        .sound    = SND_SOFT,
                        .flags2   = BF2_WATERLOGGED},
+
+    // THE UPPER HALF. It grows through the same four stages as the half
+    // below it -- they are advanced together and stay in step -- but it
+    // drops NOTHING: the harvest belongs to the lower half, and a plant
+    // that paid out twice for one break would be a plant everybody
+    // farmed. It is not waterlogged either: it stands in the air.
+    [BLK_RICE_TOP] = {.name     = "rice_top",
+                      .kind     = K_PLANT,
+                      .mat      = M3(VM_RICE_TOP_0, VM_RICE_TOP_3, VM_RICE_TOP_0),
+                      .hardness = 1,
+                      .flags    = BF_CROP, .growth_max = 3,
+                      .tall_other = BLK_RICE_CROP,
+                      .sound    = SND_SOFT,
+                      .flags2   = BF2_TALL_TOP},
 };
 
 // Which kind of record each block keeps. A function rather than a

@@ -87,7 +87,26 @@ static struct {
     [VM_RICE_1]        = {"rice_1.png", 0xFF6A9A50u},
     [VM_RICE_2]        = {"rice_2.png", 0xFF7AA656u},
     [VM_RICE_3]        = {"rice_3.png", 0xFFC2BE6Au},
+    [VM_RICE_TOP_0]    = {"rice_top_0.png", 0xFF6E9A54u},
+    [VM_RICE_TOP_1]    = {"rice_top_1.png", 0xFF7AA65Au},
+    [VM_RICE_TOP_2]    = {"rice_top_2.png", 0xFF92B062u},
+    [VM_RICE_TOP_3]    = {"rice_top_3.png", 0xFFD2C878u},
 };
+
+// THE CACHE HAS TO HOLD EVERY MATERIAL, WITH ROOM AFTER IT. This is a
+// build failure rather than a runtime one because of how it failed when
+// it was only a runtime one (step 9): nothing crashed, the badge logged
+// "cache full" once per texture, and the materials past the end quietly
+// fell back to their flat average colour -- four of the five crops drew
+// as a coloured quad, and `water_blend.png`, which is asked for AFTER
+// this loop, never loaded at all, so the transparent-water setting
+// refused to turn on and said nothing about why.
+//
+// The 36 is what is asked for by NAME after the loop: water_blend.png,
+// three torch frames, and an item_*.png for each item that is not a
+// cube (items.h -- about 30 of them, and growing with every tool).
+_Static_assert(VM_COUNT + 36 <= TEXCACHE_MAX,
+               "texcache is too small for VM_COUNT plus the by-name textures: raise TEXCACHE_MAX");
 
 char const* chunk_render_mat_file(int mat) {
     return (mat >= 0 && mat < VM_COUNT) ? MAT_FILES[mat].file : NULL;

@@ -100,6 +100,17 @@ typedef enum {
 // becomes one of its rules instead of a special case in interact.c.
 #define BF2_STACKED    (1u << 4)
 
+// THE UPPER HALF OF A PLANT THAT STANDS TWO BLOCKS TALL. Rice, and
+// nothing else so far (the user, 2026-09-29: "Rice should also be a two
+// block tall plant (breaking always breaks both blocks)").
+//
+// Which half is which matters in three places and `tall_other` names the
+// other one, so none of them needs an id written into it: the LOWER half
+// is the one that stands in the water, carries the harvest and is what
+// planting puts down; the upper half is scenery that comes and goes with
+// it. Breaking either takes both, and only the lower one drops.
+#define BF2_TALL_TOP    (1u << 7)
+
 // THE CELL IS FULL OF WATER AS WELL AS THIS BLOCK. Rice, and nothing
 // else so far: it grows in water one block deep, so the cell has to be
 // water for the pond it stands in and rice for the player.
@@ -180,6 +191,11 @@ typedef struct {
     // seed, while a potato, whose seed IS a potato, simply gives
     // potatoes (world/crops.h).
     uint16_t    seed_item;
+
+    // THE OTHER HALF of a two-block plant, or BLK_AIR. On the lower half
+    // this is the block that stands above it; on the upper half (which
+    // carries BF2_TALL_TOP) it is the one below. Rice, so far.
+    uint8_t     tall_other;
     uint8_t     sound;       // block_sound_t: what it sounds like (audio/sfx.h)
     uint8_t     flags2;      // BF2_*
 } block_def_t;
@@ -257,7 +273,10 @@ enum {
     BLK_TOMATO_CROP    = 36,
     BLK_BEAN_CROP      = 37,
     BLK_RICE_CROP      = 38,
-    // New blocks here: BLK_SOMETHING = 39, and a line in tools/ids.txt.
+    // The upper half of the rice plant, which stands in the air above
+    // the half that stands in the water (BF2_TALL_TOP).
+    BLK_RICE_TOP       = 39,
+    // New blocks here: BLK_SOMETHING = 40, and a line in tools/ids.txt.
     BLK_COUNT
 };
 
@@ -301,6 +320,14 @@ static inline bool block_stacked(uint8_t id) {
 static inline bool block_has_item_icon(uint8_t id) {
     return (block_def(id)->flags2 & BF2_ITEM_ICON) != 0;
 }
+// Half of a two-block plant, and which half.
+static inline uint8_t block_tall_other(uint8_t id) {
+    return block_def(id)->tall_other;
+}
+static inline bool block_tall_top(uint8_t id) {
+    return (block_def(id)->flags2 & BF2_TALL_TOP) != 0;
+}
+
 // A crop: grows through its stages and is planted rather than placed.
 static inline bool block_crop(uint8_t id) {
     return (block_def(id)->flags & BF_CROP) != 0;

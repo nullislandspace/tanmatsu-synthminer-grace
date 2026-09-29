@@ -185,6 +185,24 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
     drop_for(b, st, x, y, z, tool_item);
     r.felled = 1;
 
+    // THE OTHER HALF OF A TWO-BLOCK PLANT goes with this one, whichever
+    // half was hit -- the user's rule for rice: "breaking always breaks
+    // both blocks". It drops nothing of its own; the harvest belongs to
+    // the lower half and has already been taken above (blocks.h,
+    // tall_other / BF2_TALL_TOP).
+    {
+        uint8_t const other = block_tall_other(b);
+        if (other != BLK_AIR) {
+            int32_t const oy = block_tall_top(b) ? y - 1 : y + 1;
+            if (oy >= 0 && oy < CH_H && world_block(x, oy, z) == other) {
+                uint8_t const ost = world_state(x, oy, z);
+                world_set(x, oy, z, BLK_AIR, 0);
+                drop_for(other, ost, x, oy, z, tool_item);
+                r.felled++;
+            }
+        }
+    }
+
     // A CROP CANNOT STAND ON NOTHING. Dig the soil out from under a
     // field and the field comes with it, harvested as it stood -- ripe
     // wheat yields wheat, a sprout yields its seed back (drop_for).
@@ -192,8 +210,9 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
     // This is not the BF2_STACKED rule below it and must not be folded
     // into it: that one takes a column of the SAME block, which is a
     // cactus growing out of itself, and this one takes a DIFFERENT block
-    // resting on the one that has gone. One cell up, because nothing in
-    // this game grows two cells tall yet.
+    // resting on the one that has gone. One cell up, and if what stood
+    // there was half of a two-block plant the recursion takes its other
+    // half with it.
     if (y + 1 < CH_H) {
         uint8_t const above = world_block(x, y + 1, z);
         if (block_crop(above)) {
@@ -201,6 +220,11 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
             world_set(x, y + 1, z, BLK_AIR, 0);
             drop_for(above, ast, x, y + 1, z, tool_item);
             r.felled++;
+            uint8_t const other = block_tall_other(above);
+            if (!block_tall_top(above) && other != BLK_AIR && y + 2 < CH_H && world_block(x, y + 2, z) == other) {
+                world_set(x, y + 2, z, BLK_AIR, 0);
+                r.felled++;
+            }
         }
     }
 

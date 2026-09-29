@@ -83,3 +83,4 @@ item beans
 item rice
 item compost
 item worm
+block 39 rice_top

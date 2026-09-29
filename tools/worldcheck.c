@@ -5558,12 +5558,43 @@ static void check_rice(void) {
     CHECK(world_block(5, 19, 5) == BLK_RICE_CROP, "the water washed the rice away");
     CHECK(blockupdate_stats().pending == 0, "a planted paddy left the physics queue busy");
 
-    // Harvesting gives the cell back to the water, which flows in again.
+    // --- TWO BLOCKS TALL, AND THEY LIVE AND DIE TOGETHER -------------
+    //
+    // The user: "Rice should also be a two block tall plant (breaking
+    // always breaks both blocks)."
+    CHECK(world_block(5, 20, 5) == BLK_RICE_TOP, "planting rice did not put its upper half in the air above it");
+    CHECK(!block_waterlogged(BLK_RICE_TOP), "the upper half of the rice claims to be water");
+    CHECK(crop_stage(world_state(5, 20, 5)) == crop_stage(world_state(5, 19, 5)),
+          "the two halves of the rice were planted at different stages");
+
+    // They grow in step, whichever half the compost lands on.
+    crops_advance(5, 20, 5, 1);
+    CHECK(crop_stage(world_state(5, 19, 5)) == crop_stage(world_state(5, 20, 5)),
+          "composting the top half left the bottom half behind");
+    crops_advance(5, 19, 5, 1);
+    CHECK(crop_stage(world_state(5, 19, 5)) == crop_stage(world_state(5, 20, 5)),
+          "composting the bottom half left the top half behind");
+
+    // Breaking the TOP takes the bottom with it, and the whole plant
+    // drops exactly one harvest: the lower half's.
     item_entity_reset();
-    interact_break(5, 19, 5, 0);
-    CHECK(item_entity_live() >= 1, "harvesting rice dropped nothing");
+    interact_break(5, 20, 5, 0);
+    CHECK(world_block(5, 19, 5) != BLK_RICE_CROP, "breaking the top of the rice left the bottom standing");
+    CHECK(world_block(5, 20, 5) == BLK_AIR, "breaking the top of the rice left something behind");
+    int const from_top = item_entity_live();
+    CHECK(from_top >= 1, "breaking the top of the rice dropped nothing");
     fl_run(200);
     CHECK(world_block(5, 19, 5) == BLK_WATER, "the pond did not close over a harvested paddy");
+
+    // ... and breaking the BOTTOM takes the top, for the same one
+    // harvest. Two plants, two harvests, never one plant and two.
+    CHECK(crops_plant(4, 19, 4, ITEM_RICE) == PLANT_OK, "a second paddy would not go in");
+    item_entity_reset();
+    interact_break(4, 19, 4, 0);
+    CHECK(world_block(4, 20, 4) == BLK_AIR, "breaking the bottom of the rice left its top in the air");
+    printf("  breaking the top dropped %d stacks, breaking the bottom dropped %d\n", from_top, item_entity_live());
+    CHECK(item_entity_live() >= 1, "breaking the bottom of the rice dropped nothing");
+    fl_run(200);
 }
 
 static void check_composter(void) {

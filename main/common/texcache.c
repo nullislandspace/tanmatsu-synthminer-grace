@@ -13,7 +13,6 @@
 
 static char const TAG[] = "texcache";
 
-#define TEXCACHE_MAX 48
 
 // INTERNAL SRAM, not PSRAM (the showreel's default, and the reason its
 // note said "would save ~4%" rather than "saves").

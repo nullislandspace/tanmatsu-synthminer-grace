@@ -50,6 +50,19 @@ int crops_advance(int32_t x, int32_t y, int32_t z, int steps) {
     int want = (int)was + steps;
     if (want > (int)max) want = (int)max;
     world_set(x, y, z, b, crop_state_with(st, (uint8_t)want));
+
+    // A TWO-BLOCK PLANT GROWS AS ONE. Both halves are crops and the
+    // sweep would reach them separately, but compost reaches only the
+    // cell that was clicked -- so the other half is brought along here,
+    // where every path into growth passes.
+    uint8_t const other = block_tall_other(b);
+    if (other != BLK_AIR) {
+        int32_t const oy = block_tall_top(b) ? y - 1 : y + 1;
+        if (oy >= 0 && oy < CH_H && world_block(x, oy, z) == other) {
+            uint8_t const ost = world_state(x, oy, z);
+            if (crop_stage(ost) != (uint8_t)want) world_set(x, oy, z, other, crop_state_with(ost, (uint8_t)want));
+        }
+    }
     return want - (int)was;
 }
 
@@ -211,9 +224,17 @@ plant_result_t crops_plant(int32_t x, int32_t y, int32_t z, uint16_t seed) {
     if (block_waterlogged(crop)) {
         if (!block_liquid(at)) return PLANT_NEEDS_WATER;
         if (world_block(x, y - 1, z) != BLK_SAND) return PLANT_NEEDS_WATER;
-        if (y + 1 >= CH_H || block_liquid(world_block(x, y + 1, z))) return PLANT_NEEDS_WATER;
         if (!fluid_is_source(world_state(x, y, z))) return PLANT_NEEDS_WATER;
+        // ONE BLOCK DEEP, AND ROOM TO STAND UP IN. Rice is two cells
+        // tall (the user), so the air above the water is not merely a
+        // depth test any more -- it is where the top half goes.
+        uint8_t const above_id = block_tall_other(crop);
+        if (y + 1 >= CH_H) return PLANT_NEEDS_WATER;
+        uint8_t const above = world_block(x, y + 1, z);
+        if (block_liquid(above)) return PLANT_NEEDS_WATER;  // deeper than one block
+        if (above_id != BLK_AIR && above != BLK_AIR && !block_replaceable(above)) return PLANT_BLOCKED;
         world_set(x, y, z, crop, ST_PLACED);
+        if (above_id != BLK_AIR) world_set(x, y + 1, z, above_id, ST_PLACED);
         return PLANT_OK;
     }
 

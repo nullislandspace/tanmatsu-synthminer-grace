@@ -116,6 +116,7 @@ static uint32_t const BLOCK_ARGB[BLK_COUNT] = {
     [BLK_COMPOSTER] = 0xFF9A7A46u,      [BLK_WHEAT_CROP] = 0xFFC8B45Au,
     [BLK_POTATO_CROP] = 0xFF6A9E48u,    [BLK_TOMATO_CROP] = 0xFFB4462Eu,
     [BLK_BEAN_CROP] = 0xFF86A24Eu,      [BLK_RICE_CROP] = 0xFFC2BE6Au,
+    [BLK_RICE_TOP] = 0xFFD2C878u,
 };
 
 // What each block is CALLED on screen, beside the colour above. A
@@ -154,6 +155,7 @@ static sm_str_t const BLOCK_LABEL[BLK_COUNT] = {
     [BLK_TOMATO_CROP] = SM_STR_ITEM_TOMATO_CROP,
     [BLK_BEAN_CROP] = SM_STR_ITEM_BEAN_CROP,
     [BLK_RICE_CROP] = SM_STR_ITEM_RICE_CROP,
+    [BLK_RICE_TOP] = SM_STR_ITEM_RICE_CROP,
     // Air and the barrier are never in anybody's hands and have none.
 };
 
@@ -166,7 +168,7 @@ static uint8_t const BLOCK_COMPOST[BLK_COUNT] = {
     // A whole plant, pulled up green: the crop blocks themselves. Not
     // the soil, obviously, and not the composter.
     [BLK_WHEAT_CROP] = 1, [BLK_POTATO_CROP] = 1, [BLK_TOMATO_CROP] = 1,
-    [BLK_BEAN_CROP] = 1, [BLK_RICE_CROP] = 1,
+    [BLK_BEAN_CROP] = 1, [BLK_RICE_CROP] = 1, [BLK_RICE_TOP] = 1,
 };
 
 // What a BLOCK burns for, in ticks. Wood and things made of wood, as

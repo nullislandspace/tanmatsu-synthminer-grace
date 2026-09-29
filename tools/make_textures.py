@@ -1337,62 +1337,133 @@ def sm_composter_top():
     return out
 
 
-# One row per crop: the colours of the stem, of the ripe head, and how
-# tall it stands when it is ready. `head` is what appears in the last two
-# stages -- an ear of wheat, a tomato, a pod.
+# THE FIVE CROPS, drawn so that a stage is a SHAPE and not a shade.
+#
+# The first version changed height and little else, and the user's
+# verdict was that the plants "only slightly change color in their
+# growth stages instead of actually growing". So each stage now differs
+# in three ways at once -- how tall it is, how many stems it has, and
+# what it is carrying -- and the ripe stage carries something the colour
+# of the harvest, which is what a player is actually looking for when
+# they walk past a field.
+#
+#   stage 0   two sprouts, a third of the tile, leaves only
+#   stage 1   three stems, half the tile, first leaves spread
+#   stage 2   four stems, three quarters, buds in the crop's own colour
+#   stage 3   five stems, full height, heavy with the harvest
+#
+# One row per crop below; a sixth is a row and not a new function.
 CROPS = {
-    "wheat":  dict(stem=(110, 150, 60), head=(214, 186, 92), tall=13, spread=1),
-    "potato": dict(stem=(70, 130, 54), head=(180, 150, 78), tall=10, spread=2),
-    "tomato": dict(stem=(72, 126, 56), head=(208, 60, 44), tall=12, spread=2),
-    "beans":  dict(stem=(74, 130, 62), head=(150, 170, 80), tall=12, spread=1),
-    "rice":   dict(stem=(96, 150, 74), head=(206, 198, 108), tall=11, spread=1),
+    #          stem colour      leaf colour      fruit colour     what it carries
+    # WHEAT GOES GOLD ALL OVER when it is ripe -- the user, 2026-09-29:
+    # "the wheat should be fully yellow when ripe". `ripe_stem` and
+    # `ripe_leaf` replace the green at the last stage, so a ripe field
+    # reads as a colour from across the valley rather than as green with
+    # a yellow fringe.
+    "wheat":  dict(stem=(122, 150, 66), leaf=(140, 164, 74), fruit=(232, 202, 96), style="ear",
+                   ripe_stem=(206, 174, 74), ripe_leaf=(222, 192, 92)),
+    "potato": dict(stem=(70, 122, 52), leaf=(86, 142, 60), fruit=(232, 216, 120), style="flower"),
+    "tomato": dict(stem=(74, 118, 54), leaf=(92, 140, 64), fruit=(212, 58, 42), style="berry"),
+    # The pods are warmer than the leaves on purpose: a pod the same
+    # green as the plant is a leaf as far as 16 pixels are concerned.
+    "beans":  dict(stem=(78, 132, 60), leaf=(96, 152, 70), fruit=(198, 176, 92), style="pod"),
+    "rice":   dict(stem=(104, 154, 78), leaf=(120, 168, 88), fruit=(214, 202, 112), style="blade"),
+    # The upper half of the rice plant: taller, thinner, and it is the
+    # half that carries the grain when it is ripe (blocks.h, BF2_TALL_TOP).
+    "rice_top": dict(stem=(110, 158, 84), leaf=(126, 172, 94), fruit=(222, 210, 120), style="grain"),
 }
+
+STAGE_TOP = [11, 8, 4, 1]   # the y a plant reaches at each stage (0 is the top of the tile)
+STAGE_STEMS = [2, 3, 4, 5]
 
 
 def sm_crop(name, stage):
     """One growth stage of one crop, as a cut-out sprite for the crossed
-    quads a K_PLANT is drawn with.
-
-    The stage does three things: the plant gets taller, the blades get
-    more numerous, and from stage 2 it starts carrying its head. So the
-    four read as a progression at a glance from standing height, which is
-    the only place anybody will ever see them."""
-    c = CROPS[name]
-    gen = sm_gen(70 + 4 * list(CROPS).index(name) + stage)
+    quads a K_PLANT is drawn with."""
+    c = dict(CROPS[name])
+    ripe = stage == 3
+    if ripe and "ripe_stem" in c:
+        c["stem"] = c["ripe_stem"]
+        c["leaf"] = c["ripe_leaf"]
+    gen = sm_gen(70 + 8 * list(CROPS).index(name) + stage)
     rgb = np.zeros((B, B, 3), np.uint8)
     holes = np.ones((B, B), bool)
 
-    def px(x, y, col, jitter=12):
+    def px(x, y, col, jitter=10):
         if 0 <= x < B and 0 <= y < B:
             rgb[y, x] = np.clip(np.array(col) + gen.integers(-jitter, jitter + 1, 3), 0, 255)
             holes[y, x] = False
 
-    # How far up the 16 px tile the plant reaches, and how many blades.
-    frac = (stage + 1) / 4.0
-    top = B - 1 - int(round(c["tall"] * frac))
-    blades = 2 + 2 * stage
-    xs = [B // 2 + int(round((i - (blades - 1) / 2.0) * (c["spread"] + 1))) for i in range(blades)]
-
-    for i, x in enumerate(xs):
-        # A blade leans a little more the further it is from the middle,
-        # so a ripe plant is a sheaf rather than a comb.
-        lean = (x - B // 2) // 3
+    top = STAGE_TOP[stage]
+    n = STAGE_STEMS[stage]
+    # The stems, spread evenly and leaning outwards from the middle, so a
+    # grown plant is a sheaf rather than a comb.
+    xs = [2 + int(round(i * 11.0 / max(1, n - 1))) for i in range(n)] if n > 1 else [8]
+    for i, x0 in enumerate(xs):
+        lean = (x0 - 8) // 5
         for y in range(top + (i % 2), B):
-            xx = x + (lean if y < top + 4 else 0)
-            px(xx, y, c["stem"], 16)
+            t = (y - top) / max(1.0, float(B - top))
+            xx = x0 + int(round(lean * (1.0 - t)))
+            px(xx, y, c["stem"])
+            # A second texel of width near the base: a stem that is one
+            # pixel wide disappears at the distance a field is seen from.
+            if y > B - 4:
+                px(xx + 1, y, _shade_t(c["stem"], -18))
+
+        # Leaves: short diagonal runs off the stem, more of them as the
+        # plant grows.
+        for k in range(stage + 1):
+            ly = top + 2 + 3 * k
+            if ly >= B - 1:
+                break
+            d = 1 if (i + k) % 2 == 0 else -1
+            for j in range(1, 3):
+                px(x0 + d * j, ly + j - 1, c["leaf"])
 
     if stage >= 2:
-        # The head: a couple of grains, a fruit or a pod per blade, and
-        # more of them in the last stage than in the one before it.
-        for i, x in enumerate(xs):
-            if stage == 2 and i % 2:
+        style = c["style"]
+        for i, x0 in enumerate(xs):
+            # EVERY OTHER STEM, always. Five stems in twelve pixels are
+            # three pixels apart, so a fruit on each one joins up into a
+            # solid bar across the tile -- which is exactly what the
+            # first tomato looked like.
+            if i % 2:
                 continue
-            for k in range(2 if stage == 3 else 1):
-                px(x, top + 1 + k, c["head"], 8)
+            y0 = top + 1
+            if style == "ear":            # wheat: a head of grain up the stalk
+                for k in range(3 if stage == 3 else 2):
+                    px(x0, y0 + k, c["fruit"], 6)
+                    px(x0 + 1, y0 + k, _shade_t(c["fruit"], -22), 6)
+            elif style == "flower":       # potato: small pale flowers
+                px(x0, y0 + 1, c["fruit"], 6)
                 if stage == 3:
-                    px(x + (1 if x < B - 1 else -1), top + 1 + k, c["head"], 8)
+                    px(x0 + 1, y0 + 2, _shade_t(c["fruit"], -22), 6)
+            elif style == "berry":        # tomato: round fruit, hanging
+                fy = y0 + 4
+                px(x0, fy, c["fruit"], 4)
+                px(x0 + 1, fy, _shade_t(c["fruit"], -18), 4)
+                if stage == 3:
+                    px(x0, fy + 1, _shade_t(c["fruit"], -26), 4)
+                    px(x0 + 1, fy + 1, _shade_t(c["fruit"], -34), 4)
+                    px(x0, fy - 1, _shade_t(c["fruit"], 28), 4)  # a highlight, so it reads as round
+            elif style == "pod":          # beans: pods hanging along the
+                                          # stem, two texels wide so they
+                                          # are not mistaken for a leaf
+                d = 1 if i % 4 == 0 else -1
+                for k in range(3 if stage == 3 else 2):
+                    px(x0 + d, y0 + 3 + k, c["fruit"], 5)
+                    px(x0 + d + (1 if d > 0 else -1), y0 + 3 + k, _shade_t(c["fruit"], -26), 5)
+            elif style == "grain":        # rice, upper half: drooping heads
+                for k in range(3 if stage == 3 else 2):
+                    px(x0 + (1 if i % 2 else -1) * (k // 2), y0 + k, c["fruit"], 6)
+            else:                         # rice, lower half: blades tipped pale
+                px(x0, y0, c["fruit"], 6)
 
     return sm_alpha(rgb, holes)
+
+
+def _shade_t(rgb, d):
+    return tuple(int(max(0, min(255, c + d))) for c in rgb)
 
 
 def sm_item_hoe(rgb):
@@ -1407,52 +1478,97 @@ def sm_item_hoe(rgb):
 
 
 def sm_item_seeds(rgb):
-    """A scatter of little seeds, which has to read as MANY small things
-    rather than one, or it looks like a stone."""
+    """Seeds: teardrops, not dots. Each one is three texels -- a bright
+    head, a body and a dark tail -- which is the least that reads as a
+    SEED rather than as grit, and they are scattered off the middle so
+    the pile has a shape."""
     img = _icon()
-    for x, y in ((5, 9), (8, 6), (10, 10), (7, 12), (11, 7)):
-        _dot(img, x, y, rgb)
-        _dot(img, x + 1, y, _shade(rgb, -20))
-        _dot(img, x, y + 1, _shade(rgb, -34))
+    for x, y, d in ((5, 9, 1), (8, 5, -1), (11, 9, 1), (7, 12, -1), (10, 6, 1)):
+        _dot(img, x, y, _shade(rgb, 26))
+        _dot(img, x + d, y + 1, rgb)
+        _dot(img, x + d, y + 2, _shade(rgb, -40))
+        _dot(img, x + 2 * d, y + 2, _shade(rgb, -18))
+    return img
+
+
+def _blob(img, rgb, r, cx, cy, squash=1.0):
+    """A shaded round body, lit from the top left."""
+    for y in range(cy - r - 1, cy + r + 2):
+        for x in range(cx - r - 1, cx + r + 2):
+            dx, dy = (x - cx), (y - cy) * squash
+            if dx * dx + dy * dy > r * r + 0.4:
+                continue
+            _dot(img, x, y, _shade(rgb, int(16 - 4.5 * (dx + dy))))
+
+
+def sm_item_potato(rgb=(196, 156, 92)):
+    """A potato: an OVAL, not a circle, with eyes. A plain shaded disc
+    was the first attempt and read as a coin -- the eyes and the squash
+    are the whole of what makes it a vegetable."""
+    img = _icon()
+    _blob(img, rgb, 5, 8, 8, squash=1.25)
+    for x, y in ((6, 6), (10, 7), (7, 10), (11, 10)):
+        _dot(img, x, y, _shade(rgb, -52))
+        _dot(img, x + 1, y, _shade(rgb, -28))
+    _dot(img, 5, 6, _shade(rgb, 34))   # a highlight where the light is
+    _dot(img, 6, 5, _shade(rgb, 30))
+    return img
+
+
+def sm_item_tomato(rgb=(210, 56, 42)):
+    """A tomato: a round red body with a green calyx on top and a
+    highlight. The calyx is what tells it from an apple, and at 16 px it
+    is the only thing that does."""
+    img = _icon()
+    _blob(img, rgb, 5, 8, 9)
+    green = (86, 142, 58)
+    for x, y in ((8, 3), (7, 4), (8, 4), (9, 4), (6, 5), (10, 5)):
+        _dot(img, x, y, green)
+    _dot(img, 8, 2, _shade(green, -30))       # the stalk
+    _dot(img, 6, 7, _shade(rgb, 44))          # the shine
+    _dot(img, 5, 8, _shade(rgb, 30))
     return img
 
 
 def sm_item_round(rgb, r=4, cy=8, cx=8):
-    """A blob: a potato, a tomato. Shaded from the top left, like the
-    ingot, so a row of them does not read as flat."""
+    """A plain shaded blob, for anything that has no shape of its own."""
     img = _icon()
-    for y in range(cy - r, cy + r + 1):
-        for x in range(cx - r, cx + r + 1):
-            dx, dy = x - cx, y - cy
-            if dx * dx + dy * dy > r * r:
-                continue
-            _dot(img, x, y, _shade(rgb, 14 - 4 * (dx + dy)))
+    _blob(img, rgb, r, cx, cy)
     return img
 
 
 def sm_item_wheat():
-    """An ear on a stalk: the shape people know from the block."""
+    """A sheaf: three gold stalks, each with grains up its length. One
+    stalk read as a twig, and a single ear read as a feather."""
     img = _icon()
-    stem = (150, 132, 70)
-    for y in range(6, 14):
-        _dot(img, 8, y, stem)
-    for i, y in enumerate(range(3, 9)):
-        _dot(img, 7 - (i % 2), y, (222, 196, 104))
-        _dot(img, 9 + (i % 2), y, _shade((222, 196, 104), -18))
+    gold = (230, 200, 96)
+    for k, x0 in enumerate((5, 8, 11)):
+        for y in range(4 + (k % 2), 14):
+            _dot(img, x0, y, _shade(gold, -34))
+        for y in range(4 + (k % 2), 11, 2):
+            _dot(img, x0 - 1, y, gold)
+            _dot(img, x0 + 1, y + 1, _shade(gold, -14))
     return img
 
 
 def sm_item_beans():
-    """Three fat pods, each with the beans showing as bumps along it. A
-    thin diagonal line was the first try and read as a twig."""
+    """Two pods, CURVED, with the beans swelling inside them -- plus
+    three loose beans. Straight bars read as dashes and a single diagonal
+    read as a twig; the curve is what says pod at this size."""
     img = _icon()
-    pod = (150, 172, 84)
-    for x0, y0 in ((3, 6), (6, 9), (9, 5)):
-        for i in range(5):                         # the pod, two texels thick
-            _dot(img, x0 + i, y0, pod)
-            _dot(img, x0 + i, y0 + 1, _shade(pod, -30))
-        for i in (1, 3):                           # the beans inside it
-            _dot(img, x0 + i, y0, _shade(pod, 30))
+    pod = (168, 180, 88)
+    bean = (206, 184, 96)
+    for x0, y0, d in ((3, 5, 1), (7, 9, -1)):
+        curve = (0, 0, 1, 1, 0)                    # a shallow arc
+        for i, dy in enumerate(curve):
+            x, y = x0 + i, y0 + dy * d
+            _dot(img, x, y, pod)
+            _dot(img, x, y + 1, _shade(pod, -34))
+            if i in (1, 3):
+                _dot(img, x, y, bean)              # a bean showing through
+    for x, y in ((11, 4), (12, 7), (10, 12)):      # loose beans beside them
+        _dot(img, x, y, bean)
+        _dot(img, x, y + 1, _shade(bean, -38))
     return img
 
 
@@ -1588,14 +1704,18 @@ TEXTURES = {
     "rice_1.png": lambda n="rice", s=1: sm_crop(n, s),
     "rice_2.png": lambda n="rice", s=2: sm_crop(n, s),
     "rice_3.png": lambda n="rice", s=3: sm_crop(n, s),
+    "rice_top_0.png": lambda s=0: sm_crop("rice_top", s),
+    "rice_top_1.png": lambda s=1: sm_crop("rice_top", s),
+    "rice_top_2.png": lambda s=2: sm_crop("rice_top", s),
+    "rice_top_3.png": lambda s=3: sm_crop("rice_top", s),
     "item_hoe_wood.png": lambda: sm_item_hoe((192, 140, 72)),
     "item_hoe_stone.png": lambda: sm_item_hoe((150, 158, 166)),
     "item_hoe_iron.png": lambda: sm_item_hoe((222, 222, 228)),
     "item_wheat_seeds.png": lambda: sm_item_seeds((186, 176, 108)),
     "item_tomato_seeds.png": lambda: sm_item_seeds((196, 172, 124)),
     "item_wheat.png": sm_item_wheat,
-    "item_potato.png": lambda: sm_item_round((198, 154, 86)),
-    "item_tomato.png": lambda: sm_item_round((210, 62, 46)),
+    "item_potato.png": sm_item_potato,
+    "item_tomato.png": sm_item_tomato,
     "item_beans.png": sm_item_beans,
     "item_rice.png": sm_item_rice,
     "item_compost.png": sm_item_compost,

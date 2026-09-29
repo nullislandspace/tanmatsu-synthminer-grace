@@ -125,6 +125,13 @@ typedef enum {
     VM_RICE_1,
     VM_RICE_2,
     VM_RICE_3,
+    // The upper half of the rice plant: its own run of four, because a
+    // plant that is two cells tall is two different pictures and not the
+    // same one twice.
+    VM_RICE_TOP_0,
+    VM_RICE_TOP_1,
+    VM_RICE_TOP_2,
+    VM_RICE_TOP_3,
     VM_COUNT
 } vox_mat_t;
 
