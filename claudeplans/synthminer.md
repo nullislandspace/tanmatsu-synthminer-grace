@@ -125,9 +125,10 @@ main/
 *   flycam.{c,h}          the debug camera, on F
 *   membench.{c,h}        what the memory costs, at boot (F-40)
 *   furnace.{c,h}         smelting: the lazy clock, fuel, the cook timer (pure)
+*   composter.{c,h}       a day a unit, and the worms fishing needs (pure)
+*   maker.{c,h}           the cheese maker and the sausage maker (pure)
+*   mob.{c,h}             THE CREATURE REGISTRY: pool, tick, save (pure)
 *   benchpath.h           the benchmark flight's seed and path (step 41) (pure)
-    entity.{c,h}          the general pool; item_entity is its first case
-    mob_*.c animal_*.c    one file per creature
   items/
 *   items.{c,h}           ITEM REGISTRY; ids below BLK_COUNT are blocks  (pure)
 *   inventory.{c,h}       slots, hotbar, stacking, the Tab grid          (pure)
@@ -136,6 +137,7 @@ main/
   fred/
 *   fred.{c,h}            PORTED showreel miner: the player's figure and arm
 *   fred_mesh.{c,h}       his meshes, plus an axe and a shovel
+*   beast.{c,h}           the animals' figures: one model, a row per kind
   audio/
 *   audio.{c,h}           the mixer's lifetime; footsteps, landings
 *   sfx.{c,h}             THE EFFECT TABLE: one row per sound
@@ -156,6 +158,8 @@ main/
 *   craft_ui.{c,h}        the recipe book: filter, have/missing, auto-craft
 *   furnace_ui.{c,h}      the three slots, and the lazy clock's catch-up
 *   chest_ui.{c,h}        two grids side by side; the trashcan is the same screen
+*   composter_ui.{c,h}    scraps in, compost and worms out
+*   maker_ui.{c,h}        the two makers, on one screen with two to four rows
 *   bench_ui.{c,h}        the disassembly bench
 *   amount_ui.{c,h}       how many to move: slider and typed number
 *   cheat_ui.{c,h}        any item in the game, English only (test aid)
@@ -186,9 +190,15 @@ directory you forget to look in. They move the day a second file joins them.
 
 ### The registries (the extendability contract)
 
-**There are four**, not the three this section was written for: blocks,
-items and recipes, and since the biomes round (step 33) `biome_def_t` in
-`world/worldgen.h`, which is a registry by the same contract -- a place is
+**There are five**, not the three this section was written for: blocks,
+items, recipes, `biome_def_t` since the biomes round (step 33) -- and
+since step 10 `mob_def_t` in `game/mob.h`, where a pig and a dog differ
+by a row and not by a file. Part L's plan said "one file per creature";
+what was built is a table, for the same reason everything else here is
+one.
+
+The four that were here before: blocks, items, recipes, and
+`biome_def_t` in `world/worldgen.h`, which is a registry by the same contract -- a place is
 a row (surface and filler block, soil depth, tree and plant chances, the
 three height numbers, which log and leaf it grows, what stands in its
 columns, what caps it above a height). Adding a biome is a row; adding a
@@ -1479,6 +1489,11 @@ resident (D-112).
 
 ### Animals, and a bucket that already knows how to hold things
 
+**BUILT 2026-09-29, ahead of the stove** -- the user's reordering, for
+the same reason fishing went ahead of mobs: *"Let's implement phase 11
+(Animals) before Phase 10 (food, hunger, kitchen stove)."* So animals
+are step 10 and the stove is step 11.
+
 Pigs drop **raw pork**, cows drop **raw beef**, and a cow **used with a
 bucket gives milk**. Milk is drunk for 1 hunger and no saturation, or
 turned into cheese.
@@ -1489,13 +1504,47 @@ in `BUCKETS[]`, and `fred_build_bucket` already colours its contents
 from the table, so the held model needs no code. This was written down
 as a guess at lava and milk; it is the milk half being cashed in.
 
+One thing did have to change: milk is **not a fluid in the world**.
+There is no milk block and no reason for one, so its `fluid` is
+`BLK_AIR` -- and "is this a bucket" had been a test on the contents,
+which would have read a milk bucket as an empty one and dipped it in
+the nearest lake. The family is now the table rather than the contents,
+and the colour of what is inside is a column.
+
+**Four questions the design never answered** were put to the user before
+any of it was built, and the answers are D-118 to D-121:
+
+| question | answer |
+|---|---|
+| chickens, when no dish uses one? | **leave them out for now** |
+| what does breeding want? | **each animal its own food** |
+| what tames a dog? | **a bone, a rare drop from the sausage maker** |
+| where do animals come from? | **generated with the land** |
+
+The bone is the best of those and was not on the list offered: it makes
+the sausage maker the only source of the one creature that follows you
+about, so a machine that looked like a side dish is now on the path to
+a dog.
+
+**And the fence** (D-122), asked for in the same breath as the step:
+*"we will also need to be able to craft and place fences and fence gates
+so we can manage the animals"*. A fence is a block and a half tall --
+the first height that is neither walkable nor jumpable -- and a gate is
+two block ids, open and shut. Without them an animal is something you
+follow about rather than something you keep, which is the difference
+between husbandry and hunting.
+
+**And a voice each** (D-124), also asked for in the same breath: a moo,
+an oink and a bark, synthesised like every other sound in this game,
+two a tick and nothing past 26 blocks.
+
 ### Two machines that take a day, two that take a minute (D-105, D-108)
 
 | block | recipe | fuel | in | out | time |
 |---|---|---|---|---|---|
 | Kitchen stove + its chest | 3 iron + 6 stone + 8 planks, **one item, two blocks** (D-110) | **yes** | its own chest half, plus a recipe selector | 1 slot | 1 in-game minute |
 | Cheese maker | 7 wooden planks | no | 1 bucket of milk (**the bucket comes straight back**) | cheese | 1 in-game day |
-| Sausage maker | 9 iron ingots | not stated | 1 pork + 1 flower of any colour, or 2 beans | 1 sausage | 1 in-game minute |
+| Sausage maker | 9 iron ingots | no | 1 pork + 1 flower of any colour, or 2 beans | 1 sausage, and **1 bone in 6** off the pork one | 1 in-game minute |
 | Composter | 7 wooden planks | no | up to a stack of compostables | compost + 0-2 worms | 1 in-game day per unit |
 
 The cheese maker *"looks like an open barrel (quadratic, not round)"*
@@ -1662,14 +1711,17 @@ stays a table row.
 
 ### What it costs
 
-- **Thirteen permanent block ids** (D-74, and a line each in
+- **Sixteen permanent block ids** (D-74, and a line each in
   `tools/ids.txt`): farmland wet and dry, five machine blocks -- the
-  stove is two of them, D-110 -- and six for the crops, because rice is
-  two blocks tall and its upper half is an id of its own (D-115). Ids 31
-  up, the first spent since step 35; step 9 has taken 31 to 39.
+  stove is two of them, D-110 -- six for the crops, because rice is two
+  blocks tall and its upper half is an id of its own (D-115), and three
+  for the fence and its gate, which is two ids because an open gate is
+  not solid (D-122). Ids 31 up, the first spent since step 35; step 9
+  took 31 to 39 and step 10 took **40 to 44**.
 - **About thirty item ids**: three hoes, a rod, compost, worms, seeds
   for wheat and tomatoes, five harvests, pork, beef, milk, cheese, two
-  sausages, three fish, eleven dishes.
+  sausages, a bone, three fish, eleven dishes. Step 9 spent twelve and
+  step 10 **seven**; the item table stands at 33 non-block items.
 - **Thirty-two languages.** Roughly 35 new labels plus four machine
   screens is the biggest string round since 8.5, and
   `check_label_widths()` (F-76) decides whether the stove's picker fits
@@ -1678,7 +1730,18 @@ stays a table row.
   ring, sized for chests and furnaces. A farm has a composter, a stove,
   a cheese maker and a sausage maker in one place, and the pool is
   shared: it may need raising, which is PSRAM and is measurable rather
-  than guessable.
+  than guessable. Still 192 after step 10, and untested against a real
+  farm.
+
+- **A creature pool**, which step 10 added: `MOB_MAX` is 48 live animals
+  across the resident ring, and it is what bounds the cost of the tick.
+  A herd or two per chunk that has one, measured at 96 chunks in 576
+  with a herd in them and 272 animals over a 384 x 384 block world.
+
+- **The texture cache**, which is the one that has already bitten
+  (F-120). It now has to hold every material AND an icon per item, the
+  requirement is derived from the item table rather than counted, and
+  both halves are checked -- one at compile time, one on the host.
 - **A chunk section and a new tag**, for the stamp above.
 
 ### Open, and to be decided when it is built
@@ -1691,6 +1754,15 @@ types the code:
   so it is not waiting on step 13 (D-109).
 - **Where string does come from**, which that recipe will settle. Tall
   grass is the obvious candidate and already exists.
+- **Whether a BEAN sausage can leave a bone.** It cannot, as built: a
+  bone comes off the pig, and the user's words were "when feeding the
+  sausage maker, a rare drop is a bone", which does not say which
+  sausage. One line in `MAKERS[]` either way. It matters because it
+  decides whether a vegetarian player can have a dog.
+- **One in six**, the bone's rate, which is a guess and the only number
+  in step 10 that is not the user's. It sets what a dog costs.
+- **Chickens**, left out for now (D-118) and waiting for a dish that
+  wants one.
 
 ---
 
@@ -1777,8 +1849,8 @@ types the code:
 | 8.6 | The 8.4 screens in all 32 languages | done | 2026-09-23: 24 more keys each. Three languages spell "disassembly bench" wider than the column that holds an item name (Portuguese, Greek, Bulgarian) and were shortened rather than the column widened -- it is already the widest layout in the game. F-83. |
 | 8.5 | Item names and the crafting UI in all 32 languages | done | 2026-09-23: 63 keys x 31 languages -- every block and item a player can carry, the crafting book, the furnace and its picker. **Six overflowed and the check caught all six** before the badge did (French, Irish, Albanian, Greek, Bulgarian, Serbian), and widening the two crafting panels to hold them exposed something nothing had been measuring: **the book's row labels are ITEM NAMES**, and Russian "Деревянная лопата" is half as wide again as "Wooden shovel". `item.` joined `LABEL_COLUMNS`, the panels went to the wide layout, and the fold table grew to cover 82978 characters across the 32 languages. |
 | 9 | **Farming: the hoe, wet and dry soil, five crops, and the composter** | done | 2026-09-29, built from Part A and D-104 to D-110. **Nine permanent block ids** (31-39, D-74): farmland dry and wet, the composter, five crops, and the upper half of the rice; twelve items, three of them hoes. The hoe tills grass or dirt and the soil comes out **wet or dry by a water search done on that keypress and never again** (D-106) -- dry soil then REFUSES the seed, which is the failure worth having: a refusal a player learns from instead of a plot that silently never sprouts. **Crops cost almost nothing to draw**: `BF_CROP` and `growth_max` had been sitting in the block table unused since step 0.3, and the stage-to-texture step rides on the data plane the fluids already paid for (D-101), so a crop is `mat[VF_TOP] + stage` and four textures in a run. **The real cost was time, and it is D-111**: a crop is a block, so there is nowhere in a cell to write when it last grew -- `chunk_t.stamp` is now saved in a nine-byte section of its own, no version bump, and a chunk that arrives without one is stamped *now* (which is what stops every field in an upgraded world ripening on sight; the host check caught exactly that). Growth runs on a **round-robin sweep, one chunk slot a tick** and a flag test for a chunk with nothing growing (D-112), plus the full catch-up when a chunk lands -- the user's *"advance events in one go to where they would be now"*. **Rice is the interesting one**: it stands IN the water, so its cell is a plant and a full water source at once (`BF2_WATERLOGGED`), which is safe only because the user's own rule puts it in water exactly one block deep. The **composter** is the furnace's record with a longer number: a day a unit, 0-2 worms from the world's hash and never `rand()`, and **an empty box banks nothing** so a week of standing idle does not turn the next scrap into instant compost. Wild potatoes, beans and tomatoes generate ripe in their biomes and rice in the shallows (D-107) -- measured at 54, 23, 10 and 37 in a 700 x 700 block world, which is a find rather than a crop. **Measured, not assumed: a field grown from seed to ripe leaves 0 cells in the physics queue**, so crops never touch tier 1. Two checks caught real bugs before the badge did: a hand-built test world ripened everything instantly (the zero-clock case, now D-111's rule) and `check_label_widths` caught French and Russian potato-plant labels overflowing the crafting book. 39 new strings x 32 languages. **Then the user played it, and three of their complaints were one bug** (F-120): `TEXCACHE_MAX` had been 48 since the showreel and this round took the material count to 64, so potato, tomato, bean and rice textures, `water_blend.png` and every item icon failed to load and fell back to their flat average colour -- which is what read as *"stand-ins"*, as plants that *"only slightly change color"* instead of growing, and as transparent water that would not switch on. The badge had logged `cache full` about twenty times a boot and nobody read it. Now 128, with a **static assert** so the next material fails the build rather than the picture. In the same round rice became **two blocks tall** (D-115), ripe wheat went **gold all over** (D-116), and every stage got a different silhouette rather than a different shade. **The yields and the clock were the user's next round** (D-117): wheat 1-3 grain and 1-2 seeds so a field can grow at all, tomatoes 2-4 fruit and no seeds since the crafting table makes those, the count rolled at every harvest rather than baked into the cell, and growth slowed from 7.5 minutes to **an in-game day** for wheat and tomatoes and **two** for potatoes, beans and rice -- which rebuilt the clock as absolute stage boundaries with a per-plant phase, and is a better shape than what it replaced. Not yet: eating any of it, which is step 10. |
-| 10 | **Food, hunger, and the kitchen stove** | todo | Designed 2026-09-29, and the user's verdict on the alternative was blunt: cooking on a crafting table or in a furnace *"makes absolutely no sense"*. So food is made on a **stove that reads its ingredients out of the chest beside it** (D-105) -- and the chest is not one a player has to supply: **the recipe includes it, the item places two blocks, and each holds the other's coordinates** (D-110, the user's refinement, which kills the "which chest?" question by making it unaskable and makes a row of stoves possible). Breaking either half takes both, contents drop as every container in this game already does, and a pair that straddles a chunk border repairs itself on load the way D-99 repairs fluids at a seam -- the broken half drops the item, an orphan drops only its contents, so nothing duplicates -- a recipe selector, a fuel slot, an output slot, one in-game minute a dish, and **a message naming what is missing** when a recipe is short or no chest touches it, for the same reason iron refusing a wooden pick needed a line on the HUD. Eleven dishes, every number the user's, with **pizza as the superfood** at 10 hunger and 8 saturation because it needs a crop, a fish, a cow and a pig -- all four systems at once. `item_def_t` gains `hunger` and `saturation`, so a food is a table row. The hunger loop is Minecraft's model, which D-08 committed to on day one; the HUD has drawn both bars since 4.3 with nothing moving them. |
-| 11 | **Animals: pigs, cows, chickens; milk, cheese and sausages; dogs** | todo | Pigs give pork, cows give beef, and **a cow used with a bucket gives milk** -- which D-100 already paid for: a filled bucket is its own item id, so `ITEM_BUCKET_MILK` is one row in `BUCKETS[]` and the held model colours its own contents from the block table. Two slow machines of their own (D-108): the **cheese maker**, 7 planks, an open square barrel that shows white, then yellow-orange, then empty, takes a bucket of milk (**returning the bucket at once**) and an in-game day; and the **sausage maker**, which turns pork and a flower into a sausage in a minute, or **two beans into a vegetarian one with identical stats**. Breeding, and dogs found wild and tamed with steak, are unchanged from the original requirement. |
+| 10 | **Animals: pigs, cows and dogs; milk, cheese, sausages, fences** | done | 2026-09-29, **built ahead of the stove on the user's instruction** and out of four questions they answered first (D-118 to D-121). **Five permanent block ids** (40-44): the cheese maker, the sausage maker, the fence and its gate open and shut; **seven items**: pork, beef, a milk bucket, cheese, two sausages and a bone. **The creatures are the new shape** (`game/mob.{c,h}`) and item_entity.h had promised it since step 4: a fixed pool of 48, a registry row per kind, no allocation, and every random number a hash of the tick and the creature's own id so a replay reproduces a whole farm. A pig differs from a dog in what it eats, what tames it and how fast it is -- and in nothing else. **They are saved with the chunk they stand in** (D-123), in the entities section the format has had a number for since step 1.3 and never written a byte into; safe because an unloaded chunk is solid (D-14), so nothing can wander off the edge of the resident world and be lost. **Herds are generated with the land** (D-121) and needed one new chunk flag -- `CF_GENERATED` could not say "made just now", because both the card and the generator set it. Measured: 96 chunks in 576 hold a herd, 272 animals over 384 x 384 blocks. **A cow with a bucket gives milk**, which D-100 had already paid for -- though milk is not a fluid in the world, so "is this a bucket" stopped being a test on the contents before it dipped a milk pail in a lake. **The fence is the part that makes them animals you keep** (D-122): a block and a half tall, which is the first height that is neither walkable (step-up is one) nor jumpable (the player reaches 1.33). That cost one rule in the collider and a new mesh kind; a gate is two block ids for the same reason farmland is, and lies across the way the player was facing when it went down. A host check walks a body into one for 40 ticks and demands it stay outside, then opens the gate and demands it get through. **The two machines are the furnace's trick a third time** (`game/maker.{c,h}`): one file, a row each, a day for the cheese and a playing minute for the sausage, never a tick of work, and what each can make is the RECIPE TABLE under a station of its own. The bucket comes back when the milk goes IN, not when the cheese comes out -- returning it at the end would lock a pail up for a day, which is the one thing the user said not to do. **The bone** (D-120) is one in six off a pork sausage, from the world's hash, in a second output slot for the same reason the composter has one. **And a voice each** (D-124), synthesised like every other sound here. 37 new strings x 32 languages. **Then the user asked for the texture cache to be made safe** (F-120, amended): the by-name half is now derived from the item table, so a new item moves the requirement by itself, worldcheck counts what the game really asks for, and the cache says how full it ended up -- which caught an open gate asking for an icon that does not exist and never could (F-121). Not yet: eating any of it, which is now step 11. |
+| 11 | **Food, hunger, and the kitchen stove** | todo | **Moved behind the animals on the user's instruction** (2026-09-29): *"Let's implement phase 11 (Animals) before Phase 10 (food, hunger, kitchen stove)."* Which is the right way round -- the stove's table needs cheese, sausages and beef, and all three come off an animal. Designed 2026-09-29, and the user's verdict on the alternative was blunt: cooking on a crafting table or in a furnace *"makes absolutely no sense"*. So food is made on a **stove that reads its ingredients out of the chest beside it** (D-105) -- and the chest is not one a player has to supply: **the recipe includes it, the item places two blocks, and each holds the other's coordinates** (D-110, the user's refinement, which kills the "which chest?" question by making it unaskable and makes a row of stoves possible). Breaking either half takes both, contents drop as every container in this game already does, and a pair that straddles a chunk border repairs itself on load the way D-99 repairs fluids at a seam -- the broken half drops the item, an orphan drops only its contents, so nothing duplicates -- a recipe selector, a fuel slot, an output slot, one in-game minute a dish, and **a message naming what is missing** when a recipe is short or no chest touches it, for the same reason iron refusing a wooden pick needed a line on the HUD. Eleven dishes, every number the user's, with **pizza as the superfood** at 10 hunger and 8 saturation because it needs a crop, a fish, a cow and a pig -- all four systems at once. `item_def_t` gains `hunger` and `saturation`, so a food is a table row. The hunger loop is Minecraft's model, which D-08 committed to on day one; the HUD has drawn both bars since 4.3 with nothing moving them. |
 | 12 | **Fishing** | todo | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, **one per cast and not per catch**, which is why the composter in step 9 has two output slots and why its 0-2 worms a day is the dial that sets how much fishing anyone does. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. The rod is **three sticks for now**, with the final recipe still the user's to give -- and the thing they have decided is that **string will not come from spiders**, which means this step never depended on step 13 in the first place. **No rod durability** either, their call and the right one: fishing is already paid for in worms, and charging twice for the same activity is how a system stops being worth using. |
 | 13 | **Mobs: zombies, skeletons, spiders; spawning, pathing, combat; beds and spawn; death keeps the inventory** | todo | Now after fishing (D-109). Unchanged otherwise, and still the biggest single block left: it is the first thing in the game that needs an entity with a mind rather than a record with a timer. |
 | 14 | **Audio: sound effects, and music that is mostly silence** (D-82, D-83, D-84, D-85) | done | 2026-09-23: the mixer starts at boot. 21 effects as table rows (`audio/sfx.c`), and which one a block makes is its own registry row (`block_def_t.sound`), so a new block brings its sounds with it. Music is eleven public-domain MIDI files played by a ported sequencer and a six-shape synth: 72 KB for half an hour, against megabytes for the same music as MP3. `worldcheck`'s `check_midi` proves every shipped file parses, ends, rewinds identically and survives truncation at any length (F-72). The raw voice sum clipped, so the synth carries a master gain and a cubic soft limiter (F-73). **Three volume sliders** in Settings -> Audio (D-85): the badge's own, then how loudly the music and the effects are each mixed in. The effects turned out to be inaudible whenever the music was off -- the amplifier was asleep and eating them (F-75) -- which is why the engine is 2.2. Two checks came out of the round and stay behind: `tools/symcheck.sh`, after an unexported `strcasecmp` made the app link clean and then refuse to start with no message at all (F-74), and `check_label_widths()`, after the sliders' labels turned out to be the least of it -- three settings screens had been overlapping their own text in a dozen languages since the day the language count went to 32 (F-76). |
@@ -3805,12 +3877,48 @@ types the code:
   first thing that would have explained all three symptoms in one line
   was never looked at.
 
-  Fixed at `TEXCACHE_MAX 128`, and the invariant is now a **static
+  Fixed at `TEXCACHE_MAX 128`, and the invariant became a **static
   assert in chunk_render.c** -- `VM_COUNT + 36 <= TEXCACHE_MAX` -- so a
   new material fails the BUILD rather than quietly turning four blocks
   into coloured quads. A build failure is the right home for it: the
   numbers are both compile-time constants, and the failure mode without
   it is invisible.
+
+  **AMENDED 2026-09-29 (step 10), at the user's instruction:** *"Also
+  make sure the texture cache has an appropriate limit. We have run into
+  issues before."* The fix above was still half a hand-count -- the 36
+  was a number somebody had counted once, which is precisely the shape
+  of the original bug. Three changes:
+
+  * the by-name half is now **derived**: `TEX_BY_NAME` in items.h is
+    `ITEM_COUNT - BLK_COUNT` plus a fixed slack, so **every new item
+    moves the requirement by itself** and the assert cannot go stale;
+  * `tools/worldcheck.c` counts what the game will really ask for --
+    an icon per non-block item, one per block drawn as a thing rather
+    than a cube, and the six files that belong to nothing -- and fails
+    if those outgrow the slack. So the estimate cannot rot either: one
+    of the two fails first, and both fail on the host;
+  * `texcache_report()` prints **how full the cache ended up** and warns
+    when it is within eight of the wall. That is the part aimed at the
+    real finding above: a line that says "seven left" is one somebody
+    reads before the wall rather than after it.
+
+  `TEXCACHE_MAX` is **192** after this round, which is 7.7 KiB of table
+  and leaves room for the stove, the fish and the mobs. Measured today:
+  74 materials + 42 by name = **116 of 192**.
+
+- **F-121** 2026-09-29, step 10, and the new counting check above found
+  it within a minute of existing: **an open fence gate was asking for a
+  texture that does not exist.** It carried `BF2_ITEM_ICON`, which means
+  "draw me from `item_<name>.png` in the inventory" -- but an open gate
+  drops the SHUT one when broken, so it can never be in anybody's hands
+  and `item_fence_gate_open.png` was never drawn. Live, it would have
+  cost a cache slot and a `missing -- drawn flat` line for a picture
+  nothing ever looks at.
+
+  Small, and the point is where it was caught: a check that counts what
+  the game asks for finds the things it asks for and should not, which
+  a check that only tests the limit never would.
 
 ### Decisions (D-n), each with date and who decided
 
@@ -5441,6 +5549,116 @@ types the code:
     measured one ripening in 15360 ticks instead of 24000, which is a
     whole free stage. That check is the one to keep: it plants at two
     deliberately awkward moments and demands both take a day.
+
+- **D-118** 2026-09-29, **the user**, asked what chickens were for given
+  that no dish in Part A's table uses one: **leave chickens out for
+  now.** Pigs, cows and dogs are the whole of step 10.
+
+  The question was worth asking rather than guessing: a chicken would
+  have been a creature, a drop, an egg timer and two item icons in
+  service of nothing anybody could eat. It comes back the day a recipe
+  wants it. The original requirement line in Part A's Context still
+  names chickens and that is left standing -- it is the requirement, and
+  this is the schedule.
+
+- **D-119** 2026-09-29, **the user**: **every animal has its own food.**
+  Cows take wheat, pigs take potatoes or beans, and a dog is fed raw
+  beef. Feeding an adult puts it in the mood to breed; feeding a calf
+  grows it up faster.
+
+  The alternative on the table was "any crop feeds anything", which is
+  one rule instead of three. This is the better one for a farm with five
+  crops in it: it gives each crop a second use and it means a herd is
+  something you plan for rather than something that follows whatever is
+  in your hand.
+
+- **D-120** 2026-09-29, **the user**, asked which item tames a dog:
+  **"When feeding the sausage maker, a rare drop is a bone. That is what
+  you tame the dog with."**
+
+  This is the answer that ties the step together, and it is better than
+  either option that was offered. Raw beef would have made a dog cost a
+  cow; the cooked dish would have made dogs wait for a stove that does
+  not exist yet. A bone out of the sausage maker means a dog costs **a
+  pig, a flower and some luck** -- so the machine that looked like a
+  side dish is now the only source of the one thing in the game that
+  follows you around.
+
+  Mechanically it gives the sausage maker a **second output slot**, for
+  the same reason the composter has one: a bone cannot share a slot with
+  a sausage. One in six, from the world's hash and never `rand()`, and
+  **only off the pork one** -- a bean sausage has no bones in it. That
+  last part is an inference rather than the user's word, and it is the
+  one number in this step worth revisiting.
+
+- **D-121** 2026-09-29, **the user**: **animals are generated with the
+  land.** A herd or two is placed when a chunk is first generated, in
+  the biomes that suit it, and after that only breeding makes more.
+
+  No trickle-back, which was the other option offered. It makes a
+  population **yours to manage**: hunt a valley out and it stays hunted
+  out until you breed it back, which is what makes a fence worth
+  building. It also costs nothing at run time -- there is no periodic
+  spawn check anywhere in the tick.
+
+  It needed one new chunk flag. `CF_GENERATED` cannot answer "was this
+  made just now", because both the card path and the generator set it;
+  `CF_FRESH` is set by the worker and cleared by the main task the once,
+  when it puts the animals in. Without that distinction a herd would
+  breed anew every time a field was walked past.
+
+- **D-122** 2026-09-29, **the user**, in the same message as the step:
+  *"We will also need to be able to craft and place fences and fence
+  gates so we can manage the animals."*
+
+  A fence is **a block and a half tall** (`block_collide_top`), which is
+  the first height that is neither walkable nor jumpable: the player's
+  jump reaches 1.33 blocks and an animal's step-up is one. That half
+  block is the whole feature -- at one block it is a decoration and the
+  gate is pointless.
+
+  It cost one rule in the collider (a second pass over the cell BELOW
+  the body, for blocks that stick up out of their own) and a new mesh
+  kind. A gate is **two block ids**, open and shut, for exactly the
+  reason farmland is two: an open one is not solid and `block_solid`
+  takes an id. Which way it lies is the state byte, taken from the way
+  the player was facing as they placed it, so a gate dropped into a
+  fence line is already the right way round.
+
+- **D-123** 2026-09-29: **a creature is saved with the chunk it stands
+  in**, in the entities section the format has had a number for since
+  step 1.3 and never written a byte into.
+
+  This is D-33 being cashed in, and it is not what dropped items do --
+  those live in `level.smw` (D-68). The difference is that there can be
+  a great many animals in a world and only ever a few dozen items: a
+  global list would have to hold every cow anybody has ever bred,
+  whereas a chunk section holds the ones in that field and costs nothing
+  for the rest.
+
+  It is safe because **a creature cannot leave the resident world**: an
+  unloaded chunk is solid (D-14), so a pig walking west stops at the
+  edge of what is loaded exactly as the player does. Nothing can wander
+  into a chunk that is not there and be lost when the one it came from
+  is written. Eviction drops the pool's copies after the save, the way
+  block entities already do.
+
+- **D-124** 2026-09-29, the user, in the same message: **the animals
+  make a noise.**
+
+  Three rows in the effect table (`SFX_MOO`, `SFX_OINK`, `SFX_BARK`) and
+  a shared cry for being hurt, which is the same synthesised one-shot
+  every other sound in this game is -- a moo is a falling saw under a
+  low-pass, an oink is the same shape a tenth as long through a
+  band-pass, a bark is mostly noise cut short.
+
+  `mob.c` is pure and cannot make a noise, so a creature that wants to
+  be heard sets `say` and the audio pass turns it into one -- the same
+  split `interact.c` uses for the world it changes. Two voices a tick
+  and nothing past 26 blocks, because this mixer has no panning and no
+  distance falloff: the only way to keep a herd on the far hill out of
+  the player's ears is not to play it. A calf is its parent's voice five
+  semitones up.
 
 - **D-96** 2026-09-26, out of the user's question and then their
   instruction: **the audio codec is ours, and it is public domain.**

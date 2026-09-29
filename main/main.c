@@ -63,6 +63,8 @@
 #include "ui/chest_ui.h"
 #include "ui/craft_ui.h"
 #include "ui/composter_ui.h"
+#include "fred/beast.h"
+#include "ui/maker_ui.h"
 #include "ui/furnace_ui.h"
 #include "se_stream.h"
 #include "ui/menu.h"
@@ -896,6 +898,7 @@ static void on_init(void* user) {
         return;
     }
     fred_init();  // after the block textures: a block in his hand uses them
+    beast_init();  // ... and the animals, which borrow nothing but need the same moment
     // The player's graphics and audio choices. The view distance itself
     // is applied on entering a world: the title has a view of its own.
     // Bindings registered first: the settings file restores them.
@@ -1111,6 +1114,10 @@ static bool enter_world(int slot, bool create, char const* name, uint32_t seed) 
     chunk_render_set_view(&pv);
     // What was lying on the ground when they left.
     item_entity_restore(s_items.e, create ? 0 : s_items.n);
+    // AND NOBODY ELSE'S ANIMALS. The creatures come back with the
+    // chunks they were standing in (game/mob.h), so all this has to do
+    // is make sure the last world's herd is not still in the pool.
+    mob_reset();
 
     // WHO THEY WERE. Health, hunger and what they carry come back from
     // the save; a player with nothing saved gets the starting kit.
@@ -1275,6 +1282,7 @@ static bool enter_bench(bool generate) {
     sm_view_t const pv = sm_view_preset(view_setting());
     chunk_render_set_view(&pv);
     item_entity_reset();
+    mob_reset();
     player_reset(&s_player);
 
     double wx, wz;
@@ -1301,6 +1309,7 @@ static bool enter_flight(void) {
     sm_view_t const pv = sm_view_preset(view_setting());
     chunk_render_set_view(&pv);
     item_entity_reset();
+    mob_reset();
     player_reset(&s_player);
     double wx, wz;
     float  yaw;
@@ -1339,6 +1348,7 @@ static bool enter_replay(void) {
     sm_view_t const pv = sm_view_preset(view_setting());
     chunk_render_set_view(&pv);
     item_entity_reset();
+    mob_reset();
     player_reset(&s_player);
     memcpy(s_player.inv.slot, st.inv, sizeof(s_player.inv.slot));
     s_player.inv.selected = (int)st.selected;
@@ -1736,10 +1746,13 @@ static void on_update(float dt, void* user) {
     // And the composter, which is the furnace's trick with a longer
     // number: a day a unit, worked out when somebody looks at it.
     if (composter_ui_active()) composter_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
+    // The cheese maker and the sausage maker: the same trick again, a
+    // day and a minute (game/maker.h).
+    if (maker_ui_active()) maker_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
     if (bench_ui_active()) bench_ui_update(&s_player.inv);
     if (cheat_ui_active()) cheat_ui_update(&s_player.inv);
     s_player.ui_open = craft_ui_active() || furnace_ui_active() || chest_ui_active() || bench_ui_active() ||
-                       cheat_ui_active() || composter_ui_active();
+                       cheat_ui_active() || composter_ui_active() || maker_ui_active();
 
     // The menus. Whatever changes the world or the game's running state
     // comes back as a command and is acted on here, in one place.
@@ -1880,6 +1893,13 @@ static void on_update(float dt, void* user) {
             // A slot with nothing growing in it is a flag test, so this
             // is free in a world nobody has farmed.
             crops_tick((uint32_t)s_meta.time_of_day);
+            // THE ANIMALS, before the player moves: they read where he
+            // was last tick, which is what every other creature in
+            // every other game does and what keeps the order fixed for
+            // a replay.
+            mob_tick((uint32_t)s_meta.time_of_day, s_player.body.x, s_player.body.y, s_player.body.z,
+                     inv_held(&s_player.inv)->item);
+            sm_audio_mob_tick(s_player.body.x, s_player.body.z);
             player_tick(&s_player, mask, input_pressed());
             sm_audio_player_tick(&s_player);  // footsteps and landings, AFTER the tick
             // A block the player opened. The registry says WHICH blocks
@@ -1902,6 +1922,10 @@ static void on_update(float dt, void* user) {
             } else if (s_player.used_block == BLK_COMPOSTER && !composter_ui_active()) {
                 s_player.inv.open = false;
                 composter_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
+            } else if ((s_player.used_block == BLK_CHEESE_MAKER || s_player.used_block == BLK_SAUSAGE_MAKER) &&
+                       !maker_ui_active()) {
+                s_player.inv.open = false;
+                maker_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
             } else if (s_player.used_block == BLK_BENCH && !bench_ui_active()) {
                 s_player.inv.open = false;
                 bench_ui_open();
@@ -1992,6 +2016,10 @@ static void on_input(bsp_input_event_t const* ev, void* user) {
     }
     if (composter_ui_active()) {
         composter_ui_event(ev);
+        return;
+    }
+    if (maker_ui_active()) {
+        maker_ui_event(ev);
         return;
     }
     if (furnace_ui_active()) {
@@ -2330,6 +2358,7 @@ static void on_render(pax_buf_t* fb, void* user) {
         hud_block_outline(s_player.aim.x, s_player.aim.y, s_player.aim.z);
     }
     hud_dropped_items();
+    hud_creatures(s_player.body.x, s_player.body.z);
     // Fred: his arm and what it holds in first person, all of him in
     // third. Lit by the cell he is in, like the world round him.
     if (s_app == APP_PLAY && s_cam_effective == CAM_PLAYER) {
@@ -2411,6 +2440,7 @@ static void on_render(pax_buf_t* fb, void* user) {
         if (craft_ui_active()) craft_ui_draw(fb, &s_player.inv);
         if (furnace_ui_active()) furnace_ui_draw(fb, &s_player.inv);
         if (composter_ui_active()) composter_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
+        if (maker_ui_active()) maker_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
         if (chest_ui_active()) chest_ui_draw(fb, &s_player.inv);
         if (bench_ui_active()) bench_ui_draw(fb, &s_player.inv);
         if (cheat_ui_active()) cheat_ui_draw(fb);
@@ -2434,6 +2464,30 @@ static void on_render(pax_buf_t* fb, void* user) {
             }
             char const* const line = T(key);
             hud_text_lines(fb, &line, 1);
+        } else if (s_player.mob_msg_ticks > 0) {
+            // ... and the same for a creature: milking, feeding and
+            // taming all look like a key that did not register unless
+            // the screen says otherwise.
+            sm_str_t key = SM_STR_ANIMAL_FED;
+            switch (s_player.mob_msg) {
+                case MOB_USE_MILKED: key = SM_STR_ANIMAL_MILKED; break;
+                case MOB_USE_TAMED: key = SM_STR_ANIMAL_TAMED; break;
+                case MOB_USE_SIT: key = SM_STR_ANIMAL_SITS; break;
+                case MOB_USE_STAND: key = SM_STR_ANIMAL_STANDS; break;
+                default: break;
+            }
+            char const* const line = T(key);
+            hud_text_lines(fb, &line, 1);
+        } else if (s_player.hit_mob >= 0) {
+            // WHAT IS UNDER THE CROSSHAIR, when it is alive. The block
+            // outline says which block is aimed at; nothing said which
+            // animal was, and "why did my swing miss" is the question
+            // that follows.
+            mob_t const* const m = mob_at(s_player.hit_mob);
+            if (m != NULL) {
+                char const* const line = T(mob_def(m->kind)->label);
+                hud_text_lines(fb, &line, 1);
+            }
         } else if (s_info || replay_recording()) {
             draw_info(fb);
         } else if (showtime_now() < s_shot_msg_until) {

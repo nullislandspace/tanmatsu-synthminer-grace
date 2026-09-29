@@ -29,6 +29,14 @@
           "target_file": "app.so"
         },
         {
+          "source_file": "textures/barrel_side.png",
+          "target_file": "textures/barrel_side.png"
+        },
+        {
+          "source_file": "textures/barrel_top.png",
+          "target_file": "textures/barrel_top.png"
+        },
+        {
           "source_file": "textures/beans_0.png",
           "target_file": "textures/beans_0.png"
         },
@@ -71,6 +79,10 @@
         {
           "source_file": "textures/cactus.png",
           "target_file": "textures/cactus.png"
+        },
+        {
+          "source_file": "textures/cheese.png",
+          "target_file": "textures/cheese.png"
         },
         {
           "source_file": "textures/chest_side.png",
@@ -161,12 +173,28 @@
           "target_file": "textures/item_beans.png"
         },
         {
+          "source_file": "textures/item_beef.png",
+          "target_file": "textures/item_beef.png"
+        },
+        {
+          "source_file": "textures/item_bone.png",
+          "target_file": "textures/item_bone.png"
+        },
+        {
           "source_file": "textures/item_bucket.png",
           "target_file": "textures/item_bucket.png"
         },
         {
+          "source_file": "textures/item_bucket_milk.png",
+          "target_file": "textures/item_bucket_milk.png"
+        },
+        {
           "source_file": "textures/item_bucket_water.png",
           "target_file": "textures/item_bucket_water.png"
+        },
+        {
+          "source_file": "textures/item_cheese.png",
+          "target_file": "textures/item_cheese.png"
         },
         {
           "source_file": "textures/item_coal.png",
@@ -175,6 +203,14 @@
         {
           "source_file": "textures/item_compost.png",
           "target_file": "textures/item_compost.png"
+        },
+        {
+          "source_file": "textures/item_fence.png",
+          "target_file": "textures/item_fence.png"
+        },
+        {
+          "source_file": "textures/item_fence_gate.png",
+          "target_file": "textures/item_fence_gate.png"
         },
         {
           "source_file": "textures/item_hoe_iron.png",
@@ -205,12 +241,24 @@
           "target_file": "textures/item_pickaxe_wood.png"
         },
         {
+          "source_file": "textures/item_pork.png",
+          "target_file": "textures/item_pork.png"
+        },
+        {
           "source_file": "textures/item_potato.png",
           "target_file": "textures/item_potato.png"
         },
         {
           "source_file": "textures/item_rice.png",
           "target_file": "textures/item_rice.png"
+        },
+        {
+          "source_file": "textures/item_sausage.png",
+          "target_file": "textures/item_sausage.png"
+        },
+        {
+          "source_file": "textures/item_sausage_veg.png",
+          "target_file": "textures/item_sausage_veg.png"
         },
         {
           "source_file": "textures/item_shovel_iron.png",
@@ -267,6 +315,10 @@
         {
           "source_file": "textures/log_top.png",
           "target_file": "textures/log_top.png"
+        },
+        {
+          "source_file": "textures/milk.png",
+          "target_file": "textures/milk.png"
         },
         {
           "source_file": "textures/miner_face.png",
@@ -331,6 +383,14 @@
         {
           "source_file": "textures/sandstone.png",
           "target_file": "textures/sandstone.png"
+        },
+        {
+          "source_file": "textures/sausage_side.png",
+          "target_file": "textures/sausage_side.png"
+        },
+        {
+          "source_file": "textures/sausage_top.png",
+          "target_file": "textures/sausage_top.png"
         },
         {
           "source_file": "textures/sign_flob.png",

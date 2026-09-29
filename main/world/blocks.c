@@ -366,6 +366,80 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                       .tall_other = BLK_RICE_CROP,
                       .sound    = SND_SOFT,
                       .flags2   = BF2_TALL_TOP},
+
+    // --- The animals' two machines (step 10) --------------------------
+    //
+    // THE CHEESE MAKER IS AN OPEN BARREL, quadratic and not round (the
+    // user), and it shows what is in it: white while the milk is
+    // standing, yellow-orange once it is cheese, and the bare boards
+    // when it is empty. That is the state byte, not three block ids --
+    // a barrel is the one shape in this game with an inside worth
+    // seeing, so the mesher reads its contents the way it reads a
+    // torch's wall (K_BARREL).
+    //
+    // SEVEN PLANKS, the same as the composter, which is legal here and
+    // worth knowing before anyone "fixes" it: a recipe is a multiset
+    // and the player picks the row out of the book, so two rows with
+    // the same ingredients are two different things (Part A).
+    [BLK_CHEESE_MAKER] = {.name     = "cheese_maker", .drop_item = BLK_CHEESE_MAKER, .drop_min = 1, .drop_max = 1,
+                          .kind     = K_BARREL,
+                          .mat      = M3(VM_BARREL_TOP, VM_BARREL_SIDE, VM_BARREL_SIDE),
+                          .hardness = 50,
+                          .tool     = TOOL_AXE,
+                          .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_WOOD,
+                          .flags2   = BF2_USABLE | BF2_RECORD},
+
+    // Nine iron ingots, and a minute a sausage. A box of machinery
+    // rather than a barrel: nothing about it is worth seeing inside.
+    [BLK_SAUSAGE_MAKER] = {.name     = "sausage_maker", .drop_item = BLK_SAUSAGE_MAKER, .drop_min = 1, .drop_max = 1,
+                           .kind     = K_CUBE,
+                           .mat      = M3(VM_SAUSAGE_TOP, VM_SAUSAGE_SIDE, VM_SAUSAGE_TOP),
+                           .hardness = 90,
+                           .tool     = TOOL_PICK,
+                           .tool_level = 1,
+                           .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_STONE,
+                           .flags2   = BF2_USABLE | BF2_RECORD},
+
+    // --- The fence, and the way through it ----------------------------
+    //
+    // A POST AND ITS RAILS, a block and a half tall (block_collide_top)
+    // so that nothing walks over it and nothing jumps it. It is what
+    // makes an animal an animal you KEEP rather than one you follow
+    // about, which is why it arrived with them (the user, 2026-09-29:
+    // "we will also need to be able to craft and place fences and
+    // fence gates so we can manage the animals").
+    [BLK_FENCE] = {.name     = "fence", .drop_item = BLK_FENCE, .drop_min = 1, .drop_max = 1,
+                   .kind     = K_FENCE,
+                   .mat      = M1(VM_PLANKS),
+                   .hardness = 40,
+                   .tool     = TOOL_AXE,
+                   .flags    = BF_SOLID, .sound = SND_WOOD,
+                   .flags2   = BF2_ITEM_ICON},
+
+    // The gate, closed: solid like the fence it stands in, and lying
+    // along whichever axis the player was facing when it went down.
+    [BLK_FENCE_GATE] = {.name     = "fence_gate", .drop_item = BLK_FENCE_GATE, .drop_min = 1, .drop_max = 1,
+                        .kind     = K_GATE,
+                        .mat      = M1(VM_PLANKS),
+                        .hardness = 40,
+                        .tool     = TOOL_AXE,
+                        .flags    = BF_SOLID, .sound = SND_WOOD,
+                        .flags2   = BF2_USABLE | BF2_ITEM_ICON},
+
+    // ... and open: the same wood, swung aside, and NOT solid, which is
+    // the whole of what opening one does. It drops the closed one, so
+    // there is no such thing as an open gate in an inventory.
+    [BLK_FENCE_GATE_OPEN] = {.name     = "fence_gate_open", .drop_item = BLK_FENCE_GATE, .drop_min = 1, .drop_max = 1,
+                             .kind     = K_GATE,
+                             .mat      = M1(VM_PLANKS),
+                             .hardness = 40,
+                             .tool     = TOOL_AXE,
+                             .sound    = SND_WOOD,
+                             // NO BF2_ITEM_ICON: an open gate cannot be
+                             // carried (it drops the shut one), so there
+                             // is no item_fence_gate_open.png and nothing
+                             // should go looking for one.
+                             .flags2   = BF2_USABLE},
 };
 
 // Which kind of record each block keeps. A function rather than a
@@ -378,6 +452,8 @@ uint8_t block_record_kind(uint8_t id) {
         case BLK_CHEST: return BE_CHEST;
         case BLK_TRASH: return BE_TRASH;
         case BLK_COMPOSTER: return BE_COMPOST;
+        case BLK_CHEESE_MAKER: return BE_CHEESE;
+        case BLK_SAUSAGE_MAKER: return BE_SAUSAGE;
         default: return BE_NONE;
     }
 }

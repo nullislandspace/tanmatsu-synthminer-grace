@@ -272,9 +272,24 @@ item.beans = Beans
 item.rice = Rice
 item.compost = Compost
 item.worm = Worm
+# What comes off an animal, and what the two machines make of it
+item.pork = Raw pork
+item.beef = Raw beef
+item.bucket_milk = Milk bucket
+item.cheese = Cheese
+item.sausage = Sausage
+# The same sausage made of beans: worth exactly as much, and it counts
+# as a pizza's sausage
+item.sausage_veg = Bean sausage
+# A rare find in the sausage maker, and what tames a dog
+item.bone = Bone
 # Tilled soil, wet or dry: one name for both, since it is one thing
 item.farmland = Farmland
 item.composter = Composter
+item.cheese_maker = Cheese maker
+item.sausage_maker = Sausage maker
+item.fence = Fence
+item.fence_gate = Fence gate
 # The growing plants, which are blocks rather than things you carry
 item.wheat_crop = Wheat plant
 item.potato_crop = Potato plant
@@ -364,6 +379,43 @@ farm.needs_soil = Plant this in tilled soil
 farm.needs_water = Plant rice in water one block deep, on sand
 # Said when compost is used on a plant that is already ripe
 farm.already_ripe = It is ripe already
+
+# --- The animals -------------------------------------------------------------
+mob.pig = Pig
+mob.cow = Cow
+mob.dog = Dog
+# Said when a bucket is used on a cow
+animal.milked = Milked
+# ... when an animal is given the food it likes
+animal.fed = It eats out of your hand
+# ... when a bone tames a wild dog
+animal.tamed = It follows you now
+animal.sits = It sits down
+animal.stands = It gets up
+
+# --- The cheese maker and the sausage maker ---------------------------------
+maker.cheese_title = Cheese maker
+maker.sausage_title = Sausage maker
+maker.input = Ingredients
+maker.output = Output
+# The second output slot: what rarely comes out with a pork sausage
+maker.extra = Bones
+maker.empty = - empty -
+# a slot with something in it: %d how many, %s what
+maker.slot = %d %s
+maker.hint = enter puts in or takes out   esc closes
+# %d is how far through the current one it is, 0 to 100
+maker.working = making it, %d%%
+maker.no_input = nothing in it that goes together
+maker.full = the output is full
+maker.took = Took %d %s
+maker.pick_input = What to put in
+maker.pick_none = Nothing here goes in one of these
+maker.pick_hint = enter chooses   esc goes back
+maker.a_day = one cheese a day
+maker.a_minute = one sausage a minute
+# Said when a bucket of milk goes in and the empty pail comes back
+maker.bucket_back = The bucket comes straight back
 
 # --- What a block will not do -----------------------------------------------
 # %s is the tool it wants, e.g. "a stone pickaxe"

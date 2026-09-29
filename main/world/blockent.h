@@ -54,6 +54,11 @@ typedef enum {
     // slot, compost and worms out of two more, and a day per unit on the
     // same lazy clock the furnace runs on.
     BE_COMPOST,
+    // The animals' two machines (game/maker.h). Same record, same lazy
+    // clock, different numbers -- a day for the cheese, a minute for
+    // the sausage -- so they share a module and a screen.
+    BE_CHEESE,
+    BE_SAUSAGE,
 } be_kind_t;
 
 typedef struct {
@@ -82,6 +87,19 @@ typedef struct {
 #define BE_COMPOST_INPUT  0
 #define BE_COMPOST_OUT    1
 #define BE_COMPOST_WORMS  2
+
+// AND THE MAKERS' FOUR. Two in, because a sausage is pork AND a flower;
+// two out, because a pork sausage sometimes leaves a bone behind and a
+// bone cannot share a slot with a sausage (the composter's worms are
+// the same problem and this is the same answer).
+//
+// The cheese maker uses IN_A and OUT and leaves the other two empty,
+// which costs nothing: a slot with nothing in it is not written to the
+// card (blockent.c, write_record).
+#define BE_MAKER_IN_A  0
+#define BE_MAKER_IN_B  1
+#define BE_MAKER_OUT   2
+#define BE_MAKER_EXTRA 3
 
 // Take the pool (once, at world open) and give it back. Safe to call
 // twice either way.

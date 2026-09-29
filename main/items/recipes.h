@@ -38,6 +38,12 @@ typedef enum {
     RS_INVENTORY = 0,  // anywhere, from the Tab screen
     RS_TABLE,          // at a crafting table
     RS_FURNACE,        // smelting
+    // The animals' two machines (game/maker.h). A station rather than a
+    // table inside each machine, so a sausage is a recipe row like
+    // everything else and the disassembly bench, the book and the host
+    // checks all keep working without learning about them.
+    RS_CHEESE,
+    RS_SAUSAGE,
     RS_COUNT
 } recipe_station_t;
 

@@ -649,6 +649,138 @@ static void vg_sub_box(uint8_t* out, int y0, int hh) {
     }
 }
 
+// THE FENCE, THE GATE AND THE BARREL (step 10). Three shapes the greedy
+// pass never sees, so the only thing that can check them is a mesh:
+//
+//   * a fence post reaches BLOCK_FENCE_TOP, which is what the collider
+//     is promised (blocks.h) and what makes a pen a pen. The two have
+//     to agree or an animal walks through the picture of a fence;
+//   * a fence RAILS TOWARDS what is worth joining and not towards air,
+//     which is the whole of what a fence looks like;
+//   * an open gate and a shut one are different pictures, or opening
+//     one is invisible;
+//   * a barrel shows WHAT IS IN IT, out of the state byte the crops
+//     already paid for.
+static void check_fence_mesh(void) {
+    static uint8_t data[VG * VG * VG];
+    memset(data, 0, sizeof(data));
+    vox_grid_t const g = {.cells = s_vg, .data = data, .w = VG, .h = VG, .d = VG, .step = 1};
+
+    // (a) A LONE POST: how tall, and no rails.
+    vg_clear();
+    vg_fill(1, 1, 1, 3, 1, 3, BLK_GRASS);
+    *vg_cell(2, 2, 2) = BLK_FENCE;
+
+    mesh_t m;
+    mesh_init(&m);
+    voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+
+    float top = 0.0f, lo = 99.0f, hi = 0.0f;
+    int   planks = 0;
+    for (int i = 0; i < m.tn; i++) {
+        if (m.t[i].mat != VM_PLANKS) continue;
+        planks++;
+        uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
+        for (int k = 0; k < 3; k++) {
+            if (m.v[vi[k]].y > top) top = m.v[vi[k]].y;
+            if (m.v[vi[k]].x < lo) lo = m.v[vi[k]].x;
+            if (m.v[vi[k]].x > hi) hi = m.v[vi[k]].x;
+        }
+    }
+    CHECK(planks == 12, "voxel: a lone fence post drew %d triangles, expected 12 (a box)", planks);
+    CHECK(top > 3.49f && top < 3.51f, "voxel: a fence post reached y %.3f, expected %.3f", top,
+          2.0f + BLOCK_FENCE_TOP);
+    CHECK(hi - lo < 0.30f, "voxel: a lone post is %.2f wide -- it grew rails towards nothing", hi - lo);
+    int const lone = planks;
+    mesh_free(&m);
+
+    // (b) IT JOINS to a neighbour, and only on that side.
+    *vg_cell(3, 2, 2) = BLK_FENCE;
+    mesh_init(&m);
+    voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+    planks = 0;
+    for (int i = 0; i < m.tn; i++) {
+        if (m.t[i].mat == VM_PLANKS) planks++;
+    }
+    // Two posts, and two rails each way across the join: 2 * 12 for the
+    // posts plus 4 rails of 12.
+    CHECK(planks == 2 * lone + 4 * 12, "voxel: two joined fences drew %d triangles, expected %d", planks,
+          2 * lone + 4 * 12);
+    mesh_free(&m);
+
+    // (c) OPEN AND SHUT ARE DIFFERENT PICTURES.
+    vg_clear();
+    memset(data, 0, sizeof(data));
+    vg_fill(1, 1, 1, 3, 1, 3, BLK_GRASS);
+    *vg_cell(2, 2, 2)       = BLK_FENCE_GATE;
+    data[vg_index(2, 2, 2)] = GATE_AXIS_X;
+    mesh_init(&m);
+    voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+    float shut_x0 = 99.0f, shut_x1 = 0.0f, shut_z0 = 99.0f, shut_z1 = 0.0f;
+    int   shut_n = 0;
+    for (int i = 0; i < m.tn; i++) {
+        if (m.t[i].mat != VM_PLANKS) continue;
+        shut_n++;
+        uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
+        for (int k = 0; k < 3; k++) {
+            if (m.v[vi[k]].x < shut_x0) shut_x0 = m.v[vi[k]].x;
+            if (m.v[vi[k]].x > shut_x1) shut_x1 = m.v[vi[k]].x;
+            if (m.v[vi[k]].z < shut_z0) shut_z0 = m.v[vi[k]].z;
+            if (m.v[vi[k]].z > shut_z1) shut_z1 = m.v[vi[k]].z;
+        }
+    }
+    mesh_free(&m);
+
+    *vg_cell(2, 2, 2) = BLK_FENCE_GATE_OPEN;
+    mesh_init(&m);
+    voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+    float open_z0 = 99.0f, open_z1 = 0.0f;
+    int   open_n = 0;
+    for (int i = 0; i < m.tn; i++) {
+        if (m.t[i].mat != VM_PLANKS) continue;
+        open_n++;
+        uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
+        for (int k = 0; k < 3; k++) {
+            if (m.v[vi[k]].z < open_z0) open_z0 = m.v[vi[k]].z;
+            if (m.v[vi[k]].z > open_z1) open_z1 = m.v[vi[k]].z;
+        }
+    }
+    mesh_free(&m);
+    CHECK(shut_n > 0 && open_n > 0, "voxel: a gate drew nothing");
+    // Shut, it spans the gap along x and is thin across it; open, the
+    // panel has swung round, so it reaches further across z than the
+    // shut one ever does.
+    CHECK(shut_x1 - shut_x0 > 0.7f, "voxel: a shut gate is only %.2f wide -- it does not close the gap",
+          shut_x1 - shut_x0);
+    CHECK(open_z1 - open_z0 > shut_z1 - shut_z0 + 0.15f,
+          "voxel: an open gate looks like a shut one (%.2f across z against %.2f)", open_z1 - open_z0,
+          shut_z1 - shut_z0);
+    printf("voxel: a fence post stands %.2f blocks tall; a gate is %d triangles shut, %d open\n", top - 2.0f, shut_n,
+           open_n);
+
+    // (d) THE BARREL SHOWS WHAT IS IN IT.
+    int fill_mat[3];
+    for (int what = 0; what < 3; what++) {
+        vg_clear();
+        memset(data, 0, sizeof(data));
+        vg_fill(1, 1, 1, 3, 1, 3, BLK_GRASS);
+        *vg_cell(2, 2, 2)       = BLK_CHEESE_MAKER;
+        data[vg_index(2, 2, 2)] = (uint8_t)what;
+
+        mesh_init(&m);
+        voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+        fill_mat[what] = -1;
+        for (int i = 0; i < m.tn; i++) {
+            if (m.t[i].mat == VM_MILK || m.t[i].mat == VM_CHEESE) fill_mat[what] = m.t[i].mat;
+        }
+        mesh_free(&m);
+    }
+    CHECK(fill_mat[BARREL_EMPTY] < 0, "voxel: an empty barrel drew something standing in it");
+    CHECK(fill_mat[BARREL_MILK] == VM_MILK, "voxel: a barrel of milk drew material %d", fill_mat[BARREL_MILK]);
+    CHECK(fill_mat[BARREL_CHEESE] == VM_CHEESE, "voxel: a barrel of cheese drew material %d",
+          fill_mat[BARREL_CHEESE]);
+}
+
 static void check_sectioned_mesher(void) {
     // A lump with overhangs and a hollow, so there are faces in every
     // direction and some of them land on the seam.
@@ -711,5 +843,6 @@ static void check_assets(void) {
     check_face_dirs();
     check_plant_dirs();
     check_crop_mesh();
+    check_fence_mesh();
     check_sectioned_mesher();
 }

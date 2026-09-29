@@ -130,6 +130,136 @@ static void emit_box_mats(mesh_t* m, vec3_t lo, vec3_t hi, uint8_t mat, uint8_t 
     emit_f(m, DIRS[5], lo.z, lo.x, hi.x, lo.y, hi.y, 1.0f, 1.0f, mat);
 }
 
+// --- The fence, the gate and the barrel -------------------------------
+//
+// All three are BOXES rather than cubes, drawn one cell at a time like
+// the torch and the sign: the greedy pass only owns K_CUBE, K_SEE and
+// the liquids, so nothing here has to be taken out of it.
+
+// Does a fence at this cell join to `n`?
+//
+// To another fence, to a gate, and to any full cube -- so a run of
+// fence meets a wall flush instead of stopping a rail short of it. Not
+// to a plant, a torch or air, which would look like a rail into
+// nothing.
+static bool fence_joins(uint8_t n) {
+    block_kind_t const k = block_kind(n);
+    return k == K_FENCE || k == K_GATE || k == K_CUBE;
+}
+
+#define FENCE_POST_R  0.125f  // half the post's thickness
+#define FENCE_RAIL_R  0.0625f
+#define FENCE_RAIL_LO 0.40f   // the two rails, up from the cell's floor
+#define FENCE_RAIL_HI 0.95f
+#define FENCE_RAIL_H  0.18f   // how deep each rail is
+
+// A rail from the post out to the cell's edge, along one axis.
+static void emit_rail(mesh_t* m, float cx, float cz, float y0, int dx, int dz, uint8_t mat) {
+    float const x0 = dx < 0 ? cx - 0.5f : cx - FENCE_POST_R;
+    float const x1 = dx > 0 ? cx + 0.5f : cx + FENCE_POST_R;
+    float const z0 = dz < 0 ? cz - 0.5f : cz - FENCE_POST_R;
+    float const z1 = dz > 0 ? cz + 0.5f : cz + FENCE_POST_R;
+    // Across the run it is thin; along it, it reaches the cell edge.
+    float const ax0 = dx != 0 ? x0 : cx - FENCE_RAIL_R, ax1 = dx != 0 ? x1 : cx + FENCE_RAIL_R;
+    float const az0 = dz != 0 ? z0 : cz - FENCE_RAIL_R, az1 = dz != 0 ? z1 : cz + FENCE_RAIL_R;
+    emit_box_mats(m, v3(ax0, y0, az0), v3(ax1, y0 + FENCE_RAIL_H, az1), mat, mat);
+}
+
+// A post and whatever rails it carries. `nx/px/nz/pz` say which of the
+// four neighbours it joins to.
+static void emit_fence(mesh_t* m, int X, int Y, int Z, uint8_t mat, bool nx, bool px, bool nz, bool pz) {
+    float const cx = (float)X + 0.5f, cz = (float)Z + 0.5f, y = (float)Y;
+    // THE POST IS A BLOCK AND A HALF, which is the number the collider
+    // uses (blocks.h, BLOCK_FENCE_TOP) -- a fence you can see over the
+    // top of but cannot get over.
+    emit_box_mats(m, v3(cx - FENCE_POST_R, y, cz - FENCE_POST_R),
+                  v3(cx + FENCE_POST_R, y + BLOCK_FENCE_TOP, cz + FENCE_POST_R), mat, mat);
+    float const rails[2] = {y + FENCE_RAIL_LO, y + FENCE_RAIL_HI};
+    for (int i = 0; i < 2; i++) {
+        if (nx) emit_rail(m, cx, cz, rails[i], -1, 0, mat);
+        if (px) emit_rail(m, cx, cz, rails[i], +1, 0, mat);
+        if (nz) emit_rail(m, cx, cz, rails[i], 0, -1, mat);
+        if (pz) emit_rail(m, cx, cz, rails[i], 0, +1, mat);
+    }
+}
+
+// The gate. Two posts at the ends of its axis, and between them either
+// a panel across the gap (closed) or the same panel folded back against
+// the posts (open). `axis` is GATE_AXIS_X or GATE_AXIS_Z: the axis the
+// gate LIES along, so you walk through it across that axis.
+static void emit_gate(mesh_t* m, int X, int Y, int Z, uint8_t mat, unsigned axis, bool open) {
+    float const cx = (float)X + 0.5f, cz = (float)Z + 0.5f, y = (float)Y;
+    float const r = FENCE_POST_R, h = 1.3f;  // a gate is shorter than the fence, as gates are
+    // Along the gate's axis: the two posts sit at its ends.
+    float const ax = axis == GATE_AXIS_X ? 1.0f : 0.0f, az = axis == GATE_AXIS_X ? 0.0f : 1.0f;
+    for (int s = -1; s <= 1; s += 2) {
+        float const px = cx + ax * (float)s * 0.375f, pz = cz + az * (float)s * 0.375f;
+        emit_box_mats(m, v3(px - r, y, pz - r), v3(px + r, y + h, pz + r), mat, mat);
+    }
+    float const rails[2] = {y + FENCE_RAIL_LO, y + FENCE_RAIL_HI};
+    for (int i = 0; i < 2; i++) {
+        if (!open) {
+            // Closed: the panel spans the gap between the posts.
+            float const x0 = axis == GATE_AXIS_X ? cx - 0.375f : cx - FENCE_RAIL_R;
+            float const x1 = axis == GATE_AXIS_X ? cx + 0.375f : cx + FENCE_RAIL_R;
+            float const z0 = axis == GATE_AXIS_X ? cz - FENCE_RAIL_R : cz - 0.375f;
+            float const z1 = axis == GATE_AXIS_X ? cz + FENCE_RAIL_R : cz + 0.375f;
+            emit_box_mats(m, v3(x0, rails[i], z0), v3(x1, rails[i] + FENCE_RAIL_H, z1), mat, mat);
+            continue;
+        }
+        // Open: the two halves are swung back against their own posts,
+        // across the way through. Nothing rotates -- a greedy mesher
+        // emits axis-aligned boxes, and a panel lying the other way is
+        // what "swung aside" looks like without one (the torch on a
+        // wall is the same trick).
+        for (int s = -1; s <= 1; s += 2) {
+            float const px = cx + ax * (float)s * 0.375f, pz = cz + az * (float)s * 0.375f;
+            float const x0 = axis == GATE_AXIS_X ? px - FENCE_RAIL_R : px;
+            float const x1 = axis == GATE_AXIS_X ? px + FENCE_RAIL_R : px + 0.4f;
+            float const z0 = axis == GATE_AXIS_X ? pz : pz - FENCE_RAIL_R;
+            float const z1 = axis == GATE_AXIS_X ? pz + 0.4f : pz + FENCE_RAIL_R;
+            emit_box_mats(m, v3(x0, rails[i], z0), v3(x1, rails[i] + FENCE_RAIL_H, z1), mat, mat);
+        }
+    }
+}
+
+// THE OPEN BARREL, and its three appearances (blocks.h, BARREL_*): four
+// walls, a floor, a rim, and an inner surface whose material is what is
+// standing in it. The top face is NOT drawn -- that is what makes it
+// open -- so the rim and the inner walls are what stop the eye looking
+// straight through the cell from above.
+#define BARREL_WALL 0.15f
+#define BARREL_FILL 0.82f  // how high the milk, or the cheese, stands
+
+static void emit_barrel(mesh_t* m, int X, int Y, int Z, uint8_t side, uint8_t top, unsigned contents) {
+    float const x0 = (float)X, x1 = (float)X + 1.0f;
+    float const z0 = (float)Z, z1 = (float)Z + 1.0f;
+    float const y0 = (float)Y, y1 = (float)Y + 1.0f;
+    mesh_set_dir(m, MESH_DIR_NONE);
+    // The four outer walls and the underside.
+    emit_f(m, DIRS[0], x1, z0, z1, y0, y1, 1.0f, 1.0f, side);
+    emit_f(m, DIRS[1], x0, z0, z1, y0, y1, 1.0f, 1.0f, side);
+    emit_f(m, DIRS[4], z1, x0, x1, y0, y1, 1.0f, 1.0f, side);
+    emit_f(m, DIRS[5], z0, x0, x1, y0, y1, 1.0f, 1.0f, side);
+    emit_f(m, DIRS[3], y0, x0, x1, z0, z1, 1.0f, 1.0f, top);
+    // The rim: four strips of the top face, leaving the middle open.
+    float const ix0 = x0 + BARREL_WALL, ix1 = x1 - BARREL_WALL;
+    float const iz0 = z0 + BARREL_WALL, iz1 = z1 - BARREL_WALL;
+    emit_f(m, DIRS[2], y1, x0, ix0, z0, z1, BARREL_WALL, 1.0f, top);
+    emit_f(m, DIRS[2], y1, ix1, x1, z0, z1, BARREL_WALL, 1.0f, top);
+    emit_f(m, DIRS[2], y1, ix0, ix1, z0, iz0, 1.0f - 2 * BARREL_WALL, BARREL_WALL, top);
+    emit_f(m, DIRS[2], y1, ix0, ix1, iz1, z1, 1.0f - 2 * BARREL_WALL, BARREL_WALL, top);
+    // The inside of the four walls, seen when you look down into it.
+    float const fy = contents == BARREL_EMPTY ? y0 + 0.12f : y0 + BARREL_FILL;
+    emit_f(m, DIRS[1], ix1, iz0, iz1, fy, y1, 1.0f, 1.0f, side);
+    emit_f(m, DIRS[0], ix0, iz0, iz1, fy, y1, 1.0f, 1.0f, side);
+    emit_f(m, DIRS[5], iz1, ix0, ix1, fy, y1, 1.0f, 1.0f, side);
+    emit_f(m, DIRS[4], iz0, ix0, ix1, fy, y1, 1.0f, 1.0f, side);
+    // And what is standing in it -- or the boards at the bottom.
+    uint8_t const fill = contents == BARREL_MILK ? VM_MILK : contents == BARREL_CHEESE ? VM_CHEESE : top;
+    emit_f(m, DIRS[2], fy, ix0, ix1, iz0, iz1, 1.0f, 1.0f, fill);
+}
+
 int voxel_sign_text(int32_t x, int32_t y, int32_t z) {
     uint32_t h = (uint32_t)x * 0x9E3779B1u ^ (uint32_t)y * 0x85EBCA77u ^ (uint32_t)z * 0xC2B2AE3Du;
     h ^= h >> 15;
@@ -564,7 +694,22 @@ void voxel_mesh_build(mesh_t* m, vox_grid_t const* g, vox_mesh_mode_t mode) {
                     mesh_set_light(m, LIGHT(x, y + 1, z));
                     emit_fluid(m, g, x, y, z, (uint8_t)voxel_face_mat(b, VF_TOP));
                 }
-                if (k == K_PLANT || k == K_TORCH || k == K_SIGN) mesh_set_light(m, LIGHT(x, y, z));  // lit by its own cell
+                if (k == K_PLANT || k == K_TORCH || k == K_SIGN || k == K_FENCE || k == K_GATE || k == K_BARREL) {
+                    mesh_set_light(m, LIGHT(x, y, z));  // lit by its own cell
+                }
+                if (k == K_FENCE) {
+                    uint8_t const mat = (uint8_t)voxel_face_mat(b, VF_SIDE);
+                    emit_fence(m, X, Y, Z, mat, fence_joins(CELL(x - 1, y, z)), fence_joins(CELL(x + 1, y, z)),
+                               fence_joins(CELL(x, y, z - 1)), fence_joins(CELL(x, y, z + 1)));
+                }
+                if (k == K_GATE) {
+                    emit_gate(m, X, Y, Z, (uint8_t)voxel_face_mat(b, VF_SIDE),
+                              grid_data(g, x, y, z) & 1u, !block_solid(b));
+                }
+                if (k == K_BARREL) {
+                    emit_barrel(m, X, Y, Z, (uint8_t)voxel_face_mat(b, VF_SIDE),
+                                (uint8_t)voxel_face_mat(b, VF_TOP), grid_data(g, x, y, z) & 0x03u);
+                }
                 if (k == K_SIGN) emit_sign(m, X, Y, Z);
                 if (k == K_PLANT && mode == VOX_MESH_FANCY) {
                     // A CROP IS DRAWN BY ITS STAGE, and the stage is in

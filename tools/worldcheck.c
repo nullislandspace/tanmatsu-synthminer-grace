@@ -42,6 +42,8 @@
 #include "world/blockupdate.h"
 #include "world/crops.h"
 #include "game/composter.h"
+#include "game/maker.h"
+#include "game/mob.h"
 #include "game/daytime.h"
 #include "world/fluid.h"
 #include "world/light.h"
@@ -2851,6 +2853,422 @@ static void check_fluid(void) {
 // A replay is a start and a stream of per-tick inputs; it has to come
 // back from the card exactly, gyro turns included, or it replays some
 // other walk.
+// ---------------------------------------------------------------------
+//  The animals, their two machines, and the fence (step 10)
+//
+//  The claims worth defending:
+//
+//    * a fence is a block and a half tall, so nothing walks over one
+//      and nothing jumps it -- which is the whole reason it exists;
+//    * an open gate is a hole in that fence and a shut one is not;
+//    * a creature saved with its chunk comes back the same creature,
+//      tame, sitting, half-grown and all (D-33, D-30);
+//    * a bucket on a cow gives milk, a bone on a wild dog gives a dog,
+//      and neither works on the wrong animal;
+//    * feeding two adults makes one calf and not a herd;
+//    * a calf drops nothing, so breeding is not a meat machine;
+//    * the two makers turn time into things at the rates the user gave,
+//      bank nothing while idle, and hand the bucket back at once;
+//    * everything random here comes from the world's hash, so the same
+//      world always puts the same herd in the same field (Part T).
+// ---------------------------------------------------------------------
+
+// Run the creatures for `n` ticks with the player standing at (px, pz)
+// holding `held` -- which is all an animal knows about anybody.
+static void mob_run(uint32_t* clock, int n, double px, double pz, uint16_t held) {
+    for (int i = 0; i < n; i++) mob_tick((*clock)++, px, 20.0, pz, held);
+}
+
+static int mob_count_kind(uint8_t kind) {
+    int n = 0;
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_t const* m = mob_at(i);
+        if (m != NULL && m->alive && m->kind == kind) n++;
+    }
+    return n;
+}
+
+// ---------------------------------------------------------------------
+//  The texture budget (F-120)
+//
+//  The bug that cost a round of work: the cache held 48 entries, the
+//  game wanted 64 materials plus every item icon, and everything past
+//  the end loaded as a flat average colour. Nothing crashed. The badge
+//  logged "cache full" about twenty times a boot and what it looked
+//  like from the outside was bad art -- crops that were coloured
+//  rectangles, and a transparent-water setting that would not turn on.
+//
+//  Two things stop it now, and this is the second of them:
+//
+//    * chunk_render.c asserts VM_COUNT + TEX_BY_NAME <= TEXCACHE_MAX at
+//      COMPILE TIME, and TEX_BY_NAME is derived from the item table, so
+//      adding an item moves the requirement by itself;
+//    * this counts what the game will REALLY ask for by name -- an icon
+//      per non-block item, one per block drawn as a thing rather than a
+//      cube, and the few files that belong to nothing -- and fails if
+//      those ever outgrow the slack in TEX_BY_NAME.
+//
+//  Between them, the estimate cannot rot and the cache cannot be too
+//  small: one of the two fails the build first.
+static void check_texture_budget(void) {
+    printf("textures: what the cache has to hold\n");
+
+    // An item that is not a block draws from item_<name>.png (hud.c).
+    int icons = 0;
+    for (uint16_t id = BLK_COUNT; id < ITEM_COUNT; id++) icons++;
+
+    // ... and so does a block that is not drawn as a cube.
+    int block_icons = 0;
+    for (uint16_t id = 1; id < BLK_COUNT; id++) {
+        if (block_has_item_icon((uint8_t)id)) block_icons++;
+    }
+
+    // The ones that belong to nothing: water_blend.png, three torch
+    // frames, the flame, and Fred's face.
+    int const loose = 6;
+
+    int const want = icons + block_icons + loose;
+    printf("  %d materials + %d by name (%d item icons, %d block icons, %d loose) = %d\n", VM_COUNT, want, icons,
+           block_icons, loose, VM_COUNT + want);
+    CHECK(want <= TEX_BY_NAME, "the game asks for %d textures by name and TEX_BY_NAME allows %d", want,
+          TEX_BY_NAME);
+    // How much room is left before the compile-time assert fires. Not a
+    // failure -- it is the number worth seeing in the log of the round
+    // that finally uses it up.
+    printf("  TEX_BY_NAME allows %d, so %d to spare before the assert has to move\n", TEX_BY_NAME,
+           TEX_BY_NAME - want);
+}
+
+static void check_animals(void) {
+    printf("animals: fences, feeding, milking, taming, and what a save keeps\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the animal world would not become resident");
+    mob_reset();
+    item_entity_reset();
+    uint32_t clock = 50000;
+
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+
+    // --- The registry ------------------------------------------------
+    for (uint8_t k = MOB_PIG; k < MOB_KIND_COUNT; k++) {
+        mob_def_t const* d = mob_def(k);
+        CHECK(d->name != NULL && d->name[0] != '\0', "creature %u has no name on disk", k);
+        CHECK(T(d->label) != NULL && T(d->label)[0] != '\0', "creature %s has no name on screen", d->name);
+        CHECK(d->health_max > 0, "%s has no health", d->name);
+        CHECK(d->w > 0.0f && d->h > 0.0f, "%s has no body", d->name);
+        CHECK(d->drop_item == ITEM_NONE || d->drop_max >= d->drop_min, "%s drops backwards", d->name);
+    }
+
+    // --- A FENCE IS A BLOCK AND A HALF -------------------------------
+    //
+    // The player's own box against it, which is the case that decides
+    // whether a pen is a pen: a jump reaches 1.33 blocks (player.h), so
+    // standing on the ground beside a fence there must be no height at
+    // which the body fits over it.
+    set_block(5, 20, 5, BLK_FENCE, ST_PLACED);
+    phys_body_t b;
+    phys_body_init(&b, 5.5, 20.0, 4.3);
+    CHECK(!phys_fits(&b, 5.5, 20.0, 5.5), "a body stands inside a fence");
+    CHECK(!phys_fits(&b, 5.5, 20.6, 5.5), "a jump of 0.6 blocks clears a fence");
+    CHECK(!phys_fits(&b, 5.5, 21.0, 5.5), "a jump of a whole block clears a fence");
+    CHECK(!phys_fits(&b, 5.5, 21.33, 5.5), "the top of the player's jump clears a fence");
+    CHECK(phys_fits(&b, 5.5, 21.55, 5.5), "a body one and a half blocks up is still inside the fence");
+    // And the step-up: walking into one must not climb it, which a
+    // one-block-tall block would allow (PHYS_STEP is a whole block).
+    b.x = 5.5, b.y = 20.0, b.z = 4.3;
+    for (int t = 0; t < 40; t++) phys_move(&b, 0.0, 0.0, 0.08);
+    CHECK(b.z < 5.0, "the player walked over a fence (ended at z %.2f)", b.z);
+
+    // --- ... AND A GATE IS THE HOLE IN IT ----------------------------
+    set_block(5, 20, 6, BLK_FENCE, ST_PLACED);
+    set_block(5, 20, 7, BLK_FENCE, ST_PLACED);
+    set_block(6, 20, 5, BLK_FENCE_GATE, ST_PLACED);
+    phys_body_init(&b, 6.5, 20.0, 4.3);
+    for (int t = 0; t < 40; t++) phys_move(&b, 0.0, 0.0, 0.08);
+    CHECK(b.z < 5.0, "a shut gate let the player through (ended at z %.2f)", b.z);
+
+    CHECK(interact_toggle_gate(6, 20, 5), "the gate would not open");
+    CHECK(world_block(6, 20, 5) == BLK_FENCE_GATE_OPEN, "opening the gate did not change the block");
+    CHECK(st_data(world_state(6, 20, 5)) == st_data(world_state(6, 20, 5)), "the gate lost which way it lies");
+    phys_body_init(&b, 6.5, 20.0, 4.3);
+    for (int t = 0; t < 40; t++) phys_move(&b, 0.0, 0.0, 0.08);
+    CHECK(b.z > 6.0, "an open gate did not let the player through (ended at z %.2f)", b.z);
+    CHECK(interact_toggle_gate(6, 20, 5) && world_block(6, 20, 5) == BLK_FENCE_GATE, "the gate would not shut again");
+    CHECK(!interact_toggle_gate(5, 20, 5), "a fence opened like a gate");
+
+    // --- A PEN HOLDS ---------------------------------------------------
+    //
+    // A pig in a four-by-four pen, left to wander for two minutes of
+    // ticks. It may go anywhere inside and nowhere outside.
+    chunk_store_clear();
+    CHECK(flat_world(20) != NULL, "the pen world would not become resident");
+    mob_reset();
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    for (int i = 4; i <= 9; i++) {
+        set_block(i, 20, 4, BLK_FENCE, ST_PLACED);
+        set_block(i, 20, 9, BLK_FENCE, ST_PLACED);
+        set_block(4, 20, i, BLK_FENCE, ST_PLACED);
+        set_block(9, 20, i, BLK_FENCE, ST_PLACED);
+    }
+    int const pig = mob_spawn(MOB_PIG, 6.5, 20.0, 6.5, false);
+    CHECK(pig >= 0, "the pool would not take a pig");
+    mob_run(&clock, 2400, 60.0, 60.0, 0);
+    mob_t const* p = mob_at(pig);
+    CHECK(p->alive && p->body.x > 4.0 && p->body.x < 10.0 && p->body.z > 4.0 && p->body.z < 10.0,
+          "the pig got out of the pen (at %.2f, %.2f, %.2f)", p->body.x, p->body.y, p->body.z);
+    CHECK(p->body.y >= 19.9 && p->body.y <= 20.2, "the pig did not stay on the ground (y %.2f)", p->body.y);
+
+    // --- Milking, feeding, taming --------------------------------------
+    mob_reset();
+    int const cow = mob_spawn(MOB_COW, 6.5, 20.0, 6.5, false);
+    int const calf = mob_spawn(MOB_COW, 7.5, 20.0, 6.5, true);
+    CHECK(cow >= 0 && calf >= 0, "the pool would not take two cows");
+
+    mob_use_result_t u = mob_use(cow, ITEM_BUCKET);
+    CHECK(u.what == MOB_USE_MILKED && u.becomes == ITEM_BUCKET_MILK, "a bucket on a cow gave no milk");
+    CHECK(!u.consume, "milking took the bucket as well");
+    CHECK(mob_use(calf, ITEM_BUCKET).what == MOB_USE_NOTHING, "a calf gave milk");
+    CHECK(mob_use(cow, ITEM_BUCKET_MILK).what == MOB_USE_NOTHING, "a full bucket milked the cow again");
+
+    u = mob_use(cow, ITEM_WHEAT);
+    CHECK(u.what == MOB_USE_FED && u.consume, "wheat did not feed a cow");
+    CHECK(mob_use(cow, ITEM_POTATO).what == MOB_USE_NOTHING, "a cow ate a potato");
+    // A BREEDING PAIR MAKES ONE CALF. Both have to be fed: one in the
+    // mood and one not is nothing at all.
+    CHECK(mob_count_kind(MOB_COW) == 2, "the herd was not two to start with");
+    mob_run(&clock, 5, 60.0, 60.0, 0);
+    CHECK(mob_count_kind(MOB_COW) == 2, "one fed cow bred on its own");
+    int const cow2 = mob_spawn(MOB_COW, 7.0, 20.0, 6.5, false);
+    CHECK(cow2 >= 0, "the pool would not take a third cow");
+    CHECK(mob_use(cow, ITEM_WHEAT).what == MOB_USE_FED, "the cow would not be fed again");
+    CHECK(mob_use(cow2, ITEM_WHEAT).what == MOB_USE_FED, "the second cow would not be fed");
+    mob_run(&clock, 3, 60.0, 60.0, 0);
+    CHECK(mob_count_kind(MOB_COW) == 4, "two fed cows made %d cows, not four", mob_count_kind(MOB_COW));
+    // ... and not a second one the next tick: that is what the cooldown
+    // is for, and without it a pair is a herd in ten seconds.
+    mob_run(&clock, 200, 60.0, 60.0, 0);
+    CHECK(mob_count_kind(MOB_COW) == 4, "the pair kept breeding (%d cows)", mob_count_kind(MOB_COW));
+
+    // A dog is nobody's until it is given a bone.
+    int const dog = mob_spawn(MOB_DOG, 8.5, 20.0, 6.5, false);
+    CHECK(dog >= 0, "the pool would not take a dog");
+    CHECK(mob_use(dog, ITEM_BEEF).what != MOB_USE_TAMED, "raw beef tamed a dog");
+    CHECK(!mob_at(dog)->tame, "the dog was tame before the bone");
+    u = mob_use(dog, ITEM_BONE);
+    CHECK(u.what == MOB_USE_TAMED && u.consume, "a bone did not tame the dog");
+    CHECK(mob_at(dog)->tame, "the dog is not tame after being tamed");
+    CHECK(mob_use(dog, ITEM_BONE).what == MOB_USE_SIT && mob_at(dog)->sitting, "a tame dog would not sit");
+    CHECK(mob_use(dog, ITEM_BONE).what == MOB_USE_STAND && !mob_at(dog)->sitting, "a sitting dog would not get up");
+    CHECK(mob_use(cow, ITEM_BONE).what == MOB_USE_NOTHING, "a bone tamed a cow");
+
+    // --- Killing one ----------------------------------------------------
+    item_entity_reset();
+    mob_reset();
+    int const beef_cow = mob_spawn(MOB_COW, 6.5, 20.0, 6.5, false);
+    int       blows    = 0;
+    while (mob_at(beef_cow)->alive && blows < 100) {
+        mob_at_mut(beef_cow)->hurt = 0;  // the flinch is a timer, not a shield against the test
+        mob_hit(beef_cow, mob_damage_of(0), 6.5, 4.0);
+        blows++;
+    }
+    CHECK(!mob_at(beef_cow)->alive, "a cow would not die");
+    CHECK(blows == mob_def(MOB_COW)->health_max, "a bare fist took %d blows, not %d", blows,
+          mob_def(MOB_COW)->health_max);
+    CHECK(item_entity_live() > 0, "a dead cow dropped nothing");
+    int found = 0;
+    for (int i = 0; i < ITEM_ENTITY_MAX; i++) {
+        item_entity_t const* e = item_entity_at(i);
+        if (e != NULL && e->alive && e->item == ITEM_BEEF) found += e->count;
+    }
+    CHECK(found >= mob_def(MOB_COW)->drop_min && found <= mob_def(MOB_COW)->drop_max,
+          "a cow dropped %d beef, outside %u..%u", found, mob_def(MOB_COW)->drop_min, mob_def(MOB_COW)->drop_max);
+
+    // AN IRON AXE IS FOUR BLOWS OF THE TEN. Not a balance test: it is
+    // the claim that what is in the hand matters at all.
+    CHECK(mob_damage_of(ITEM_AXE_IRON) > mob_damage_of(0), "an iron axe hits no harder than a fist");
+    CHECK(mob_damage_of(ITEM_HOE_IRON) == mob_damage_of(0), "a hoe is a weapon");
+
+    // A CALF DROPS NOTHING, or breeding is a meat machine.
+    item_entity_reset();
+    mob_reset();
+    int const young = mob_spawn(MOB_COW, 6.5, 20.0, 6.5, true);
+    for (int t = 0; t < 40 && mob_at(young)->alive; t++) {
+        mob_at_mut(young)->hurt = 0;
+        mob_hit(young, 4, 6.5, 4.0);
+    }
+    CHECK(!mob_at(young)->alive, "the calf would not die");
+    CHECK(item_entity_live() == 0, "a calf dropped %d stacks", item_entity_live());
+
+    // --- What a save keeps ----------------------------------------------
+    mob_reset();
+    int const keep = mob_spawn(MOB_DOG, 6.25, 20.0, 6.75, true);
+    mob_t*    k    = mob_at_mut(keep);
+    k->tame        = true;
+    k->sitting     = true;
+    k->age         = 4321;
+    k->health      = 3;
+    k->yaw         = 1.25f;
+
+    static uint8_t buf[4096];
+    size_t const   n = mob_encode_chunk(0, 0, buf, sizeof buf);
+    CHECK(n > 0, "a chunk with a dog in it wrote no entities section");
+    CHECK(buf[0] == SECTION_ENTITIES, "the entities section has the wrong id");
+    mob_drop_chunk(0, 0);
+    CHECK(mob_live() == 0, "dropping the chunk left creatures behind");
+    // The section's CONTENTS, as the reader is handed them (region.c).
+    mob_decode_section(buf + 5, n - 5);
+    CHECK(mob_live() == 1, "the dog did not come back");
+    mob_t const* back = NULL;
+    for (int i = 0; i < MOB_MAX; i++) {
+        if (mob_at(i)->alive) back = mob_at(i);
+    }
+    CHECK(back != NULL && back->kind == MOB_DOG, "what came back is not a dog");
+    CHECK(back->tame && back->sitting && back->baby, "the dog came back untamed, standing or grown");
+    CHECK(back->age == 4321 && back->health == 3, "the dog came back with age %u and %d health", back->age,
+          back->health);
+    CHECK(back->body.x > 6.2 && back->body.x < 6.3, "the dog moved in the save (x %.3f)", back->body.x);
+
+    // --- Where a herd comes from -----------------------------------------
+    //
+    // Deterministic in (cx, cz, seed): the same field, twice, has to put
+    // the same animals in the same places, or a world is a different
+    // world every time it is opened.
+    chunk_store_clear();
+    CHECK(flat_world(20) != NULL, "the herd world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    mob_reset();
+    mob_populate_chunk(0, 0, 4242u);
+    int const first = mob_live();
+    double    fx = 0.0, fz = 0.0;
+    for (int i = 0; i < MOB_MAX; i++) {
+        if (mob_at(i)->alive) {
+            fx = mob_at(i)->body.x;
+            fz = mob_at(i)->body.z;
+            break;
+        }
+    }
+    mob_reset();
+    mob_populate_chunk(0, 0, 4242u);
+    CHECK(mob_live() == first, "the same chunk generated %d animals, then %d", first, mob_live());
+    if (first > 0) {
+        for (int i = 0; i < MOB_MAX; i++) {
+            if (mob_at(i)->alive) {
+                CHECK(mob_at(i)->body.x == fx && mob_at(i)->body.z == fz, "the herd moved between two generations");
+                break;
+            }
+        }
+    }
+    // And how many a landscape holds, which is the number that decides
+    // whether a walk finds anything. Reported rather than asserted at a
+    // point: it is a feel, and the range is what matters.
+    mob_reset();
+    int herds = 0, animals = 0;
+    for (int32_t cz = 0; cz < 24; cz++) {
+        for (int32_t cx = 0; cx < 24; cx++) {
+            int const was = mob_live();
+            mob_populate_chunk(cx, cz, 99u);
+            if (mob_live() > was) herds++;
+            animals += mob_live() - was;
+            mob_reset();  // the pool is 48; this is a count, not a world
+        }
+    }
+    printf("  576 chunks (a 384 x 384 block world): %d with a herd in them, %d animals\n", herds, animals);
+    CHECK(herds > 10 && herds < 300, "%d chunks in 576 held a herd, which is not a landscape", herds);
+    mob_reset();
+    item_entity_reset();
+}
+
+static void check_makers(void) {
+    printf("the cheese maker and the sausage maker: a day and a minute\n");
+    chunk_store_clear();
+    CHECK(flat_world(20) != NULL, "the maker world would not become resident");
+    blockent_clear();
+
+    // What each one takes, which is the recipe table and not a list in
+    // the machine.
+    CHECK(maker_accepts(BE_CHEESE, ITEM_BUCKET_MILK), "the cheese maker does not take milk");
+    CHECK(!maker_accepts(BE_CHEESE, ITEM_PORK), "the cheese maker takes pork");
+    CHECK(maker_accepts(BE_SAUSAGE, ITEM_PORK), "the sausage maker does not take pork");
+    CHECK(maker_accepts(BE_SAUSAGE, BLK_FLOWER_RED) && maker_accepts(BE_SAUSAGE, BLK_FLOWER_YELLOW),
+          "the sausage maker refuses a flower");
+    CHECK(maker_accepts(BE_SAUSAGE, ITEM_BEANS), "the sausage maker does not take beans");
+    CHECK(maker_returns(BE_CHEESE, ITEM_BUCKET_MILK) == ITEM_BUCKET, "the milk bucket does not come back");
+    CHECK(maker_returns(BE_SAUSAGE, ITEM_PORK) == 0, "the sausage maker hands something back");
+
+    // --- The cheese maker: one bucket, one day ------------------------
+    blockent_t* be = blockent_add(2, 20, 2, BE_CHEESE);
+    CHECK(be != NULL, "the pool would not give a cheese maker a record");
+    be->stamp                    = 0;
+    be->slot[BE_MAKER_IN_A].item  = ITEM_BUCKET_MILK;
+    be->slot[BE_MAKER_IN_A].count = 1;
+
+    CHECK(maker_barrel_state(be) == BARREL_MILK, "a barrel with milk in it does not show milk");
+    maker_catch_up(be, MAKER_DAY - 1);
+    CHECK(be->slot[BE_MAKER_OUT].count == 0, "the cheese maker paid out before the day was up");
+    CHECK(maker_progress_pct(be, MAKER_DAY - 1) > 90, "the progress bar is not nearly full after a day less a tick");
+    maker_catch_up(be, MAKER_DAY);
+    CHECK(be->slot[BE_MAKER_OUT].item == ITEM_CHEESE && be->slot[BE_MAKER_OUT].count == 1,
+          "a day did not turn a bucket of milk into one cheese");
+    CHECK(be->slot[BE_MAKER_IN_A].count == 0, "the milk is still in the barrel");
+    CHECK(maker_barrel_state(be) == BARREL_CHEESE, "a barrel with cheese in it does not show cheese");
+    // AN EMPTY BARREL BANKS NOTHING: a week of standing idle must not
+    // turn the next bucket into cheese on the spot.
+    maker_catch_up(be, MAKER_DAY * 8);
+    be->slot[BE_MAKER_IN_A].item  = ITEM_BUCKET_MILK;
+    be->slot[BE_MAKER_IN_A].count = 1;
+    maker_catch_up(be, MAKER_DAY * 8 + 10);
+    CHECK(be->slot[BE_MAKER_OUT].count == 1, "an idle barrel banked a week and made cheese at once");
+
+    // --- The sausage maker: a minute, and two ways to make one --------
+    blockent_t* sm = blockent_add(4, 20, 2, BE_SAUSAGE);
+    CHECK(sm != NULL, "the pool would not give a sausage maker a record");
+    sm->stamp                     = 0;
+    sm->slot[BE_MAKER_IN_A].item  = ITEM_PORK;
+    sm->slot[BE_MAKER_IN_A].count = 4;
+    sm->slot[BE_MAKER_IN_B].item  = BLK_FLOWER_RED;
+    sm->slot[BE_MAKER_IN_B].count = 4;
+    maker_catch_up(sm, MAKER_MINUTE - 1);
+    CHECK(sm->slot[BE_MAKER_OUT].count == 0, "the sausage maker paid out before the minute was up");
+    maker_catch_up(sm, MAKER_MINUTE * 4);
+    CHECK(sm->slot[BE_MAKER_OUT].item == ITEM_SAUSAGE && sm->slot[BE_MAKER_OUT].count == 4,
+          "four minutes made %u sausages", sm->slot[BE_MAKER_OUT].count);
+    CHECK(sm->slot[BE_MAKER_IN_A].count == 0 && sm->slot[BE_MAKER_IN_B].count == 0,
+          "the sausage maker did not eat its pork and flowers");
+
+    // Two beans make the vegetarian one, and it is worth the same.
+    blockent_remove(4, 20, 2);
+    sm = blockent_add(4, 20, 2, BE_SAUSAGE);
+    CHECK(sm != NULL, "the pool would not give a second sausage maker a record");
+    sm->stamp                     = 0;
+    sm->slot[BE_MAKER_IN_A].item  = ITEM_BEANS;
+    sm->slot[BE_MAKER_IN_A].count = 2;
+    maker_catch_up(sm, MAKER_MINUTE);
+    CHECK(sm->slot[BE_MAKER_OUT].item == ITEM_SAUSAGE_VEG && sm->slot[BE_MAKER_OUT].count == 1,
+          "two beans did not make a bean sausage");
+    CHECK(sm->slot[BE_MAKER_EXTRA].count == 0, "a bean sausage left a bone");
+
+    // --- The bone, which is what a dog costs ---------------------------
+    //
+    // One in six of the PORK ones, from the world's hash: counted over
+    // enough units that the rate is a fact rather than a coincidence.
+    int bones = 0;
+    for (uint32_t u = 0; u < 600; u++) {
+        if (maker_extra_for(4, 20, 2, u)) bones++;
+    }
+    printf("  600 pork sausages left %d bones (one in %.1f)\n", bones, bones > 0 ? 600.0 / bones : 0.0);
+    CHECK(bones > 60 && bones < 140, "%d bones in 600 is not one in six", bones);
+    // The same box asked twice gives the same answer, which is what
+    // makes a replay reproduce a farm (Part T).
+    CHECK(maker_extra_for(4, 20, 2, 7) == maker_extra_for(4, 20, 2, 7), "the bone roll is not deterministic");
+
+    blockent_remove(2, 20, 2);
+    blockent_remove(4, 20, 2);
+}
+
 static void check_replay(void) {
     printf("replays\n");
     replay_start_t st = {.seed = 0xC0FFEEu, .time_of_day = 4242, .x = 12.5, .y = 30.0, .z = -7.25,
@@ -4293,13 +4711,34 @@ static void check_recipes(void) {
             CHECK(id != r->out, "recipe for %s is made of itself", w);
         }
 
-        // Distinct output AND station. Two rows making the same thing
-        // in the same place is a row the book would show twice, and no
-        // way for a player to tell which one they picked.
+        // Distinct output AND station -- IN THE PLACES A PLAYER PICKS
+        // A ROW. Two rows making the same thing at a crafting table is
+        // a line the book shows twice with no way of telling them
+        // apart, and two smelts of one ore would be the same problem
+        // one step along.
+        //
+        // A MACHINE IS THE OTHER WAY ROUND: nobody picks a row in a
+        // cheese maker, they put things in it and it matches whatever
+        // fits (game/maker.h). "1 pork + 1 flower of any colour" is
+        // therefore two rows on purpose, and what has to be distinct
+        // there is the INGREDIENTS, not the output.
+        bool const picked = r->station == RS_INVENTORY || r->station == RS_TABLE || r->station == RS_FURNACE;
         for (int j = 0; j < i; j++) {
             recipe_t const* o = recipe_at(j);
-            CHECK(!(o->out == r->out && o->station == r->station), "two recipes make %s at station %u", w,
-                  r->station);
+            if (o->station != r->station) continue;
+            if (picked) {
+                CHECK(o->out != r->out, "two recipes make %s at station %u", w, r->station);
+                continue;
+            }
+            bool same = o->n_in == r->n_in;
+            for (int k = 0; k < r->n_in && same; k++) {
+                bool found = false;
+                for (int l = 0; l < o->n_in && !found; l++) {
+                    found = o->in[l].item == r->in[k].item && o->in[l].count == r->in[k].count;
+                }
+                same = found;
+            }
+            CHECK(!same, "two recipes at station %u want exactly the same things", r->station);
         }
     }
 
@@ -5898,6 +6337,9 @@ int main(void) {
     check_rice();
     check_composter();
     check_wild_crops();
+    check_texture_budget();
+    check_animals();
+    check_makers();
     check_replay();
     check_drops();
     check_lang();

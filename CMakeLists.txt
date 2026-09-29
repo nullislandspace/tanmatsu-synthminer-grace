@@ -53,6 +53,8 @@ set(APP_SOURCES
     main/game/interact.c
     main/game/furnace.c
     main/game/composter.c
+    main/game/maker.c
+    main/game/mob.c
     main/game/input.c
     main/game/player.c
     main/game/tick.c
@@ -69,6 +71,7 @@ set(APP_SOURCES
     # Fred, the player's figure (from the showreel's miner).
     main/fred/fred.c
     main/fred/fred_mesh.c
+    main/fred/beast.c
 
     # Screens.
     main/ui/title.c
@@ -76,6 +79,7 @@ set(APP_SOURCES
     main/ui/craft_ui.c
     main/ui/furnace_ui.c
     main/ui/composter_ui.c
+    main/ui/maker_ui.c
     main/ui/chest_ui.c
     main/ui/bench_ui.c
     main/ui/amount_ui.c

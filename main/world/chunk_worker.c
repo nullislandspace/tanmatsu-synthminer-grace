@@ -6,6 +6,7 @@
 
 #include "common/trace.h"
 #include "world/blockupdate.h"
+#include "game/mob.h"
 #include "world/crops.h"
 #include "world/light.h"
 #include <string.h>
@@ -212,8 +213,9 @@ static bool do_load(int32_t cx, int32_t cz) {
 #endif
     light_chunk_local(c);
     // Freshly generated and not yet written, so it has to be saved
-    // before the slot can be reused.
-    c->flags |= CF_EDITED;
+    // before the slot can be reused -- and it has never had animals put
+    // in it, which the main task does once it is readable (CF_FRESH).
+    c->flags |= CF_EDITED | CF_FRESH;
     return true;
 }
 
@@ -343,6 +345,14 @@ static void apply(result_t* r) {
                 // in one go to where they would be now as if the chunk
                 // was never unloaded").
                 crops_chunk_join(c, crops_now());
+                // AND THE HERD, if this is the first time anybody has
+                // been here. On the main task, like every other write
+                // to a resident chunk -- and once, because CF_FRESH is
+                // cleared here and never set again (game/mob.h).
+                if ((c->flags & CF_FRESH) != 0) {
+                    c->flags &= (uint8_t)~CF_FRESH;
+                    mob_populate_chunk(c->cx, c->cz, s_seed);
+                }
             }
         }
         return;

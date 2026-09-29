@@ -4,7 +4,7 @@
 // ASCII a player types to find it. See main/i18n/fold.h for why, and
 // run `python3 tools/make_fold.py` after adding a language.
 //
-// 288 characters; the longest folds to 4.
+// 290 characters; the longest folds to 4.
 
 // A folded form is never longer than this, NUL included.
 #define FOLD_REP_MAX 5
@@ -127,6 +127,8 @@ static fold_entry_t const FOLD_TABLE[] = {
     {0x0148, "n"},  // ň latin small letter n with caron
     {0x0150, "o"},  // Ő latin capital letter o with double acute
     {0x0151, "o"},  // ő latin small letter o with double acute
+    {0x0152, "oe"},  // Œ latin capital ligature oe
+    {0x0153, "oe"},  // œ latin small ligature oe
     {0x0158, "r"},  // Ř latin capital letter r with caron
     {0x0159, "r"},  // ř latin small letter r with caron
     {0x015A, "s"},  // Ś latin capital letter s with acute

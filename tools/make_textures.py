@@ -1603,6 +1603,178 @@ def sm_item_compost():
     return img
 
 
+# --- The animals' two machines, and the fence (step 10) ----------------
+
+def sm_barrel_side():
+    """The cheese maker: staves and three hoops, paler and tighter than
+    the composter's, because this one holds a liquid and should look as
+    though it does."""
+    lum, _ = sm_planks_lum(70)
+    for y in range(B):
+        for x in range(B):
+            if x % 5 == 4:
+                lum[y, x] -= 26          # the seam between two staves
+    for y in (1, 7, 13):                 # three hoops, evenly spaced
+        lum[y, :] += 26
+        lum[y + 1, :] -= 20
+    return sm_rgb(lum, (168, 132, 78))
+
+
+def sm_barrel_top():
+    """The rim and the boards of its floor, seen when it is empty."""
+    lum, gen = sm_planks_lum(71)
+    out = sm_rgb(lum - 14, (150, 116, 66))
+    for y in range(3, B - 3):
+        for x in range(3, B - 3):
+            v = int(gen.integers(-10, 11))
+            out[y, x] = np.clip(np.array((104 + v, 80 + v, 46 + v)), 0, 255)
+    return out
+
+
+def _liquid(tag, base, spots):
+    """A still surface: the colour, a little noise, and a highlight in
+    one corner so it reads as a SURFACE and not as a flat fill."""
+    gen = sm_gen(tag)
+    out = np.zeros((B, B, 3), np.uint8)
+    for y in range(B):
+        for x in range(B):
+            v = int(gen.integers(-8, 9))
+            out[y, x] = np.clip(np.array(base) + v, 0, 255)
+    for x, y in spots:
+        out[y, x] = np.clip(np.array(base) + 26, 0, 255)
+    return out
+
+
+def sm_milk():
+    """Milk standing in the barrel: near-white, barely textured."""
+    return _liquid(72, (238, 236, 226), ((4, 4), (5, 4), (4, 5), (11, 10)))
+
+
+def sm_cheese():
+    """Cheese: yellow-orange, with holes in it. The holes are what tell
+    it from butter, and at 16 px they are the only thing that does."""
+    img = _liquid(73, (226, 176, 70), ())
+    for x, y in ((4, 5), (10, 4), (7, 9), (12, 11), (3, 11)):
+        for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):
+            img[y + dy, x + dx] = np.clip(np.array((176, 130, 44)), 0, 255)
+    return img
+
+
+def sm_sausage_side():
+    """The sausage maker: an iron box with a hopper mouth and a crank.
+    It is the only machine made of metal, so it should not read as the
+    furnace -- hence the mouth across the top third rather than a door."""
+    gen = sm_gen(74)
+    lum = np.full((B, B), 148, np.int32) + gen.integers(-10, 11, (B, B))
+    lum[0:2, :] += 22                      # a bright top edge
+    lum[4:7, 2:14] -= 46                   # the mouth
+    lum[7:8, 2:14] += 20                   # its lip
+    for y in range(9, 14):                 # the crank housing
+        lum[y, 10:14] -= 16
+    lum[11, 11:15] += 40
+    return sm_rgb(lum, (150, 152, 158))
+
+
+def sm_sausage_top():
+    """Plain plate with a seam, so a row of them does not shimmer."""
+    gen = sm_gen(75)
+    lum = np.full((B, B), 140, np.int32) + gen.integers(-8, 9, (B, B))
+    lum[:, 7:9] -= 24
+    return sm_rgb(lum, (146, 148, 154))
+
+
+# --- What the animals are worth, in a slot ------------------------------
+
+def _meat(img, rgb, fat):
+    """A cut of meat: a red body with a rind of fat along one side. The
+    rind is what stops raw pork and raw beef being the same pink blob."""
+    _blob(img, rgb, 5, 8, 9, squash=1.1)
+    for x, y in ((4, 7), (4, 8), (5, 6), (5, 10), (4, 9)):
+        _dot(img, x, y, fat)
+    _dot(img, 10, 7, _shade(rgb, 34))
+    return img
+
+
+def sm_item_pork():
+    return _meat(_icon(), (226, 132, 124), (244, 232, 220))
+
+
+def sm_item_beef():
+    return _meat(_icon(), (172, 62, 58), (238, 226, 212))
+
+
+def sm_item_cheese():
+    """A wedge, seen from the side, with two holes in the cut face."""
+    img = _icon()
+    rgb = (230, 184, 76)
+    for i, y in enumerate(range(5, 13)):
+        _rect(img, 4, y, 5 + i, y + 1, _shade(rgb, 12 - 3 * i))
+    for x, y in ((6, 9), (8, 11)):
+        _dot(img, x, y, _shade(rgb, -60))
+        _dot(img, x + 1, y, _shade(rgb, -44))
+    return img
+
+
+def _sausage(rgb):
+    """A curved link, tied at both ends. The tie is two dark texels, and
+    it is what makes a sausage rather than a slug."""
+    img = _icon()
+    path = ((4, 11), (5, 10), (6, 9), (7, 8), (8, 7), (9, 6), (10, 5), (11, 5))
+    for x, y in path:
+        _dot(img, x, y, rgb)
+        _dot(img, x + 1, y, _shade(rgb, 20))
+        _dot(img, x, y + 1, _shade(rgb, -36))
+        _dot(img, x + 1, y + 1, _shade(rgb, -16))
+    for x, y in ((3, 12), (12, 4)):
+        _dot(img, x, y, _shade(rgb, -70))
+    return img
+
+
+def sm_item_sausage():
+    return _sausage((176, 88, 66))
+
+
+def sm_item_sausage_veg():
+    """The bean one. The same shape in a browner, duller colour -- they
+    are worth the same and a player should be able to tell them apart in
+    the slot without reading the label."""
+    return _sausage((146, 108, 62))
+
+
+def sm_item_bone():
+    """A bone: a shaft with two knuckles at each end, which is the only
+    way this shape reads at 16 px."""
+    img = _icon()
+    white = (236, 232, 218)
+    for i in range(7):
+        _dot(img, 5 + i, 10 - i, white)
+        _dot(img, 6 + i, 10 - i, _shade(white, -28))
+    for cx, cy in ((4, 11), (12, 3)):
+        for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1), (-1, 1), (2, 0)):
+            _dot(img, cx + dx, cy + dy, white if (dx + dy) % 2 == 0 else _shade(white, -22))
+    return img
+
+
+def sm_item_fence(gate=False):
+    """A fence in the hand: two posts and two rails. The gate is the same
+    picture with the rails pulled in between the posts, which is what
+    the block itself looks like from the side."""
+    img = _icon()
+    wood = (168, 132, 78)
+    for x in (4, 11):
+        _rect(img, x, 2 if not gate else 4, x + 2, 14, wood)
+        _rect(img, x, 2 if not gate else 4, x + 1, 14, _shade(wood, 20))
+    x0, x1 = (1, 15) if not gate else (6, 10)
+    for y in (5, 10):
+        _rect(img, x0, y, x1, y + 2, _shade(wood, -14))
+        _rect(img, x0, y, x1, y + 1, _shade(wood, 6))
+    return img
+
+
+def sm_item_bucket_milk():
+    return _bucket((238, 236, 226))
+
+
 def sm_item_worm():
     """A curled worm. Pink-brown, two texels thick, so it reads at slot
     size as a body rather than a line."""
@@ -1720,6 +1892,22 @@ TEXTURES = {
     "item_rice.png": sm_item_rice,
     "item_compost.png": sm_item_compost,
     "item_worm.png": sm_item_worm,
+    # Step 10: the animals, their two machines and the fence.
+    "barrel_side.png": sm_barrel_side,
+    "barrel_top.png": sm_barrel_top,
+    "milk.png": sm_milk,
+    "cheese.png": sm_cheese,
+    "sausage_side.png": sm_sausage_side,
+    "sausage_top.png": sm_sausage_top,
+    "item_pork.png": sm_item_pork,
+    "item_beef.png": sm_item_beef,
+    "item_bucket_milk.png": sm_item_bucket_milk,
+    "item_cheese.png": sm_item_cheese,
+    "item_sausage.png": sm_item_sausage,
+    "item_sausage_veg.png": sm_item_sausage_veg,
+    "item_bone.png": sm_item_bone,
+    "item_fence.png": lambda: sm_item_fence(False),
+    "item_fence_gate.png": lambda: sm_item_fence(True),
 }
 
 

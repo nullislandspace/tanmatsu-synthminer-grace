@@ -41,6 +41,21 @@ static bool solid_in(double x0, double y0, double z0, double x1, double y1, doub
             }
         }
     }
+    // ONE CELL LOWER, FOR THE THINGS THAT STICK UP OUT OF THEIR OWN.
+    // A fence is a block and a half tall (blocks.h, block_collide_top),
+    // so the cell BELOW the box can still be in the way -- which is the
+    // whole point of a fence and the only reason this loop exists.
+    //
+    // Checked last and only against blocks that reach past their cell,
+    // so everything else pays one block lookup per column and no more.
+    for (int32_t z = iz0; z <= iz1; z++) {
+        for (int32_t x = ix0; x <= ix1; x++) {
+            uint8_t const b   = world_block(x, iy0 - 1, z);
+            float const   top = block_collide_top(b);
+            if (top <= 1.0f || !block_solid(b)) continue;
+            if ((double)(iy0 - 1) + (double)top > y0 + PHYS_SKIN) return true;
+        }
+    }
     return false;
 }
 

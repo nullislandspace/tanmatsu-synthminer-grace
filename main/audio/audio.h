@@ -39,6 +39,15 @@ void sm_audio_frame(float dt);
 // the speaker muted (Part T), so nothing here may touch game state.
 void sm_audio_player_tick(player_t const* p);
 
+// THE ANIMALS, once a tick, after they have moved. mob.c is pure and
+// cannot make a noise, so a creature that wants to be heard sets `say`
+// and this turns it into one (game/mob.h).
+//
+// Near ones only, and two at a time: this mixer has no panning and no
+// distance falloff, so the only way a herd two hundred blocks away can
+// be kept out of the player's ears is not to play it.
+void sm_audio_mob_tick(double px, double pz);
+
 // Leaving a world: stop the footsteps mid-stride and forget how far the
 // player had walked, so re-entering does not start on a half step.
 void sm_audio_leave_world(void);

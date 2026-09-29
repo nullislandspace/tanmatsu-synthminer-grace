@@ -66,6 +66,7 @@ void player_reset(player_t* p) {
     p->aim_valid  = false;
     p->mining     = false;
     p->mine_ticks = 0;
+    p->hit_mob    = -1;
 
     // NOTHING. The starting kit is gone, the day a crafting table can
     // make what was in it (the user's call, 2026-09-23): punch a tree,
@@ -98,7 +99,9 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     // A field that says "this tick" is cleared at the top of the tick.
     p->used_block = BLK_AIR;
     p->needs_tool = 0;
+    p->hit_mob    = -1;
     if (p->use_msg_ticks > 0 && --p->use_msg_ticks == 0) p->use_msg = USE_SAID_NOTHING;
+    if (p->mob_msg_ticks > 0 && --p->mob_msg_ticks == 0) p->mob_msg = MOB_USE_NOTHING;
 
     // --- The inventory screen ----------------------------------------
     //
@@ -262,6 +265,31 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
 
     uint16_t const held = inv_held(&p->inv)->item;
 
+    // --- Hitting a creature, which is a TAP -------------------------
+    //
+    // Breaking is held down and a blow is not: an animal takes one hit
+    // per press, which is what stops holding the key down being a
+    // butchery machine and what makes a weapon worth having later.
+    //
+    // A CREATURE IN FRONT OF A BLOCK WINS. Both are picked along the
+    // same ray and the nearer one takes the swing -- otherwise a cow
+    // standing against a wall is unhittable, and a cow in the open is
+    // fine, which is the sort of difference nobody can see and
+    // everybody notices.
+    float     mob_d = 0.0f;
+    int const aimed_mob = mob_pick(ex, ey, ez, dx, dy, dz, RAY_REACH, &mob_d);
+    p->hit_mob          = (aimed_mob >= 0 && (!p->aim_valid || (double)mob_d <= (double)p->aim.dist)) ? aimed_mob : -1;
+
+    if (p->hit_mob >= 0 && act_held(mask, SM_ATTACK)) {
+        // Swinging at an animal is not digging: whatever is behind it
+        // keeps its cracks, and the key being held changes nothing
+        // until it is let go and pressed again.
+        p->mining = false;
+        if (act_held(pressed, SM_ATTACK)) {
+            if (mob_hit(p->hit_mob, mob_damage_of(held), p->body.x, p->body.z)) p->hit_mob = -1;
+        }
+    } else
+
     // --- Breaking, which is HELD ------------------------------------
     //
     // A block takes item_break_ticks() of them. That is what makes
@@ -325,6 +353,28 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     // table with planks in hand could never be opened at all -- which
     // is Minecraft's rule too, and the reason sneaking exists there.
     if (act_held(pressed, SM_USE)) {
+        // A CREATURE IN FRONT OF EVERYTHING. Use on a cow with a bucket
+        // is a milking and not a water bucket looking for a lake, and
+        // use on a dog with a bone is a taming and not a bone being
+        // placed (it is not a block, but the rule has to be stated
+        // where the order is decided).
+        if (p->hit_mob >= 0) {
+            mob_use_result_t const mu = mob_use(p->hit_mob, held);
+            if (mu.what != MOB_USE_NOTHING) {
+                inv_slot_t* s = inv_held(&p->inv);
+                if (mu.becomes != 0) {
+                    s->item  = mu.becomes;
+                    s->count = 1;
+                    s->wear  = 0;
+                    inv_mark_seen(&p->inv, mu.becomes);
+                }
+                if (mu.consume) inv_consume_held(&p->inv);
+                p->mob_msg       = mu.what;
+                p->mob_msg_ticks = USE_MSG_TICKS;
+                sfx_play(mu.what == MOB_USE_MILKED ? SFX_PICKUP : SFX_CLICK);
+                return;
+            }
+        }
         // THE HELD ITEM GETS FIRST REFUSAL, and it gets it before the
         // crosshair is consulted at all -- a bucket casts its own ray,
         // because the one that drew the highlight box looked straight
@@ -361,10 +411,18 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
             sfx_play(SFX_DENY);
         } else if (p->aim_valid) {
             if (block_usable(p->aim.block)) {
-                p->used_block = p->aim.block;
+                // A GATE OPENS RATHER THAN OPENING SOMETHING. It is the
+                // first usable block with no screen behind it, so it is
+                // answered here and never reaches main.c.
+                if (interact_toggle_gate(p->aim.x, p->aim.y, p->aim.z)) {
+                    trace_edit('U', p->aim.x, p->aim.y, p->aim.z, block_def(p->aim.block)->name, 1);
+                    sfx_play_place(BLK_FENCE_GATE);
+                } else {
+                    p->used_block = p->aim.block;
+                }
             } else {
                 uint8_t const block = item_block(held);
-                if (block != BLK_AIR && interact_place(&p->aim, block, &p->body)) {
+                if (block != BLK_AIR && interact_place_dir(&p->aim, block, &p->body, dx, dz)) {
                     trace_edit('P', p->aim.px, p->aim.py, p->aim.pz, block_def(block)->name, 1);
                     inv_consume_held(&p->inv);
                     sfx_play_place(block);

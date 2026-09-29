@@ -78,6 +78,20 @@ static sfx_def_t const SFX[SFX_COUNT] = {
     [SFX_CRAFT]  = {"craft",  O_SQUARE, 520, 780, 0.45f, 0.06f, F_LPF, 2600, 3200, 0.60f, 0.004f, 0.170f, 0.30f, 0.02f},
     // ... and down, short and flat, for a recipe that cannot be made.
     [SFX_DENY]   = {"deny",   O_SQUARE, 300, 190, 0.40f, 0.00f, F_LPF, 1200, 700,  0.70f, 0.003f, 0.110f, 0.28f, 0.00f},
+
+    // --- The animals ----------------------------------------------------
+    //
+    // A MOO is a long saw that falls, a low filter over it: the vowel
+    // matters more than the pitch. An OINK is the same shape a tenth as
+    // long and twice as nasal, which is what the band-pass is for. A
+    // BARK is nearly all noise, cut short.
+    //
+    // The jitter is high on all three on purpose: a field of cows that
+    // all moo identically is a field of one cow played four times.
+    [SFX_MOO]        = {"moo",   O_SAW,    150, 105, 0.70f, 0.10f, F_LPF, 900,  420,  1.10f, 0.050f, 0.620f, 0.34f, 0.10f},
+    [SFX_OINK]       = {"oink",  O_SAW,    330, 250, 0.60f, 0.25f, F_BPF, 1500, 900,  2.20f, 0.008f, 0.130f, 0.30f, 0.14f},
+    [SFX_BARK]       = {"bark",  O_SQUARE, 420, 260, 0.45f, 0.70f, F_BPF, 1700, 800,  1.60f, 0.003f, 0.120f, 0.34f, 0.12f},
+    [SFX_BEAST_HURT] = {"beast_hurt", O_SAW, 400, 190, 0.65f, 0.35f, F_LPF, 2000, 700, 0.90f, 0.004f, 0.240f, 0.38f, 0.10f},
 };
 
 // --- The voice --------------------------------------------------------

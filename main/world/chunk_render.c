@@ -12,6 +12,7 @@
 #include <math.h>
 #include <string.h>
 #include "common/texcache.h"
+#include "items/items.h"  // TEX_BY_NAME: what the cache needs on top of the materials
 #include "math/camera.h"
 #include "math/mesh_render.h"
 #include "voxel/voxel_mesh.h"
@@ -91,6 +92,12 @@ static struct {
     [VM_RICE_TOP_1]    = {"rice_top_1.png", 0xFF7AA65Au},
     [VM_RICE_TOP_2]    = {"rice_top_2.png", 0xFF92B062u},
     [VM_RICE_TOP_3]    = {"rice_top_3.png", 0xFFD2C878u},
+    [VM_BARREL_SIDE]   = {"barrel_side.png", 0xFFA07A48u},
+    [VM_BARREL_TOP]    = {"barrel_top.png", 0xFF8A6238u},
+    [VM_MILK]          = {"milk.png", 0xFFF2F0E6u},
+    [VM_CHEESE]        = {"cheese.png", 0xFFE8B84Cu},
+    [VM_SAUSAGE_SIDE]  = {"sausage_side.png", 0xFF9A9AA0u},
+    [VM_SAUSAGE_TOP]   = {"sausage_top.png", 0xFF8E8E94u},
 };
 
 // THE CACHE HAS TO HOLD EVERY MATERIAL, WITH ROOM AFTER IT. This is a
@@ -102,10 +109,13 @@ static struct {
 // this loop, never loaded at all, so the transparent-water setting
 // refused to turn on and said nothing about why.
 //
-// The 36 is what is asked for by NAME after the loop: water_blend.png,
-// three torch frames, and an item_*.png for each item that is not a
-// cube (items.h -- about 30 of them, and growing with every tool).
-_Static_assert(VM_COUNT + 36 <= TEXCACHE_MAX,
+// TEX_BY_NAME (items.h) is what is asked for AFTER the loop, and it is
+// derived from the item table rather than counted by hand -- so adding
+// an item moves it, and this assert fails the BUILD the moment the
+// cache stops being big enough. That is the difference between F-120
+// and a quiet afternoon: the first version of this was a number
+// somebody had counted once.
+_Static_assert(VM_COUNT + TEX_BY_NAME <= TEXCACHE_MAX,
                "texcache is too small for VM_COUNT plus the by-name textures: raise TEXCACHE_MAX");
 
 char const* chunk_render_mat_file(int mat) {

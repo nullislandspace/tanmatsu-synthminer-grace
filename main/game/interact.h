@@ -77,6 +77,23 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
 // will later stop placed leaves decaying.
 bool interact_place(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoid);
 
+// The same, told WHICH WAY THE PLAYER IS FACING (a flattened look
+// direction). Only a block whose shape depends on it cares -- the fence
+// gate, which lies across the way you are walking -- and
+// interact_place() is this with a fixed direction, for every caller
+// that has no such block in hand.
+bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoid, float dx, float dz);
+
+// OPEN OR SHUT A GATE at (x, y, z), which is the whole of what using
+// one does: the two states are two block ids (blocks.h), so this swaps
+// the id and keeps the state byte that says which way it lies. False if
+// there is no gate there.
+//
+// It lives here rather than in player.c for the reason everything else
+// in this file does: it is a change to the world, and the world's rules
+// are tested on the host.
+bool interact_toggle_gate(int32_t x, int32_t y, int32_t z);
+
 // Fell the tree reachable from (x, y, z), which must already have been
 // checked as a grown tree block. Returns how many blocks it took,
 // including the one at (x, y, z). Exposed for the host test.

@@ -171,6 +171,16 @@ typedef enum {
 // like the active-cell plane (blockupdate.h) and the light.
 #define CF_CROPS     0x04u
 
+// THIS CHUNK WAS MADE JUST NOW, and was never on the card. Set by the
+// worker when it generates terrain and cleared by the main task once it
+// has done what only happens once in a chunk's life: putting the
+// animals in it (game/mob.h, "generated with the land").
+//
+// CF_GENERATED cannot answer this -- it means "has terrain", and both
+// paths set it. The difference matters exactly once, and getting it
+// wrong would breed a new herd every time a field was walked past.
+#define CF_FRESH     0x08u
+
 // Levels of detail, nearest first. The same mesh serves FAST and the
 // flat far view; COARSE is a half-resolution grid (voxel_mesh.h).
 typedef enum {

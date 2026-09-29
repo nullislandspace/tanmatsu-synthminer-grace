@@ -24,12 +24,14 @@ static char const* kind_name(uint8_t kind) {
         case BE_CHEST: return "chest";
         case BE_TRASH: return "trash";
         case BE_COMPOST: return "composter";
+        case BE_CHEESE: return "cheese_maker";
+        case BE_SAUSAGE: return "sausage_maker";
         default: return "";
     }
 }
 
 static uint8_t kind_by_name(char const* s) {
-    for (uint8_t k = BE_FURNACE; k <= BE_COMPOST; k++) {
+    for (uint8_t k = BE_FURNACE; k <= BE_SAUSAGE; k++) {
         if (strcmp(kind_name(k), s) == 0) return k;
     }
     return BE_NONE;
@@ -150,7 +152,9 @@ int blockent_count_in(int32_t cx, int32_t cz) {
 static int slots_used(uint8_t kind) {
     // A furnace has three and a composter has three; a chest and a
     // trashcan use all of them.
-    return (kind == BE_FURNACE || kind == BE_COMPOST) ? 3 : BE_SLOTS;
+    if (kind == BE_FURNACE || kind == BE_COMPOST) return 3;
+    if (kind == BE_CHEESE || kind == BE_SAUSAGE) return 4;  // two in, two out
+    return BE_SLOTS;
 }
 
 // One record's tagged fields. Items go in BY NAME, like everything else

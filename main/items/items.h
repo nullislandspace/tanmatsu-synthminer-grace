@@ -82,10 +82,56 @@ enum {
     // not exist yet (D-104, D-109).
     ITEM_COMPOST,
     ITEM_WORM,
+
+    // --- Animals (step 10) -------------------------------------------
+    //
+    // WHAT AN ANIMAL IS WORTH, and none of it is food yet: eating is
+    // the next step, and these are its ingredients (Part A's table).
+    // Pork and beef come off a pig and a cow; the milk is a BUCKET, so
+    // it is one more row in BUCKETS[] below and needs no new idea
+    // (D-100, and the half of it that was written down as a guess).
+    ITEM_PORK,
+    ITEM_BEEF,
+    ITEM_BUCKET_MILK,
+
+    // What the two slow machines make of them. The fake sausage is two
+    // beans and is worth EXACTLY what the pork one is worth -- the
+    // vegetarian option is not a consolation prize, and it counts as a
+    // pizza's sausage (the user, 2026-09-29).
+    ITEM_CHEESE,
+    ITEM_SAUSAGE,
+    ITEM_SAUSAGE_VEG,
+
+    // AND THE RARE THING THAT COMES OUT WITH A PORK SAUSAGE. The user's
+    // answer to "what tames a dog": "When feeding the sausage maker, a
+    // rare drop is a bone. That is what you tame the dog with." So a
+    // dog costs a pig, a flower and some luck rather than a dish off a
+    // stove that does not exist yet.
+    ITEM_BONE,
     ITEM_COUNT
 };
 
 #define ITEM_STACK_MAX 64
+
+// HOW MANY TEXTURES THE GAME ASKS FOR BY NAME, on top of the block
+// materials (VM_COUNT, voxel_mesh.h). The texture cache has to hold
+// both at once, and chunk_render.c asserts that it does.
+//
+// IT IS DERIVED, NOT COUNTED BY HAND, and that is the whole point.
+// F-120 was a hand-counted budget that stopped being true when a round
+// of new blocks and items went in: everything past the end of the cache
+// loaded as a flat colour, the badge logged "cache full" twenty times a
+// boot, and nobody read it. Every item that is not a block has an icon
+// of its own (item_<name>.png, game/hud.c), so adding one moves this
+// number by itself.
+//
+// The 16 covers what is asked for by name and belongs to no item: the
+// water blend, three torch frames, the flame, Fred's face -- and the
+// handful of BLOCKS drawn as things rather than cubes (BF2_ITEM_ICON:
+// the torch, the fence, the gate), which cannot be counted at compile
+// time. tools/worldcheck.c counts the real ones and fails if they ever
+// outgrow this slack, so the estimate cannot rot either.
+#define TEX_BY_NAME ((int)(ITEM_COUNT - BLK_COUNT) + 16)
 
 typedef struct {
     char const* name;        // stable id, as blocks have one
@@ -150,9 +196,17 @@ uint8_t item_bucket_contents(uint16_t item);
 // gives the empty bucket, which is what emptying one returns.
 uint16_t item_bucket_filled_with(uint8_t fluid);
 
-static inline bool item_is_bucket(uint16_t item) {
-    return item == ITEM_BUCKET || item_bucket_contents(item) != BLK_AIR;
-}
+// Is `item` a pail at all -- empty, full of a world fluid, or full of
+// milk? A function rather than a test on the contents, because MILK IS
+// NOT A BLOCK: there is no milk fluid to pour and there never will be,
+// so a milk bucket's contents read as BLK_AIR and an "is it empty"
+// test would call it an empty bucket and dip it in the nearest lake.
+bool item_is_bucket(uint16_t item);
+
+// The colour of what is inside one, for the model in Fred's fist
+// (fred.c). A world fluid takes its block's colour; milk takes its
+// own, and an empty pail is its own shadow.
+uint32_t item_bucket_argb(uint16_t item);
 
 // How many ticks `block` takes to break while holding `tool_item`.
 //

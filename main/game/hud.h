@@ -59,6 +59,13 @@ void hud_mine_progress(pax_buf_t* fb, float progress);
 // world, between scene_begin() and scene_prepare().
 void hud_dropped_items(void);
 
+// The animals, in the same pass and for the same reason: they are
+// geometry in the world, not pixels on the screen (fred/beast.h draws
+// one; this walks the pool and poses them). `px, pz` is where the
+// player is, which is what decides who is close enough to be worth the
+// triangles.
+void hud_creatures(double px, double pz);
+
 // A few lines of text at the top left, with a shadow so they read over
 // sky and ground alike: the position overlay (SM_INFO).
 void hud_text_lines(pax_buf_t* fb, char const* const* lines, int n);

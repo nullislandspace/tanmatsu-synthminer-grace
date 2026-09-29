@@ -82,6 +82,16 @@ static int drop_for(uint8_t block, uint8_t state, int32_t x, int32_t y, int32_t 
     return item_entity_spawn(x, y, z, d->drop_item, n, 0);
 }
 
+bool interact_toggle_gate(int32_t x, int32_t y, int32_t z) {
+    uint8_t const b = world_block(x, y, z);
+    if (b != BLK_FENCE_GATE && b != BLK_FENCE_GATE_OPEN) return false;
+    // TWO IDS, ONE STATE BYTE: which way it lies is kept, which is what
+    // stops a gate turning itself as it opens.
+    uint8_t const to = b == BLK_FENCE_GATE ? BLK_FENCE_GATE_OPEN : BLK_FENCE_GATE;
+    world_set(x, y, z, to, world_state(x, y, z));
+    return true;
+}
+
 int interact_fell(int32_t x0, int32_t y0, int32_t z0) {
     // The frontier, as explicit storage rather than recursion: a canopy
     // is hundreds of blocks and this runs on the game task.
@@ -259,6 +269,11 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
 }
 
 bool interact_place(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoid) {
+    // Facing north, which is what everything that does not care gets.
+    return interact_place_dir(hit, block, avoid, 0.0f, 1.0f);
+}
+
+bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoid, float dx, float dz) {
     if (hit == NULL || block == BLK_AIR || block >= BLK_COUNT) return false;
     // A hit with no face is the player standing inside a block: there
     // is no "in front of" to place into.
@@ -315,6 +330,17 @@ bool interact_place(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoi
         int32_t const sy = how == TORCH_FLOOR ? y - 1 : y;
         if (!block_solid(world_block(sx, sy, sz))) return false;
         state = (uint8_t)(ST_PLACED | (uint8_t)(how << ST_DATA_SHIFT));
+    }
+
+    // A GATE LIES ACROSS THE WAY YOU ARE FACING, so that putting one
+    // down in a fence line and walking on works without thinking about
+    // it. The torch above takes its direction from the FACE that was
+    // aimed at; a gate cannot, because most of them are placed on the
+    // ground, where the face says only "upwards".
+    if (block_kind(block) == K_GATE) {
+        float const ax = dx < 0.0f ? -dx : dx, az = dz < 0.0f ? -dz : dz;
+        uint8_t const axis = ax > az ? GATE_AXIS_Z : GATE_AXIS_X;
+        state              = (uint8_t)(ST_PLACED | (uint8_t)(axis << ST_DATA_SHIFT));
     }
 
     // A block that remembers things needs somewhere to remember them,

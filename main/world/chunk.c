@@ -4,6 +4,7 @@
 
 #include "world/chunk.h"
 
+#include "game/mob.h"
 #include "world/blockent.h"
 #include <string.h>
 #include "common/psram.h"
@@ -162,7 +163,13 @@ chunk_t* chunk_claim(int32_t cx, int32_t cz) {
     // edited chunk cannot be claimed away (the line above), and a
     // furnace kept in the pool after its chunk left would be a furnace
     // in a place the world no longer has.
-    if (c->cstate != CS_FREE) blockent_drop_chunk(c->cx, c->cz);
+    if (c->cstate != CS_FREE) {
+        blockent_drop_chunk(c->cx, c->cz);
+        // AND THE CREATURES IN IT. They have just been written with the
+        // chunk (region.c); one kept in the pool after its chunk left
+        // would be a cow standing in a place the world no longer has.
+        mob_drop_chunk(c->cx, c->cz);
+    }
 
     free_slot_meshes(c);
     c->lod_stale = CH_MESH_ALL;

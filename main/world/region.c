@@ -16,6 +16,7 @@
 
 #include "world/region.h"
 
+#include "game/mob.h"
 #include "world/blockent.h"
 #include "world/crops.h"
 
@@ -346,6 +347,9 @@ static bool region_create(FILE* f, int32_t rx, int32_t rz, region_t* r) {
 // format has not had to change to gain block entities.
 static void take_section(uint8_t id, uint8_t const* data, size_t len, void* user) {
     if (id == SECTION_BLOCK_ENTITIES) blockent_decode_section(data, len);
+    // The creatures standing in it (game/mob.h). A cow left in a field
+    // is in that field tomorrow, which is the whole of D-33.
+    if (id == SECTION_ENTITIES) mob_decode_section(data, len);
     // The chunk's own slow clock, which goes back into the chunk being
     // decoded rather than into a pool -- so this one needs `user`, and
     // it is the chunk (world/crops.h).
@@ -452,6 +456,10 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     // fill the buffer.
     size_t sn = crops_encode_chunk(c, sections, sizeof(sections));
     sn += blockent_encode_chunk(c->cx, c->cz, &sections[sn], sizeof(sections) - sn);
+    // ... and the animals standing in it, which are the reason a chunk
+    // is written back even when nothing in it was touched (D-33, and
+    // the user's "for animal movements, crops growing etc.").
+    sn += mob_encode_chunk(c->cx, c->cz, &sections[sn], sizeof(sections) - sn);
 
     static uint8_t buf[CHUNK_PAYLOAD_MAX];
     size_t const   n = chunk_encode(c, sn > 0 ? sections : NULL, sn, buf, sizeof(buf));

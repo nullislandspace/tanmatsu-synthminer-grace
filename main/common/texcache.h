@@ -27,10 +27,22 @@
 // five crops looked like stand-ins and only changed colour as they
 // grew: there was no picture, only the colour.
 //
-// tools/worldcheck.c holds this against VM_COUNT so it cannot happen
-// again quietly. 128 is roughly 64 KiB of 16x16 RGB565 and leaves room
-// for the machines of steps 10 and 11.
-#define TEXCACHE_MAX 128
+// TWO THINGS NOW STOP IT HAPPENING AGAIN QUIETLY, because one was not
+// enough:
+//
+//   * chunk_render.c holds VM_COUNT + TEX_BY_NAME (items.h) against this
+//     number in a _Static_assert, and TEX_BY_NAME is DERIVED from the
+//     item table -- so a new item moves the requirement by itself and
+//     the build fails rather than the picture;
+//   * texcache_report() says how full the cache ended up and warns when
+//     it is nearly full, so a badge that is one item away from the wall
+//     says so in the log before it falls over it.
+//
+// 192 entries is about 7.7 KiB of table (a name and a pointer each) and
+// the textures themselves are the same bytes wherever the limit sits.
+// It leaves room for the stove, the fish and the mobs of steps 11 to
+// 13 -- and if it does not, the assert fails the build.
+#define TEXCACHE_MAX 192
 
 // Where the texture files are. Call before the first texcache_get().
 void texcache_init(char const* asset_dir);

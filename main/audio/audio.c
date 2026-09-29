@@ -7,6 +7,7 @@
 
 #include "audio/music.h"
 #include "audio/sfx.h"
+#include "game/mob.h"
 #include "se_audio.h"
 #include "ui/settings.h"
 #include "world/chunk.h"
@@ -102,6 +103,38 @@ static uint8_t body_block(player_t const* p) {
     int32_t const by = (int32_t)floor(p->body.y + 0.2);
     int32_t const bz = (int32_t)floor(p->body.z);
     return world_block(bx, by, bz);
+}
+
+// How far away a creature can still be heard, and how many may speak
+// in one tick. Both are about the mixer rather than about animals: a
+// voice costs one of its slots, and a footstep must still be able to
+// get one.
+#define MOB_HEAR_RANGE 26.0
+#define MOB_VOICES_PER_TICK 2
+
+void sm_audio_mob_tick(double px, double pz) {
+    if (!s_up) return;
+    int spoken = 0;
+    for (int i = 0; i < MOB_MAX && spoken < MOB_VOICES_PER_TICK; i++) {
+        mob_t const* m = mob_at(i);
+        if (m == NULL || !m->alive || m->say == MOB_SAY_NONE) continue;
+        double const dx = m->body.x - px, dz = m->body.z - pz;
+        if (dx * dx + dz * dz > MOB_HEAR_RANGE * MOB_HEAR_RANGE) continue;
+
+        sfx_id_t id;
+        switch (m->say) {
+            case MOB_SAY_HURT:
+            case MOB_SAY_DIE: id = SFX_BEAST_HURT; break;
+            default:
+                id = m->kind == MOB_COW ? SFX_MOO : m->kind == MOB_PIG ? SFX_OINK : SFX_BARK;
+                break;
+        }
+        // A CALF IS A SMALLER INSTRUMENT: the same voice five semitones
+        // up, which costs nothing and is most of what tells you from
+        // across a field that there is a young one in the herd.
+        sfx_play_pitched(id, m->baby ? 5.0f : 0.0f);
+        spoken++;
+    }
 }
 
 void sm_audio_player_tick(player_t const* p) {

@@ -13,7 +13,10 @@
 
 #include <stdio.h>
 
+#include "fred/beast.h"
+#include "game/mob.h"
 #include "items/item_entity.h"
+#include "testkit/showtime.h"
 #include "se_text.h"
 #include "se_direct565.h"
 #include "shapes/pax_misc.h"
@@ -129,6 +132,40 @@ void hud_crosshair(pax_buf_t* fb) {
 // A small cube each, submitted like any other geometry and so depth-
 // tested against the world. They spin, because a thing on the ground
 // that does not move is a thing you walk past.
+
+// HOW FAR A CREATURE IS STILL DRAWN. Each one is seven boxes -- about
+// eighty triangles -- and the pool holds 48, so a field of them is
+// worth a budget. At 40 blocks a cow is about six pixels tall and the
+// only thing lost is a dot on the horizon.
+#define BEAST_DRAW_RANGE 40.0
+
+void hud_creatures(double px, double pz) {
+    int32_t ox, oz;
+    chunk_render_origin(&ox, &oz);
+
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_t const* m = mob_at(i);
+        if (m == NULL || !m->alive) continue;
+        double const ddx = m->body.x - px, ddz = m->body.z - pz;
+        if (ddx * ddx + ddz * ddz > BEAST_DRAW_RANGE * BEAST_DRAW_RANGE) continue;
+
+        // THE WALK CYCLE IS THE SPEED, not a stored phase: how fast it
+        // is going says how far the legs swing, and the clock says
+        // where in the swing they are. Nothing is kept between frames,
+        // which is fred.c's rule and the reason a pose is a pure
+        // function.
+        float const sp     = sqrtf(m->body.vx * m->body.vx + m->body.vz * m->body.vz);
+        float const stride = sp > 0.004f ? (sp > 0.10f ? 1.0f : sp / 0.10f) : 0.0f;
+        float const walk   = (float)showtime_now() * 9.0f + (float)(m->id % 64u);
+
+        uint8_t const light = world_light((int32_t)floor(m->body.x), (int32_t)floor(m->body.y + 0.4),
+                                          (int32_t)floor(m->body.z));
+        xform_t const root  = {mat3_rot_y(m->yaw), v3((float)(m->body.x - (double)ox), (float)m->body.y,
+                                                      (float)(m->body.z - (double)oz)),
+                               1.0f};
+        beast_submit(&root, m->kind, m->baby, m->sitting, walk, stride, light);
+    }
+}
 
 void hud_dropped_items(void) {
     int32_t ox, oz;

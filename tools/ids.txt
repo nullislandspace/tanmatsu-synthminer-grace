@@ -84,3 +84,15 @@ item rice
 item compost
 item worm
 block 39 rice_top
+block 40 cheese_maker
+block 41 sausage_maker
+block 42 fence
+block 43 fence_gate
+block 44 fence_gate_open
+item pork
+item beef
+item bucket_milk
+item cheese
+item sausage
+item sausage_veg
+item bone

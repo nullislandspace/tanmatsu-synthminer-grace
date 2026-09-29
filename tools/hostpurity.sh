@@ -45,6 +45,8 @@ PURE=(
     main/items/recipes.c    main/items/recipes.h
     main/world/blockent.c   main/world/blockent.h
     main/game/furnace.c     main/game/furnace.h
+    main/game/maker.c       main/game/maker.h
+    main/game/mob.c         main/game/mob.h
 )
 
 # Headers a pure module must not reach for. psram.h is the sanctioned

@@ -63,6 +63,22 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     // Compost, and the worms that come out of the same box.
     [ITEM_COMPOST - BLK_COUNT] = {"compost", SM_STR_ITEM_COMPOST, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF54402Cu},
     [ITEM_WORM - BLK_COUNT]    = {"worm", SM_STR_ITEM_WORM, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC08078u},
+
+    // What comes off an animal, and what the two slow machines make of
+    // it. Raw meat does not rot down in a composter: the user's list of
+    // what goes in it is plant matter and food, and a farm that turned
+    // its own pork into fertiliser would make the pig the cheapest
+    // crop there is.
+    [ITEM_PORK - BLK_COUNT]        = {"pork", SM_STR_ITEM_PORK, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE0847Cu},
+    [ITEM_BEEF - BLK_COUNT]        = {"beef", SM_STR_ITEM_BEEF, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFB0403Cu},
+    [ITEM_BUCKET_MILK - BLK_COUNT] = {"bucket_milk", SM_STR_ITEM_BUCKET_MILK, 1, TOOL_NONE, 0, 0, 0, 0xFFF2F0E6u},
+    [ITEM_CHEESE - BLK_COUNT]      = {"cheese", SM_STR_ITEM_CHEESE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE8B84Cu},
+    [ITEM_SAUSAGE - BLK_COUNT]     = {"sausage", SM_STR_ITEM_SAUSAGE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFA85440u},
+    [ITEM_SAUSAGE_VEG - BLK_COUNT] = {"sausage_veg", SM_STR_ITEM_SAUSAGE_VEG, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF986A40u},
+    // A bone is a TOOL of no class: it breaks nothing and wears at
+    // nothing, and the one thing it does -- taming a dog -- is a use,
+    // not a swing (game/mob.h).
+    [ITEM_BONE - BLK_COUNT]        = {"bone", SM_STR_ITEM_BONE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE4E0D0u},
 };
 
 // A bucket and what is in it. Adding lava is this row plus a row in the
@@ -72,9 +88,19 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
 static struct {
     uint8_t  fluid;
     uint16_t item;
+    uint32_t argb;  // what is inside it, when the world has no block for it
 } const BUCKETS[] = {
-    {BLK_AIR, ITEM_BUCKET},
-    {BLK_WATER, ITEM_BUCKET_WATER},
+    // THE EMPTY ONE IS FIRST and has to stay first: BLK_AIR appears
+    // twice now, and item_bucket_filled_with(BLK_AIR) -- which is what
+    // emptying one returns -- takes the first match.
+    {BLK_AIR, ITEM_BUCKET, 0xFF3A3E46u},
+    {BLK_WATER, ITEM_BUCKET_WATER, 0xFF3054C4u},
+    // MILK IS NOT A FLUID IN THE WORLD. There is no milk block and
+    // there is no reason for one -- you cannot pour it out, you drink
+    // it or you make cheese of it -- so its `fluid` is BLK_AIR and the
+    // family it belongs to is this table rather than the block id.
+    // item_is_bucket() therefore asks the table and not the contents.
+    {BLK_AIR, ITEM_BUCKET_MILK, 0xFFF2F0E6u},
 };
 
 uint8_t item_bucket_contents(uint16_t item) {
@@ -87,6 +113,23 @@ uint8_t item_bucket_contents(uint16_t item) {
 uint16_t item_bucket_filled_with(uint8_t fluid) {
     for (size_t i = 0; i < sizeof BUCKETS / sizeof BUCKETS[0]; i++) {
         if (BUCKETS[i].fluid == fluid) return BUCKETS[i].item;
+    }
+    return 0;
+}
+
+bool item_is_bucket(uint16_t item) {
+    for (size_t i = 0; i < sizeof BUCKETS / sizeof BUCKETS[0]; i++) {
+        if (BUCKETS[i].item == item) return true;
+    }
+    return false;
+}
+
+uint32_t item_bucket_argb(uint16_t item) {
+    for (size_t i = 0; i < sizeof BUCKETS / sizeof BUCKETS[0]; i++) {
+        if (BUCKETS[i].item != item) continue;
+        // A world fluid knows its own colour; anything else carries it
+        // in the row, which is what keeps milk from needing a block.
+        return BUCKETS[i].fluid != BLK_AIR ? item_def(BUCKETS[i].fluid).argb : BUCKETS[i].argb;
     }
     return 0;
 }
@@ -156,6 +199,13 @@ static sm_str_t const BLOCK_LABEL[BLK_COUNT] = {
     [BLK_BEAN_CROP] = SM_STR_ITEM_BEAN_CROP,
     [BLK_RICE_CROP] = SM_STR_ITEM_RICE_CROP,
     [BLK_RICE_TOP] = SM_STR_ITEM_RICE_CROP,
+    [BLK_CHEESE_MAKER] = SM_STR_ITEM_CHEESE_MAKER,
+    [BLK_SAUSAGE_MAKER] = SM_STR_ITEM_SAUSAGE_MAKER,
+    [BLK_FENCE] = SM_STR_ITEM_FENCE,
+    // Open or shut, it is a gate: one name for two ids, the way wet and
+    // dry farmland share one.
+    [BLK_FENCE_GATE] = SM_STR_ITEM_FENCE_GATE,
+    [BLK_FENCE_GATE_OPEN] = SM_STR_ITEM_FENCE_GATE,
     // Air and the barrier are never in anybody's hands and have none.
 };
 

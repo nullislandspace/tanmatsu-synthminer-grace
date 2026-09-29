@@ -195,8 +195,19 @@ typedef enum {
     SM_STR_ITEM_RICE,                   // item.rice
     SM_STR_ITEM_COMPOST,                // item.compost
     SM_STR_ITEM_WORM,                   // item.worm
+    SM_STR_ITEM_PORK,                   // item.pork
+    SM_STR_ITEM_BEEF,                   // item.beef
+    SM_STR_ITEM_BUCKET_MILK,            // item.bucket_milk
+    SM_STR_ITEM_CHEESE,                 // item.cheese
+    SM_STR_ITEM_SAUSAGE,                // item.sausage
+    SM_STR_ITEM_SAUSAGE_VEG,            // item.sausage_veg
+    SM_STR_ITEM_BONE,                   // item.bone
     SM_STR_ITEM_FARMLAND,               // item.farmland
     SM_STR_ITEM_COMPOSTER,              // item.composter
+    SM_STR_ITEM_CHEESE_MAKER,           // item.cheese_maker
+    SM_STR_ITEM_SAUSAGE_MAKER,          // item.sausage_maker
+    SM_STR_ITEM_FENCE,                  // item.fence
+    SM_STR_ITEM_FENCE_GATE,             // item.fence_gate
     SM_STR_ITEM_WHEAT_CROP,             // item.wheat_crop
     SM_STR_ITEM_POTATO_CROP,            // item.potato_crop
     SM_STR_ITEM_TOMATO_CROP,            // item.tomato_crop
@@ -255,6 +266,32 @@ typedef enum {
     SM_STR_FARM_NEEDS_SOIL,             // farm.needs_soil
     SM_STR_FARM_NEEDS_WATER,            // farm.needs_water
     SM_STR_FARM_ALREADY_RIPE,           // farm.already_ripe
+    SM_STR_MOB_PIG,                     // mob.pig
+    SM_STR_MOB_COW,                     // mob.cow
+    SM_STR_MOB_DOG,                     // mob.dog
+    SM_STR_ANIMAL_MILKED,               // animal.milked
+    SM_STR_ANIMAL_FED,                  // animal.fed
+    SM_STR_ANIMAL_TAMED,                // animal.tamed
+    SM_STR_ANIMAL_SITS,                 // animal.sits
+    SM_STR_ANIMAL_STANDS,               // animal.stands
+    SM_STR_MAKER_CHEESE_TITLE,          // maker.cheese_title
+    SM_STR_MAKER_SAUSAGE_TITLE,         // maker.sausage_title
+    SM_STR_MAKER_INPUT,                 // maker.input
+    SM_STR_MAKER_OUTPUT,                // maker.output
+    SM_STR_MAKER_EXTRA,                 // maker.extra
+    SM_STR_MAKER_EMPTY,                 // maker.empty
+    SM_STR_MAKER_SLOT,                  // maker.slot
+    SM_STR_MAKER_HINT,                  // maker.hint
+    SM_STR_MAKER_WORKING,               // maker.working
+    SM_STR_MAKER_NO_INPUT,              // maker.no_input
+    SM_STR_MAKER_FULL,                  // maker.full
+    SM_STR_MAKER_TOOK,                  // maker.took
+    SM_STR_MAKER_PICK_INPUT,            // maker.pick_input
+    SM_STR_MAKER_PICK_NONE,             // maker.pick_none
+    SM_STR_MAKER_PICK_HINT,             // maker.pick_hint
+    SM_STR_MAKER_A_DAY,                 // maker.a_day
+    SM_STR_MAKER_A_MINUTE,              // maker.a_minute
+    SM_STR_MAKER_BUCKET_BACK,           // maker.bucket_back
     SM_STR_HUD_NEEDS_TOOL,              // hud.needs_tool
     SM_STR_ACTION_FORWARD,              // action.forward
     SM_STR_ACTION_BACK,                 // action.back

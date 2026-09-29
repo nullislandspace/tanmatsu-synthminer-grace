@@ -132,6 +132,15 @@ typedef enum {
     VM_RICE_TOP_1,
     VM_RICE_TOP_2,
     VM_RICE_TOP_3,
+    // The animals' two machines, and what the cheese maker has in it
+    // (K_BARREL: the inner surface is milk, cheese, or the barrel's
+    // own floor when it is empty).
+    VM_BARREL_SIDE,
+    VM_BARREL_TOP,
+    VM_MILK,
+    VM_CHEESE,
+    VM_SAUSAGE_SIDE,
+    VM_SAUSAGE_TOP,
     VM_COUNT
 } vox_mat_t;
 

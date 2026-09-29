@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 #include "game/input.h"
+#include "game/mob.h"
 #include "game/physics.h"
 #include "game/raycast.h"
 #include "items/inventory.h"
@@ -132,6 +133,19 @@ typedef struct {
     uint8_t   use_msg;
     uint16_t  use_msg_ticks;
 
+    // THE CREATURE UNDER THE CROSSHAIR this tick, or -1 (game/mob.h).
+    // Reported rather than acted on, like used_block: the HUD names it
+    // so a player knows what they are about to hit, and a use goes to
+    // it before it goes to the world.
+    int       hit_mob;
+
+    // ... and what the last use of one DID, with how many ticks are
+    // left of saying so. Milking, feeding and taming all look like
+    // nothing happening unless the screen says otherwise -- the same
+    // argument as use_msg above.
+    uint8_t   mob_msg;
+    uint16_t  mob_msg_ticks;
+
     // A full-screen UI is up -- the crafting book (ui/craft_ui.h).
     // Mirrored here once a frame by main.c rather than reached for,
     // because player.c has no business knowing what a pax_buf_t is.
@@ -162,6 +176,7 @@ bool player_place(player_t* p, double x, double y, double z, float yaw, float pi
 // the actions that went down since the last tick (so a held key places
 // one block, not twenty).
 void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed);
+
 
 // The eye for the frame being drawn. `alpha` is how far through the
 // current tick it is, 0..1.

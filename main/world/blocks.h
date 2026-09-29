@@ -29,6 +29,24 @@ typedef enum {
     K_PLANT,    // two crossed double-sided quads (flowers, crops)
     K_TORCH,    // a thin stick in the middle of the cell
     K_SIGN,     // a post with a board on it, facing east, its text a texture
+    // A FENCE: a post in the middle of the cell and a pair of rails
+    // towards every neighbour that is worth joining. It stands HALF A
+    // BLOCK TALLER than its cell (block_collide_top), which is the
+    // whole point of it -- a pig cannot walk over one and neither can
+    // a player, and no gate would be needed if it could be jumped.
+    K_FENCE,
+    // The gate in that fence: two posts and a bar across, or the same
+    // swung aside. Which of the two is the BLOCK ID, not a state bit,
+    // for exactly the reason farmland is two ids -- an open gate is
+    // not solid and a closed one is, and `block_solid` takes an id
+    // (D-106's argument, applied again).
+    K_GATE,
+    // An open square barrel: the cheese maker. A shell of planks with
+    // an inner surface whose colour is WHAT IS IN IT, taken from the
+    // state byte -- white for milk, yellow for cheese, nothing when it
+    // is empty. The user asked for three appearances and this is them,
+    // in one block id rather than three.
+    K_BARREL,
     // A liquid is ONLY ever its surface. It draws no sides and no
     // bottom, and a top only where there is air above it, and it never
     // hides the faces of its neighbours -- so a lake is a lid over
@@ -295,7 +313,17 @@ enum {
     // The upper half of the rice plant, which stands in the air above
     // the half that stands in the water (BF2_TALL_TOP).
     BLK_RICE_TOP       = 39,
-    // New blocks here: BLK_SOMETHING = 40, and a line in tools/ids.txt.
+    // Animals (step 10). Two machines, and the fence that keeps what
+    // they are made of from wandering off.
+    BLK_CHEESE_MAKER   = 40,
+    BLK_SAUSAGE_MAKER  = 41,
+    BLK_FENCE          = 42,
+    // A GATE IS TWO IDS, open and closed, and the state byte says only
+    // which way it lies (GATE_AXIS_X / GATE_AXIS_Z). Both drop the
+    // closed one, so a player never ends up carrying "an open gate".
+    BLK_FENCE_GATE     = 43,
+    BLK_FENCE_GATE_OPEN = 44,
+    // New blocks here: BLK_SOMETHING = 45, and a line in tools/ids.txt.
     BLK_COUNT
 };
 
@@ -355,6 +383,36 @@ static inline bool block_crop(uint8_t id) {
 static inline bool block_waterlogged(uint8_t id) {
     return (block_def(id)->flags2 & BF2_WATERLOGGED) != 0;
 }
+
+// HOW HIGH THE BLOCK REACHES, for the collider only. One cell for
+// everything in the world except a fence, which reaches a cell and a
+// half -- and that half is the whole point of a fence: a player jumps
+// 1.33 blocks (player.h) and an animal's step-up is one, so 1.5 is the
+// first height neither of them can get over. Without it a fence is a
+// decoration and the gate is pointless.
+//
+// A function rather than a column because it has one exception in it.
+// The day a second shape needs one -- a slab, a step -- it becomes a
+// column, with the rows that earn it.
+#define BLOCK_FENCE_TOP 1.5f
+static inline float block_collide_top(uint8_t id) {
+    return block_kind(id) == K_FENCE ? BLOCK_FENCE_TOP : 1.0f;
+}
+
+// WHICH WAY A GATE LIES, in its state byte: along x, or along z. The
+// mesher and the placement both read it, so like the torch's data
+// (voxel_mesh.h) the names live where the shape does -- but a gate is
+// the block table's own idea and has no second reader, so they are
+// here.
+#define GATE_AXIS_X 0u
+#define GATE_AXIS_Z 1u
+
+// WHAT IS IN A CHEESE MAKER, in its state byte: the three appearances
+// the user asked for. The machine (game/maker.h) writes it whenever
+// its contents change and the mesher draws whatever it says.
+#define BARREL_EMPTY  0u
+#define BARREL_MILK   1u
+#define BARREL_CHEESE 2u
 
 static inline bool block_usable(uint8_t id) {
     return (block_def(id)->flags2 & BF2_USABLE) != 0;

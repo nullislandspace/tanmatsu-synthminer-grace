@@ -172,6 +172,59 @@ static recipe_t const RECIPES[] = {
     {.out     = ITEM_IRON_INGOT, .out_n = 1, .station = RS_FURNACE,
      .n_in    = 1,
      .in      = {{BLK_IRON_ORE, 1}}},
+
+    // --- The animals' kit (step 10) ----------------------------------
+    //
+    // The fence and its gate, both of planks and sticks, and both worth
+    // more than the wood in them because what they buy is an animal
+    // that stays where it was put.
+    {.out     = BLK_FENCE, .out_n = 3, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 2,
+     .in      = {{BLK_PLANKS, 2}, {ITEM_STICK, 4}}},
+
+    {.out     = BLK_FENCE_GATE, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 2,
+     .in      = {{BLK_PLANKS, 2}, {ITEM_STICK, 4}}},
+
+    // SEVEN PLANKS, the same as the composter (Part A): two rows with
+    // the same ingredients are legal here, because the player picks the
+    // row and not the pile.
+    {.out     = BLK_CHEESE_MAKER, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 1,
+     .in      = {{BLK_PLANKS, 7}}},
+
+    // Nine iron INGOTS, not ore (the user's correction, 2026-09-29).
+    {.out     = BLK_SAUSAGE_MAKER, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 1,
+     .in      = {{ITEM_IRON_INGOT, 9}}},
+
+    // --- ... and what the two of them make ---------------------------
+    //
+    // A bucket of milk becomes cheese, and THE BUCKET COMES STRAIGHT
+    // BACK (the user) -- which is not in this row, because it happens
+    // when the milk goes in rather than when the cheese comes out
+    // (game/maker.c). A recipe that returned the bucket at the end
+    // would leave it locked up for a whole in-game day.
+    {.out     = ITEM_CHEESE, .out_n = 1, .station = RS_CHEESE,
+     .n_in    = 1,
+     .in      = {{ITEM_BUCKET_MILK, 1}}},
+
+    // "1 pork + 1 flower of any colour" is TWO ROWS, one per colour.
+    // There is no "any of these" in a multiset and there should not be:
+    // a third flower is a row, and a row is the unit of change here.
+    {.out     = ITEM_SAUSAGE, .out_n = 1, .station = RS_SAUSAGE,
+     .n_in    = 2,
+     .in      = {{ITEM_PORK, 1}, {BLK_FLOWER_RED, 1}}},
+
+    {.out     = ITEM_SAUSAGE, .out_n = 1, .station = RS_SAUSAGE,
+     .n_in    = 2,
+     .in      = {{ITEM_PORK, 1}, {BLK_FLOWER_YELLOW, 1}}},
+
+    // The vegetarian one, worth EXACTLY what the pork one is worth and
+    // counting as a pizza's sausage (the user). Two beans, no flower.
+    {.out     = ITEM_SAUSAGE_VEG, .out_n = 1, .station = RS_SAUSAGE,
+     .n_in    = 1,
+     .in      = {{ITEM_BEANS, 2}}},
 };
 
 #define RECIPE_N ((int)(sizeof(RECIPES) / sizeof(RECIPES[0])))
@@ -219,7 +272,10 @@ int recipe_missing(recipe_t const* r, inventory_t const* inv, int ing) {
 static recipe_t const* maker_of(uint16_t item, int station) {
     for (int i = 0; i < RECIPE_N; i++) {
         recipe_t const* r = &RECIPES[i];
-        if (r->out != item || r->station == RS_FURNACE) continue;
+        // BY HAND OR AT A TABLE, and nowhere else. Smelting takes fuel
+        // and time, and so does every machine after it: none of them is
+        // something a menu should start on the player's behalf.
+        if (r->out != item || (r->station != RS_INVENTORY && r->station != RS_TABLE)) continue;
         if (recipe_station_allows(station, r->station)) return r;
     }
     return NULL;

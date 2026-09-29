@@ -67,8 +67,16 @@ void texcache_report(void) {
             psram++;
         }
     }
-    ESP_LOGI(TAG, "%d textures: %d in internal SRAM (%u B), %d in PSRAM", s_n, internal, (unsigned)internal_bytes,
-             psram);
+    ESP_LOGI(TAG, "%d of %d cache slots: %d in internal SRAM (%u B), %d in PSRAM", s_n, TEXCACHE_MAX, internal,
+             (unsigned)internal_bytes, psram);
+    // NEARLY FULL IS WORTH SAYING OUT LOUD. F-120 was a cache that had
+    // been full for a whole round of work: the only sign was an error
+    // per texture, buried in the boot log, and what it looked like from
+    // the outside was bad art. A line that says "eight left" is one
+    // somebody reads before the wall rather than after it.
+    if (s_n > TEXCACHE_MAX - 8) {
+        ESP_LOGW(TAG, "texture cache is nearly full: %d of %d used, %d left", s_n, TEXCACHE_MAX, TEXCACHE_MAX - s_n);
+    }
 }
 
 se_texture_t const* texcache_get(char const* file) {

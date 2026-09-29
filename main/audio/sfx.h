@@ -62,6 +62,14 @@ typedef enum {
     SFX_CRAFT,        // something was made in the crafting book
     SFX_DENY,         // ... and the refusal when it could not be
 
+    // THE ANIMALS (game/mob.h). One voice each, and a shared cry for
+    // being hurt -- a pig and a cow in pain are the same short noise at
+    // different pitches, and sfx_play_pitched already does that.
+    SFX_MOO,
+    SFX_OINK,
+    SFX_BARK,
+    SFX_BEAST_HURT,
+
     SFX_COUNT
 } sfx_id_t;
 

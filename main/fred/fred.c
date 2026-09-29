@@ -133,9 +133,8 @@ fred_hold_t fred_hold_for(uint16_t item) {
     // item_bucket_contents() names the block and the block table
     // already knows what colour it is.
     if (item_is_bucket(item)) {
-        uint8_t const fl = item_bucket_contents(item);
-        h.kind           = FRED_HOLD_BUCKET;
-        h.argb           = fl == BLK_AIR ? 0xFF3A3E46u : item_def(fl).argb;
+        h.kind = FRED_HOLD_BUCKET;
+        h.argb = item_bucket_argb(item);
         return h;
     }
 
