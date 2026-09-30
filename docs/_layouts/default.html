@@ -1,9 +1,19 @@
+{%- comment -%}
+  JEKYLL SPELLS THE INDEX "/" AND NOT "/index.html", which is the one
+  thing in here worth a comment. Testing the page's own address against
+  "/index.html" silently failed on the front page, so it got a second
+  <h1> under the one its markdown already has, a doubled <title>, and a
+  sidebar row that never highlighted. Normalised once, here, and every
+  comparison below is against `cur`.
+{%- endcomment -%}
+{%- assign cur = page.url -%}
+{%- if cur == "/" -%}{%- assign cur = "/index.html" -%}{%- endif -%}
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% if page.title and page.url != "/index.html" %}{{ page.title }} &middot; {% endif %}{{ site.title }}</title>
+<title>{% if page.title and cur != "/index.html" %}{{ page.title }} &middot; {% endif %}{{ site.title }}</title>
 {% if page.summary %}<meta name="description" content="{{ page.summary | strip_newlines }}">{% endif %}
 <link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
 </head>
@@ -30,7 +40,7 @@
       <h2>{{ section.title }}</h2>
       <ul>
         {% for p in section.pages %}
-        <li{% if p.url == page.url %} class="here"{% endif %}>
+        <li{% if p.url == cur %} class="here"{% endif %}>
           <a href="{{ p.url | relative_url }}">{{ p.name }}</a>
         </li>
         {% endfor %}
@@ -40,7 +50,7 @@
   </details>
 
   <main id="content">
-    {% if page.title and page.url != "/index.html" %}
+    {% if page.title and cur != "/index.html" %}
     <h1>{{ page.title }}</h1>
     {% if page.summary %}<p class="lede">{{ page.summary }}</p>{% endif %}
     {% endif %}
