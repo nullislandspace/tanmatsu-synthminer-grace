@@ -1,0 +1,57 @@
+# =====================================================================
+#  The player's manual (docs/) -> GitHub Pages
+# ---------------------------------------------------------------------
+#  A WORKFLOW RATHER THAN THE LEGACY BRANCH BUILD, for one reason that
+#  matters: when the legacy builder fails it says "Page build failed."
+#  and nothing else, and it can sit in "building" for a quarter of an
+#  hour without ever starting. This leaves a readable log in the Actions
+#  tab and a deployment in the github-pages environment.
+#
+#  It builds with actions/jekyll-build-pages, which is the same
+#  github-pages gem the legacy builder used -- so the site itself is
+#  unchanged and docs/_config.yml still means what it says.
+# =====================================================================
+name: Deploy the manual to Pages
+
+on:
+  push:
+    branches: [main]
+    # Only when the manual or this workflow changes: nothing else in the
+    # repository can affect the built site.
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one half way: a cancelled
+# deploy can leave the site on a mixture of two versions.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
