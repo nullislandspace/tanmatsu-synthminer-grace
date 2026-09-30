@@ -4,6 +4,15 @@ A block world for the [Tanmatsu](https://nicolaielectronics.nl/), built on
 [SynthEngine3D](https://github.com/nullislandspace/synthengine3D) and loaded by
 [Graceloader](https://github.com/nullislandspace/tanmatsu-graceloader).
 
+> ### 📖 [**Player's manual →**](https://nullislandspace.github.io/tanmatsu-synthminer-grace/)
+>
+> Animals, plants, ores, tools, machines, every recipe and every food — plus the rules
+> behind them: hunger, fall damage, fishing, and what a night's sleep actually advances.
+> Source in [`docs/`](docs/), served as GitHub Pages.
+>
+> This README and the headers under `main/` are the *developer's* documentation;
+> `claudeplans/synthminer.md` is the design record.
+
 Slug `at.cavac.synthminer`. It installs to the **SD card only** — `metadata.json`
 says `external_only`, so the launcher will not put it in internal flash, and
 `make install` uploads to `/sd/apps/at.cavac.synthminer`.

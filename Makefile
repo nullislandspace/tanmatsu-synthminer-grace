@@ -96,7 +96,7 @@ MESHCHECK_SRCS  := tools/meshcheck.c $(PURE_SRCS)
 WORLDCHECK_SRCS := tools/worldcheck.c $(PURE_SRCS)
 
 .PHONY: check
-check: hostpurity lang metadata texcheck meshcheck worldcheck
+check: hostpurity lang metadata texcheck docscheck meshcheck worldcheck
 
 # ---------------------------------------------------------------------
 # The translations. lang/*.txt is the source and main/i18n/strings_gen.*
@@ -357,6 +357,16 @@ textures:
 .PHONY: texcheck
 texcheck:
 	python3 tools/make_textures.py --check
+
+# The PLAYER's manual (docs/, served as GitHub Pages). GitHub builds it,
+# not us, so nothing here would otherwise notice a link pointing at a
+# page that does not exist -- and a manual with a 404 in it is worse
+# than a missing page, because the reader cannot tell which it is. So:
+# every internal link resolved against the files that actually exist,
+# and the sidebar checked against them both ways.
+.PHONY: docscheck
+docscheck:
+	python3 tools/docscheck.py
 
 # The launcher's icons, likewise committed. They are drawn from the game's
 # own pickaxe and stone, so this reads make_textures.py.

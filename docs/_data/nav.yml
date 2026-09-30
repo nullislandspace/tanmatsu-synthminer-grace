@@ -1,0 +1,86 @@
+# The sidebar. One list of sections, each with its pages -- so adding a
+# page is a line here and a file, and nothing has to be edited in the
+# layout.
+- title: Start here
+  pages:
+    - {url: /index.html, name: What SynthMiner is}
+    - {url: /getting-started.html, name: Your first day}
+    - {url: /controls.html, name: Controls and the HUD}
+
+- title: The world
+  pages:
+    - {url: /world/index.html, name: How a world is made}
+    - {url: /world/biomes.html, name: The five biomes}
+    - {url: /world/water.html, name: Water}
+    - {url: /world/caves.html, name: Caves and the deep}
+
+- title: Ores and stone
+  pages:
+    - {url: /ores/index.html, name: Overview}
+    - {url: /ores/coal.html, name: Coal ore}
+    - {url: /ores/iron.html, name: Iron ore}
+
+- title: Plants
+  pages:
+    - {url: /plants/index.html, name: Overview and farming}
+    - {url: /plants/wheat.html, name: Wheat}
+    - {url: /plants/potato.html, name: Potato}
+    - {url: /plants/tomato.html, name: Tomato}
+    - {url: /plants/beans.html, name: Beans}
+    - {url: /plants/rice.html, name: Rice}
+    - {url: /plants/trees.html, name: Trees and saplings}
+    - {url: /plants/flowers.html, name: Flowers, grass and cactus}
+
+- title: Animals
+  pages:
+    - {url: /animals/index.html, name: Overview}
+    - {url: /animals/pig.html, name: Pig}
+    - {url: /animals/cow.html, name: Cow}
+    - {url: /animals/sheep.html, name: Sheep}
+    - {url: /animals/dog.html, name: Dog}
+
+- title: Tools
+  pages:
+    - {url: /tools/index.html, name: Overview and tiers}
+    - {url: /tools/pickaxe.html, name: Pickaxe}
+    - {url: /tools/axe.html, name: Axe}
+    - {url: /tools/shovel.html, name: Shovel}
+    - {url: /tools/hoe.html, name: Hoe}
+    - {url: /tools/shears.html, name: Shears}
+    - {url: /tools/bucket.html, name: Bucket}
+    - {url: /tools/fishing-rod.html, name: Fishing rod}
+
+- title: Machines and furniture
+  pages:
+    - {url: /devices/index.html, name: Overview}
+    - {url: /devices/crafting-table.html, name: Crafting table}
+    - {url: /devices/furnace.html, name: Furnace}
+    - {url: /devices/chest.html, name: Chest}
+    - {url: /devices/trash-chest.html, name: Trash chest}
+    - {url: /devices/disassembly-bench.html, name: Disassembly bench}
+    - {url: /devices/composter.html, name: Composter}
+    - {url: /devices/cheese-maker.html, name: Cheese maker}
+    - {url: /devices/sausage-maker.html, name: Sausage maker}
+    - {url: /devices/kitchen-stove.html, name: Kitchen stove}
+    - {url: /devices/bed.html, name: Bed}
+    - {url: /devices/fences.html, name: Fences and gates}
+    - {url: /devices/torch.html, name: Torches}
+
+- title: Staying alive
+  pages:
+    - {url: /mechanics/hunger.html, name: Hunger and saturation}
+    - {url: /mechanics/health.html, name: Health, falling and death}
+    - {url: /mechanics/fishing.html, name: Fishing}
+    - {url: /mechanics/mining.html, name: Mining speed and tools}
+    - {url: /mechanics/time.html, name: Time, growth and sleeping}
+
+- title: Tables
+  pages:
+    - {url: /recipes.html, name: Every recipe}
+    - {url: /food.html, name: Every food}
+
+- title: Releases
+  pages:
+    - {url: /releases/index.html, name: Version history}
+    - {url: /releases/v0.2.0.html, name: "v0.2.0 — Fred's Farm Update"}
+    - {url: /releases/v0.1.0.html, name: "v0.1.0 — The Base Game"}

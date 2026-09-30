@@ -1,0 +1,28 @@
+# GitHub Pages: the PLAYER's manual, not the developer's. The developer's
+# documentation is the source itself -- every header in main/ explains
+# what it does and why -- and claudeplans/synthminer.md is the design
+# record. This is the other audience: somebody holding a Tanmatsu who
+# wants to know how long a tree takes or what the second slot is for.
+title: SynthMiner
+tagline: A blocky open world for the Tanmatsu
+description: >-
+  The player's manual for SynthMiner: animals, plants, ores, tools,
+  machines, recipes and the rules behind them.
+
+# A project site, so the pages live under the repository's name.
+baseurl: /tanmatsu-synthminer-grace
+url: https://nullislandspace.github.io
+repo: https://github.com/nullislandspace/tanmatsu-synthminer-grace
+
+# NO THEME GEM, deliberately: the whole look is _layouts/default.html and
+# assets/style.css, which is fewer moving parts than a remote theme and
+# cannot break when GitHub retires one. `theme` is simply left unset.
+plugins: []
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+
+defaults:
+  - scope: {path: ""}
+    values: {layout: default}

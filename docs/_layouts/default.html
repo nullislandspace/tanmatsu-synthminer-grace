@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if page.title and page.url != "/index.html" %}{{ page.title }} &middot; {% endif %}{{ site.title }}</title>
+{% if page.summary %}<meta name="description" content="{{ page.summary | strip_newlines }}">{% endif %}
+<link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
+</head>
+<body>
+
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <a class="brand" href="{{ '/index.html' | relative_url }}">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-text"><b>SynthMiner</b><small>{{ site.tagline }}</small></span>
+  </a>
+  <a class="src" href="{{ site.repo }}">Source&nbsp;&rarr;</a>
+</header>
+
+<div class="shell">
+
+  <!-- A <details> so the sidebar folds away on a phone and is simply
+       open on anything wider (the stylesheet forces it). -->
+  <details class="nav-wrap">
+    <summary>Contents</summary>
+    <nav aria-label="Manual contents">
+      {% for section in site.data.nav %}
+      <h2>{{ section.title }}</h2>
+      <ul>
+        {% for p in section.pages %}
+        <li{% if p.url == page.url %} class="here"{% endif %}>
+          <a href="{{ p.url | relative_url }}">{{ p.name }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endfor %}
+    </nav>
+  </details>
+
+  <main id="content">
+    {% if page.title and page.url != "/index.html" %}
+    <h1>{{ page.title }}</h1>
+    {% if page.summary %}<p class="lede">{{ page.summary }}</p>{% endif %}
+    {% endif %}
+    {{ content }}
+  </main>
+
+</div>
+
+<footer class="foot">
+  <p>SynthMiner is a block world for the <a href="https://nicolaielectronics.nl/">Tanmatsu</a>,
+  built on <a href="https://github.com/nullislandspace/synthengine3D">SynthEngine3D</a>.
+  This is the player's manual; the code is over <a href="{{ site.repo }}">here</a>.</p>
+</footer>
+
+</body>
+</html>

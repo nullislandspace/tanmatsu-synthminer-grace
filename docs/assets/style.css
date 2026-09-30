@@ -1,0 +1,324 @@
+/* ---------------------------------------------------------------------
+   SynthMiner player manual.
+
+   Dirt, grass and lamplight, because that is what the game looks like.
+   One file, no build step, and it works dark or light from the reader's
+   own preference.
+   --------------------------------------------------------------------- */
+
+:root {
+  --bg:        #16140f;
+  --bg-soft:   #1e1b14;
+  --bg-sink:   #110f0b;
+  --line:      #35301f;
+  --ink:       #e8e2cf;
+  --ink-soft:  #b3ab93;
+  --ink-faint: #8a836e;
+  --grass:     #7cc04a;
+  --grass-dim: #5c9634;
+  --gold:      #f0c04a;
+  --rust:      #d4703c;
+  --radius: 6px;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:        #faf7ef;
+    --bg-soft:   #f1ece0;
+    --bg-sink:   #e9e3d4;
+    --line:      #d6cdb6;
+    --ink:       #23201a;
+    --ink-soft:  #524c3e;
+    --ink-faint: #7b7462;
+    --grass:     #43781f;
+    --grass-dim: #5c9634;
+    --gold:      #8a6410;
+    --rust:      #9d4a1c;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.65 var(--sans);
+}
+
+.skip {
+  position: absolute; left: -9999px;
+}
+.skip:focus {
+  left: 8px; top: 8px; z-index: 10;
+  background: var(--grass); color: #000;
+  padding: 8px 12px; border-radius: var(--radius);
+}
+
+/* --- Header ---------------------------------------------------------- */
+
+.top {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 20px;
+  background: var(--bg-sink);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 5;
+}
+
+.brand {
+  display: flex; align-items: center; gap: 12px;
+  color: inherit; text-decoration: none;
+  margin-right: auto;
+}
+
+/* A block of grass, 3 px of turf on dirt. */
+.brand-mark {
+  width: 26px; height: 26px; flex: none;
+  border-radius: 3px;
+  background:
+    linear-gradient(var(--grass-dim) 0 7px, transparent 7px),
+    linear-gradient(#7a563a, #5f4229);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.35);
+}
+
+.brand-text { display: flex; flex-direction: column; line-height: 1.2; }
+.brand-text b { font-size: 17px; letter-spacing: .2px; }
+.brand-text small { color: var(--ink-faint); font-size: 12px; }
+
+.src {
+  color: var(--ink-soft); text-decoration: none;
+  font-size: 13px; white-space: nowrap;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 5px 10px;
+}
+.src:hover { color: var(--ink); border-color: var(--grass-dim); }
+
+/* --- Shell ----------------------------------------------------------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 32px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 26px 20px 60px;
+  align-items: start;
+}
+
+.nav-wrap { min-width: 0; }
+.nav-wrap > summary {
+  display: none;
+  cursor: pointer;
+  padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-soft);
+  font-weight: 600;
+}
+
+.nav-wrap nav {
+  position: sticky; top: 84px;
+  max-height: calc(100vh - 104px);
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.nav-wrap h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-faint);
+  margin: 20px 0 7px;
+}
+.nav-wrap h2:first-child { margin-top: 0; }
+
+.nav-wrap ul { list-style: none; margin: 0; padding: 0; }
+.nav-wrap li { margin: 0; }
+.nav-wrap a {
+  display: block;
+  padding: 4px 10px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: 14px;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.nav-wrap a:hover { color: var(--ink); background: var(--bg-soft); }
+.nav-wrap li.here > a {
+  color: var(--grass);
+  border-left-color: var(--grass);
+  background: var(--bg-soft);
+  font-weight: 600;
+}
+
+/* --- Content --------------------------------------------------------- */
+
+main { min-width: 0; }
+
+main h1 {
+  font-size: 30px; line-height: 1.2;
+  margin: 0 0 10px;
+  letter-spacing: -.01em;
+}
+main h2 {
+  font-size: 20px;
+  margin: 38px 0 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+main h3 { font-size: 16px; margin: 26px 0 8px; }
+
+p, ul, ol, table, pre, blockquote { margin: 0 0 15px; }
+ul, ol { padding-left: 22px; }
+li { margin: 4px 0; }
+
+.lede {
+  color: var(--ink-soft);
+  font-size: 17px;
+  margin-bottom: 26px;
+}
+
+a { color: var(--grass); text-decoration-color: color-mix(in srgb, var(--grass) 45%, transparent); }
+a:hover { text-decoration-thickness: 2px; }
+
+strong { color: var(--ink); }
+
+code {
+  font: .875em/1.4 var(--mono);
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: .08em .35em;
+}
+
+pre {
+  background: var(--bg-sink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  overflow-x: auto;
+}
+pre code { background: none; border: 0; padding: 0; font-size: .85rem; }
+
+blockquote {
+  margin-left: 0;
+  padding: 2px 0 2px 16px;
+  border-left: 3px solid var(--grass-dim);
+  color: var(--ink-soft);
+}
+
+hr { border: 0; border-top: 1px solid var(--line); margin: 34px 0; }
+
+/* --- Tables ---------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14.5px;
+  display: block;
+  overflow-x: auto;
+}
+th, td {
+  text-align: left;
+  padding: 7px 12px 7px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+th {
+  color: var(--ink-faint);
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+tbody tr:hover { background: var(--bg-soft); }
+td:first-child { font-weight: 600; }
+
+/* --- The card grid on the index -------------------------------------- */
+
+.cards {
+  list-style: none; margin: 0 0 18px; padding: 0;
+  display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+}
+.cards li { margin: 0; }
+.cards a {
+  display: block; height: 100%;
+  padding: 13px 15px;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: inherit;
+}
+.cards a:hover { border-color: var(--grass-dim); }
+.cards b { display: block; color: var(--grass); margin-bottom: 3px; }
+.cards span { font-size: 13.5px; color: var(--ink-soft); }
+
+/* A boxed aside: the thing a player gets wrong once. */
+.note {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 12px 15px;
+  margin: 0 0 18px;
+  font-size: 14.5px;
+}
+.note b:first-child { color: var(--gold); }
+
+/* Key names, for the controls page. */
+kbd {
+  font: .8em/1 var(--mono);
+  background: var(--bg-sink);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: .25em .45em;
+  white-space: nowrap;
+}
+
+/* --- Footer ---------------------------------------------------------- */
+
+.foot {
+  border-top: 1px solid var(--line);
+  background: var(--bg-sink);
+  padding: 22px 20px;
+}
+.foot p {
+  max-width: 1180px; margin: 0 auto;
+  font-size: 13.5px; color: var(--ink-faint);
+}
+
+/* --- Narrow ---------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; gap: 20px; padding-top: 18px; }
+  .nav-wrap > summary { display: block; }
+  .nav-wrap nav {
+    position: static; max-height: none; overflow: visible;
+    padding: 14px 0 4px;
+  }
+  main h1 { font-size: 25px; }
+  .top { position: static; }
+}
+
+/* Wide enough for the sidebar: it is always open, whatever the
+   <details> element thinks.
+
+   BOTH RULES ARE NEEDED. Browsers used to hide a closed <details>'s
+   children with `display: none`, which the first line overrides; newer
+   Chrome hides them with `content-visibility` on `::details-content`
+   instead, which it does not. A browser that has never heard of the
+   second selector drops that block and keeps the first, so between them
+   every engine shows the sidebar.
+
+   It is done this way round -- closed markup, forced open by the
+   stylesheet -- so a phone lands on the page and not on a list of
+   forty-five links. */
+@media (min-width: 861px) {
+  .nav-wrap > nav { display: block !important; }
+}
+@media (min-width: 861px) {
+  .nav-wrap::details-content { content-visibility: visible; block-size: auto; }
+}
