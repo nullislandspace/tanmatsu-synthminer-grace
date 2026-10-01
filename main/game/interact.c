@@ -73,6 +73,14 @@ static int drop_for(uint8_t block, uint8_t state, int32_t x, int32_t y, int32_t 
         return n + item_entity_spawn(x, y, z, d->drop_item, h, 0);
     }
 
+    // SHEARS, OR NOTHING. The only blocks whose `tool` is TOOL_SHEARS
+    // are the two kinds of leaves, and shears are the one thing that
+    // takes a leaf whole -- an axe tears it up, which is what felling a
+    // tree does to a canopy. A rule rather than a flag because `flags2`
+    // has no bits left and this reads better anyway: the tool column
+    // already says what the block wants (F-134).
+    if (d->tool == TOOL_SHEARS && item_def(tool_item).tool != TOOL_SHEARS) return 0;
+
     if (d->drop_item == ITEM_NONE || d->drop_max == 0) return 0;
 
     int const n = roll(x, y, z, 0x0D40Fu, d->drop_min, d->drop_max);
@@ -146,61 +154,65 @@ bool interact_toggle_gate(int32_t x, int32_t y, int32_t z) {
 }
 
 int interact_fell(int32_t x0, int32_t y0, int32_t z0) {
-    // The frontier, as explicit storage rather than recursion: a canopy
-    // is hundreds of blocks and this runs on the game task.
-    static struct {
-        int32_t x, y, z;
-    } stack[FELL_MAX];
-    int n = 0, taken = 0;
+    // ONE TREE, AND ONLY ONE (F-133). This was a 26-neighbour flood
+    // through every fellable cell, clipped to a box -- and LEAVES
+    // CONDUCTED IT. In a forest the canopies touch, so one swing walked
+    // from the tree you hit into its neighbours and out the other side:
+    // measured on the player's own save, single swings took 108 to 494
+    // blocks and brought down between 9 and 36 separate trunks. It also
+    // broke the thing felling exists for, because a fell drops one or
+    // two saplings PER SWING -- so clearing a grove of thirty trees
+    // handed back two seedlings and wood stopped being renewable in the
+    // one biome where most of it is cut.
+    //
+    // A TREE IS A COLUMN. worldgen_tree_shape (world/worldgen.h) builds
+    // one as a single stack of logs with a canopy within two blocks of
+    // its top, and that is the only shape anything in this game grows --
+    // the generator and a sapling share that function. So "the tree I am
+    // felling" is this column of logs, and the leaves belong to it by
+    // being near it rather than by touching it.
+    //
+    // Nothing is clipped to a radius from the break any more, because
+    // nothing needs to be: the trunk ends where the logs end.
+    int taken = 0;
 
-    stack[n].x = x0;
-    stack[n].y = y0;
-    stack[n].z = z0;
-    n++;
-    // Take the first one immediately, so it cannot be pushed again.
-    uint8_t const first = world_block(x0, y0, z0);
-    uint8_t const first_st = world_state(x0, y0, z0);
-    world_set(x0, y0, z0, BLK_AIR, 0);
-    drop_for(first, first_st, x0, y0, z0, s_fell_tool);
-    taken++;
+    // The trunk, upwards from the break. NEVER DOWNWARDS: the stump
+    // stays, which is the old rule and a good one -- a tree on a cliff
+    // edge does not reach down it.
+    int top = y0 - 1;
+    for (int32_t y = y0; y < CH_H && taken < FELL_MAX; y++) {
+        if (!grown_tree(x0, y, z0)) break;
+        if (!block_trunk(world_block(x0, y, z0))) break;  // out of the logs: the canopy starts
+        uint8_t const was = world_block(x0, y, z0);
+        uint8_t const was_st = world_state(x0, y, z0);
+        world_set(x0, y, z0, BLK_AIR, 0);
+        drop_for(was, was_st, x0, y, z0, s_fell_tool);
+        taken++;
+        top = (int)y;
+    }
 
-    while (n > 0) {
-        n--;
-        int32_t const cx = stack[n].x, cy = stack[n].y, cz = stack[n].z;
-
-        // The 26 neighbours, not 6: a canopy is diagonal everywhere, and
-        // a 6-neighbour fill leaves half a tree hanging in the air.
-        for (int dy = -1; dy <= 1; dy++) {
-            for (int dz = -1; dz <= 1; dz++) {
-                for (int dx = -1; dx <= 1; dx++) {
-                    if (dx == 0 && dy == 0 && dz == 0) continue;
-                    int32_t const nx = cx + dx, ny = cy + dy, nz = cz + dz;
-
-                    // Never below the block that was broken: the stump
-                    // stays, and a tree on a cliff edge does not reach
-                    // down it.
-                    if (ny < y0) continue;
-                    if (ny - y0 > FELL_HEIGHT) continue;
-                    int32_t const ax = nx - x0 < 0 ? x0 - nx : nx - x0;
-                    int32_t const az = nz - z0 < 0 ? z0 - nz : nz - z0;
-                    if (ax > FELL_RADIUS || az > FELL_RADIUS) continue;
-
-                    if (!grown_tree(nx, ny, nz)) continue;
-                    if (taken >= FELL_MAX || n >= FELL_MAX) return taken;
-
-                    // Clear it as it is pushed, not as it is popped:
-                    // that is what stops it being reached twice, and it
-                    // is why no "visited" set is needed.
-                    uint8_t const was = world_block(nx, ny, nz);
-                    uint8_t const was_st = world_state(nx, ny, nz);
-                    world_set(nx, ny, nz, BLK_AIR, 0);
-                    drop_for(was, was_st, nx, ny, nz, s_fell_tool);
-                    taken++;
-                    stack[n].x = nx;
-                    stack[n].y = ny;
-                    stack[n].z = nz;
-                    n++;
-                }
+    // ... and its canopy: the leaves this trunk was carrying. The shape
+    // puts them within FELL_LEAF_R of the column and between one below
+    // the topmost log and two above it; the band here is a little wider
+    // than that so a tree grown by an older build still comes down
+    // whole.
+    //
+    // A NEIGHBOUR'S LEAVES THAT REACH IN HERE GO TOO, and that is right:
+    // they were sharing this space, and taking them is a nibble out of
+    // one canopy rather than the loss of a whole tree.
+    for (int32_t y = top - FELL_LEAF_DOWN; y <= top + FELL_LEAF_UP && taken < FELL_MAX; y++) {
+        if (y < 0 || y >= CH_H) continue;
+        for (int32_t dz = -FELL_LEAF_R; dz <= FELL_LEAF_R; dz++) {
+            for (int32_t dx = -FELL_LEAF_R; dx <= FELL_LEAF_R; dx++) {
+                int32_t const nx = x0 + dx, nz = z0 + dz;
+                if (!grown_tree(nx, y, nz)) continue;
+                if (block_trunk(world_block(nx, y, nz))) continue;  // somebody else's trunk stands
+                uint8_t const was = world_block(nx, y, nz);
+                uint8_t const was_st = world_state(nx, y, nz);
+                world_set(nx, y, nz, BLK_AIR, 0);
+                drop_for(was, was_st, nx, y, nz, s_fell_tool);
+                taken++;
+                if (taken >= FELL_MAX) return taken;
             }
         }
     }

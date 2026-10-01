@@ -89,7 +89,18 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                     .tool     = TOOL_AXE,
                     .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_WOOD},
 
-    [BLK_LEAVES] = {.name     = "leaves",
+    // LEAVES DROP TO SHEARS AND TO NOTHING ELSE (F-134). They had no
+    // drop row at all, so a leaf could never be held -- while the item
+    // table has said since step 9 that leaves ROT DOWN in a composter
+    // (items.c, BLOCK_COMPOST). The compost rule was true and
+    // unreachable: a canopy is the biggest pile of green matter in the
+    // game and there was no way to pick any of it up.
+    //
+    // The rule is `tool`, not a new flag: these two rows are the only
+    // ones in the table that name TOOL_SHEARS, and drop_for() reads it
+    // (game/interact.c). An axe still destroys leaves, which is what
+    // felling a tree does.
+    [BLK_LEAVES] = {.name     = "leaves", .drop_item = BLK_LEAVES, .drop_min = 1, .drop_max = 1,
                     .kind     = K_SEE,
                     .mat      = M1(VM_LEAVES),
                     .hardness = 8,
@@ -214,7 +225,8 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                        .tool     = TOOL_AXE,
                        .flags    = BF_SOLID | BF_OPAQUE | BF_FELLABLE, .flags2 = BF2_TRUNK, .sound = SND_WOOD},
 
-    [BLK_BIRCH_LEAVES] = {.name     = "birch_leaves",
+    [BLK_BIRCH_LEAVES] = {.name     = "birch_leaves", .drop_item = BLK_BIRCH_LEAVES,
+                          .drop_min = 1, .drop_max = 1,
                           .kind     = K_SEE,
                           .mat      = M1(VM_BIRCH_LEAVES),
                           .hardness = 8,
@@ -420,7 +432,7 @@ block_def_t const BLOCKS[BLK_COUNT] = {
     // along whichever axis the player was facing when it went down.
     [BLK_FENCE_GATE] = {.name     = "fence_gate", .drop_item = BLK_FENCE_GATE, .drop_min = 1, .drop_max = 1,
                         .kind     = K_GATE,
-                        .mat      = M1(VM_PLANKS),
+                        .mat      = M1(VM_GATE),
                         .hardness = 40,
                         .tool     = TOOL_AXE,
                         .flags    = BF_SOLID, .sound = SND_WOOD,
@@ -431,7 +443,7 @@ block_def_t const BLOCKS[BLK_COUNT] = {
     // there is no such thing as an open gate in an inventory.
     [BLK_FENCE_GATE_OPEN] = {.name     = "fence_gate_open", .drop_item = BLK_FENCE_GATE, .drop_min = 1, .drop_max = 1,
                              .kind     = K_GATE,
-                             .mat      = M1(VM_PLANKS),
+                             .mat      = M1(VM_GATE),
                              .hardness = 40,
                              .tool     = TOOL_AXE,
                              .sound    = SND_WOOD,

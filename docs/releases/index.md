@@ -5,12 +5,13 @@ summary: What each release added, newest first.
 
 | Version | Name | Date | |
 |---|---|---|---|
+| **v0.2.1** | **What Playing It Found** | 1 October 2026 | [What's in it →](v0.2.1.html) |
 | **v0.2.0** | **Fred's Farm Update** | 30 September 2026 | [What's in it →](v0.2.0.html) |
 | **v0.1.0** | **The Base Game** | 28 September 2026 | [What's in it →](v0.1.0.html) |
 
 <p class="note"><b>Your worlds keep working.</b> The save format has not changed since the
-first release, so a world made in v0.1.0 opens in v0.2.0 and gains everything the new version
-added. Nothing has to be converted and nothing is lost — a world upgrades gradually as you
+first release, so a world made in v0.1.0 opens in any later version and gains everything the
+new version added. Nothing has to be converted and nothing is lost — a world upgrades gradually as you
 walk around in it.</p>
 
 ## Where the game keeps your things

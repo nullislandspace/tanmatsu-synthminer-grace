@@ -3242,6 +3242,299 @@ static double flat_dist(phys_body_t const* a, phys_body_t const* b) {
 //      at 1.62 -- so the crosshair passes over a pig's back at two
 //      paces unless you look twenty degrees down.
 // ---------------------------------------------------------------------
+// THE SLOT LETS GO OF EVERYTHING IT HOLDS (F-132).
+//
+// This is the check that was missing when the game shipped with two
+// eviction paths that disagreed. The streamer freed an evicted chunk's
+// meshes and marked the slot free; the drop of its ANIMALS and its
+// BLOCK ENTITIES lived in chunk_claim behind a test the streamer had
+// just falsified. Nothing released them, so:
+//
+//   * the mob pool filled with orphans after ~90 chunks of walking and
+//     nothing could be born again -- which is what "I fed two pigs and
+//     no piglet ever appeared" is, and it came back clean on a fresh
+//     load because the pool starts empty;
+//   * revisiting a field decoded its animals again on top of the
+//     orphans, so it held N copies of every cow after N visits.
+//
+// Both are invisible from inside one frame and obvious over a session,
+// which is exactly the shape of thing a host check is for. It measures
+// the pool, not the code path: walk a chunk in and out and the counts
+// must come back to where they started.
+// THE MESH CACHE IS BOUNDED (F-135).
+//
+// Nothing used to bound it. A mesh lived until its chunk left the ring,
+// and a chunk stays resident far beyond the distance it is still drawn
+// at -- so the cache grew to 10.2 MB on the player's own session and
+// left 70 KiB of PSRAM. That is not a slow frame: mesh.c sets `failed`
+// when a realloc returns NULL, chunkmesh_build reports it, and the
+// worker keeps the OLD mesh. The tree you cut down goes on standing
+// there until memory frees up.
+//
+// It is checked here, in the pure store, rather than in the streamer,
+// because the measurement is the only part worth testing: build real
+// geometry over a spread of chunks, trim, and ask what is still held.
+static void check_mesh_budget(void) {
+    printf("the mesh cache is bounded (F-135)\n");
+
+    chunk_store_clear();
+    uint8_t* scratch = (uint8_t*)malloc(chunkmesh_scratch_bytes());
+    CHECK(scratch != NULL, "no room for mesh scratch");
+    if (scratch == NULL) return;
+
+    // Real terrain over a 7 x 7 ring, meshed at every level: the shape
+    // of a resident set with the player in the middle.
+    int const R = 3;
+    for (int32_t cz = -R; cz <= R; cz++)
+        for (int32_t cx = -R; cx <= R; cx++) {
+            chunk_t* c = chunk_claim(cx, cz);
+            if (c == NULL) continue;
+            worldgen_chunk(c, 20260930u, FARLANDS_NONE);
+            c->cstate = CS_READY;
+            chunk_resummarise(c);
+            for (int lod = 0; lod < LOD_COUNT; lod++)
+                for (int sect = 0; sect < CH_SECT_N; sect++) {
+                    mesh_t m;
+                    if (!chunkmesh_build(cx, cz, lod, sect, scratch, &m)) continue;
+                    mesh_t* slot = chunk_mesh(c, lod, sect);
+                    mesh_free(slot);
+                    *slot = m;
+                    if (m.tn > 0) c->lod_built |= CH_MESH_BIT(lod, sect);
+                }
+        }
+
+    int          meshes = 0, chunks = 0;
+    size_t const before = chunk_store_mesh_bytes(&meshes, &chunks);
+    printf("  %d chunks meshed at every level: %u KiB in %d meshes\n", chunks,
+           (unsigned)(before / 1024), meshes);
+    CHECK(before > 0, "the fixture built no geometry at all");
+
+    // The player stands in the middle. Keep 20 blocks, which is one
+    // chunk out: everything further has to go.
+    int const freed = chunk_store_trim_meshes(8.5, 8.5, 20.0f);
+    size_t const after = chunk_store_mesh_bytes(&meshes, &chunks);
+    printf("  trimming to 20 blocks freed %d meshes: %u KiB -> %u KiB, %d chunks still resident\n",
+           freed, (unsigned)(before / 1024), (unsigned)(after / 1024), chunks);
+
+    CHECK(freed > 0, "the trim freed nothing at all");
+    CHECK(after < before, "the trim did not give any memory back (%u -> %u)", (unsigned)before,
+          (unsigned)after);
+    CHECK(chunks == (2 * R + 1) * (2 * R + 1), "the trim dropped %d CHUNKS; it must only drop meshes",
+          (2 * R + 1) * (2 * R + 1) - chunks);
+
+    // What is near is untouched, and what is far is gone -- and nothing
+    // is left claiming to be built when it has no geometry.
+    int near_held = 0, far_held = 0, lying = 0;
+    for (int32_t cz = -R; cz <= R; cz++)
+        for (int32_t cx = -R; cx <= R; cx++) {
+            chunk_t* c = chunk_find(cx, cz);
+            if (c == NULL) continue;
+            int held = 0;
+            for (int m = 0; m < CH_MESH_N; m++) {
+                mesh_t const* mesh = chunk_mesh(c, m / CH_SECT_N, m % CH_SECT_N);
+                bool const has = mesh->vcap > 0 || mesh->tcap > 0;
+                if (has) held++;
+                if (!has && (c->lod_built & ((uint16_t)1u << m)) != 0) lying++;
+            }
+            if (cx == 0 && cz == 0) near_held += held;
+            else if (cx <= -2 || cx >= 2 || cz <= -2 || cz >= 2) far_held += held;
+        }
+    printf("  the chunk under the player kept %d meshes; the outer ring holds %d\n", near_held, far_held);
+    CHECK(near_held > 0, "the trim took the geometry the player is standing in");
+    CHECK(far_held == 0, "%d meshes survived the trim beyond the keep distance", far_held);
+    CHECK(lying == 0, "%d section(s) claim to be built with no geometry behind them", lying);
+
+    // AND IT IS REVERSIBLE: asking again rebuilds, which is what the
+    // draw pass does when it finds a section not built.
+    chunk_t* far_c = chunk_find(R, R);
+    if (far_c != NULL) {
+        mesh_t m;
+        bool const ok = chunkmesh_build(R, R, LOD_FANCY, 2, scratch, &m);
+        printf("  a trimmed section rebuilds on demand: %s\n", ok ? "yes" : "NO");
+        CHECK(ok, "a section that was trimmed would not build again");
+        mesh_free(&m);
+    }
+
+    free(scratch);
+    chunk_store_clear();
+}
+
+static void check_eviction_releases(void) {
+    printf("eviction: a chunk that leaves takes its animals and records with it (F-132)\n");
+
+    chunk_store_clear();
+    blockent_clear();
+    mob_reset();
+
+    int32_t const cx = 5, cz = 5;
+    double const  wx = (double)(cx * CH_W) + 8.5, wz = (double)(cz * CH_D) + 8.5;
+
+    int worst_mobs = 0, worst_recs = 0;
+    for (int visit = 1; visit <= 12; visit++) {
+        chunk_t* c = chunk_claim(cx, cz);
+        CHECK(c != NULL, "the ring would not give up a slot on visit %d", visit);
+        if (c == NULL) return;
+        memset(c->id, BLK_AIR, CH_CELLS);
+        memset(c->st, 0, CH_CELLS);
+        for (int z = 0; z < CH_D; z++)
+            for (int x = 0; x < CH_W; x++)
+                for (int y = 0; y < 20; y++) c->id[CH_IDX(x, y, z)] = BLK_STONE;
+        c->cstate = CS_READY;
+        chunk_resummarise(c);
+
+        // What arriving does: the chunk's creatures and records come
+        // back off the card (region.c -> mob_decode_section).
+        CHECK(mob_spawn(MOB_PIG, wx, 20.0, wz, false) >= 0, "visit %d could not place its pig", visit);
+        CHECK(mob_spawn(MOB_COW, wx + 1.0, 20.0, wz, false) >= 0, "visit %d could not place its cow", visit);
+        CHECK(blockent_add(cx * CH_W + 2, 20, cz * CH_D + 2, BE_CHEST) != NULL,
+              "visit %d could not place its chest", visit);
+
+        int const mobs = mob_count_in(cx, cz), recs = blockent_count_in(cx, cz);
+        if (mobs > worst_mobs) worst_mobs = mobs;
+        if (recs > worst_recs) worst_recs = recs;
+
+        // ... and walking away again.
+        chunk_release(c);
+
+        CHECK(mob_live() == 0, "visit %d left %d animal(s) in the pool after the chunk went", visit,
+              mob_live());
+        CHECK(blockent_count() == 0, "visit %d left %d record(s) in the pool after the chunk went",
+              visit, blockent_count());
+    }
+
+    printf("  twelve visits to one chunk: at most %d animals and %d records in it at once\n",
+           worst_mobs, worst_recs);
+
+    // AND THE OTHER CALLER: a slot taken over by a DIFFERENT chunk. The
+    // ring is CH_RING wide, so (cx + CH_RING, cz) lands in the same slot
+    // -- which is how walking in a straight line reuses one.
+    {
+        chunk_t* a = chunk_claim(cx, cz);
+        CHECK(a != NULL, "the ring would not give up a slot for the reuse case");
+        if (a != NULL) {
+            a->cstate = CS_READY;
+            CHECK(mob_spawn(MOB_SHEEP, wx, 20.0, wz, false) >= 0, "no room for the reuse case's sheep");
+            CHECK(blockent_add(cx * CH_W + 3, 20, cz * CH_D + 3, BE_FURNACE) != NULL,
+                  "no room for the reuse case's furnace");
+            int32_t const bx = cx + CH_RING;   // the same slot, a different chunk
+            CHECK(chunk_slot(bx, cz) == chunk_slot(cx, cz), "the reuse case picked two different slots");
+            chunk_t* b = chunk_claim(bx, cz);
+            CHECK(b != NULL, "the slot refused the second chunk");
+            CHECK(mob_live() == 0, "a slot reused by another chunk kept %d animal(s)", mob_live());
+            CHECK(blockent_count() == 0, "a slot reused by another chunk kept %d record(s)",
+                  blockent_count());
+            if (b != NULL) chunk_release(b);
+        }
+    }
+    CHECK(worst_mobs == 2, "a chunk visited twelve times held up to %d animals, not the 2 put in it",
+          worst_mobs);
+    CHECK(worst_recs == 1, "a chunk visited twelve times held up to %d records, not the 1 put in it",
+          worst_recs);
+    CHECK(mob_live() == 0 && blockent_count() == 0, "the pools did not come back to empty");
+
+    chunk_store_clear();
+    blockent_clear();
+    mob_reset();
+}
+
+// HOW A CREATURE STEERS (F-138, F-139).
+//
+// Two things the user had to find by watching, which is the definition
+// of a thing a host check should have found first:
+//
+//   * "an animal in the water that turned around 180 degrees every
+//     frame". A swimming body BOBS -- MOB_SWIM_UP lifts it until its
+//     feet clear the surface -- and on that tick in_water() said no, so
+//     water ahead became a HAZARD and it turned away. Next tick it sank,
+//     swam on, bobbed up, turned again. Measured at 1.9 reversals a
+//     second in open water.
+//   * "animals also still merge into the player when following". A lured
+//     animal walks at 1.4x its own speed and the shove pushes it back at
+//     a third of that, so it won and stood inside the player: measured
+//     at 0.05 blocks apart.
+//
+// Both are measured here as RATES AND DISTANCES rather than as code
+// paths, because that is what the player was reporting.
+static void check_mob_steering(void) {
+    printf("steering: a swimmer holds its course, and a follower keeps its distance\n");
+
+    // --- Deep water, no shore anywhere: it must swim, not spin --------
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the swimming world would not become resident");
+    for (int32_t z = -16; z < 32; z++)
+        for (int32_t x = -16; x < 32; x++)
+            for (int d = 0; d < 4; d++) set_block(x, 20 - d, z, BLK_WATER, fluid_state(0, 0, false));
+
+    mob_reset();
+    int const swimmer = mob_spawn(MOB_PIG, 8.5, 20.0, 8.5, false);
+    CHECK(swimmer >= 0, "the pool would not take a swimmer");
+    if (swimmer < 0) return;
+
+    phys_body_t nobody;
+    phys_body_init(&nobody, 60.0, 20.0, 60.0);  // far away, holding nothing
+    uint32_t clk = 4000;
+    float    prev = mob_at(swimmer)->yaw;
+    int      reversals = 0;
+    int const ticks = 300;  // fifteen seconds
+    for (int t = 0; t < ticks; t++) {
+        mob_tick(clk++, &nobody, 0);
+        float d = mob_at(swimmer)->yaw - prev;
+        while (d > 3.14159265f) d -= 6.28318531f;
+        while (d < -3.14159265f) d += 6.28318531f;
+        if (fabsf(d) > 1.5f) reversals++;
+        prev = mob_at(swimmer)->yaw;
+    }
+    printf("  a pig in open water reversed %d time(s) in %d seconds\n", reversals, ticks / 20);
+    // The ration alone allows one a second; anything near that is the
+    // spin, not an animal changing its mind.
+    CHECK(reversals <= 3, "a pig in open water reversed %d times in 15 s -- it is spinning, not swimming",
+          reversals);
+
+    // --- Following: it comes, and it stops short ----------------------
+    for (int kind = MOB_PIG; kind <= MOB_SHEEP; kind++) {
+        if (kind == MOB_DOG) continue;
+        chunk_store_clear();
+        blockupdate_clear();
+        CHECK(flat_world(20) != NULL, "the following world would not become resident");
+        for (int x = 0; x < 16; x++)
+            for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+
+        mob_reset();
+        int const i = mob_spawn((uint8_t)kind, 2.5, 20.0, 8.5, false);
+        CHECK(i >= 0, "the pool would not take a %s", mob_def((uint8_t)kind)->name);
+        if (i < 0) continue;
+
+        phys_body_t me;
+        phys_body_init(&me, 11.5, 20.0, 8.5);  // NINE blocks off: inside the new range, outside the old
+        uint16_t const food = mob_def((uint8_t)kind)->feed[0];
+        double closest = 1e9;
+        for (int t = 0; t < 400; t++) {
+            mob_tick(clk++, &me, food);
+            double const dx = mob_at(i)->body.x - me.x, dz = mob_at(i)->body.z - me.z;
+            double const d = sqrt(dx * dx + dz * dz);
+            if (d < closest) closest = d;
+        }
+        double const dx = mob_at(i)->body.x - me.x, dz = mob_at(i)->body.z - me.z;
+        double const settled = sqrt(dx * dx + dz * dz);
+        printf("  a %-5s noticed food 9 blocks away and settled %.2f blocks off (closest %.2f)\n",
+               mob_def((uint8_t)kind)->name, settled, closest);
+        // IT CAME, which 7 blocks of follow range did not manage.
+        CHECK(settled < 4.0, "a %s never came for food 9 blocks away (settled %.1f)",
+              mob_def((uint8_t)kind)->name, settled);
+        // ... AND IT DID NOT WALK INTO THE PLAYER.
+        CHECK(closest > 1.0, "a %s came to %.2f blocks: it is standing inside the player",
+              mob_def((uint8_t)kind)->name, closest);
+        // ... and it is still within reach to be fed, milked or sheared.
+        CHECK(settled < 4.5, "a %s stopped %.2f blocks off, outside the player's reach",
+              mob_def((uint8_t)kind)->name, settled);
+    }
+
+    chunk_store_clear();
+    blockupdate_clear();
+    mob_reset();
+}
+
 static void check_breeding(void) {
     printf("breeding: two fed animals find each other (F-124)\n");
     chunk_store_clear();
@@ -5580,6 +5873,62 @@ static void check_felling(void) {
     for (int y = 0; y < 4; y++) neighbour += world_block(tx + 12, base + y, tz) == BLK_LOG;
     printf("  the neighbouring tree still has %d of its 4 logs\n", neighbour);
     CHECK(neighbour == 4, "felling one tree took %d logs off a tree 12 blocks away", 4 - neighbour);
+
+    // ... AND A NEIGHBOUR WHOSE CANOPY TOUCHES, which is the case that
+    // actually mattered and the one this check did not have (F-133).
+    // Twelve blocks away is outside any bound the old flood had, so the
+    // test above passed all the way through a build where ONE SWING
+    // FELLED UP TO THIRTY-SIX TREES: in a forest the canopies touch,
+    // and leaves conducted the fill from one trunk to the next.
+    //
+    // Three blocks apart, canopies overlapping, which is ordinary forest
+    // spacing.
+    {
+        chunk_store_clear();
+        blockupdate_clear();
+        CHECK(flat_world(8) != NULL, "the touching-canopy world would not become resident");
+        item_entity_reset();
+
+        int32_t const ax = 6, az = 6, bx = 9, bz = 6;  // three apart
+        for (int y = 0; y < 6; y++) {
+            set_block(ax, base + y, az, BLK_LOG, 0);
+            set_block(bx, base + y, bz, BLK_LOG, 0);
+        }
+        // Two canopies of radius 2 at the same height: they overlap in
+        // the middle, so every leaf of one touches a leaf of the other.
+        for (int dy = 4; dy <= 6; dy++)
+            for (int dz = -2; dz <= 2; dz++)
+                for (int dx = -2; dx <= 2; dx++) {
+                    if (world_block(ax + dx, base + dy, az + dz) == BLK_AIR)
+                        set_block(ax + dx, base + dy, az + dz, BLK_LEAVES, 0);
+                    if (world_block(bx + dx, base + dy, bz + dz) == BLK_AIR)
+                        set_block(bx + dx, base + dy, bz + dz, BLK_LEAVES, 0);
+                }
+        // Prove they really are touching, or the check proves nothing.
+        int touching = 0;
+        for (int dy = 4; dy <= 6; dy++)
+            for (int dz = -2; dz <= 2; dz++)
+                if (world_block(ax + 2, base + dy, az + dz) == BLK_LEAVES &&
+                    world_block(bx - 2, base + dy, bz + dz) == BLK_LEAVES) touching++;
+        CHECK(touching > 0, "the two canopies in this fixture do not actually touch");
+
+        break_result_t const f = interact_break(ax, base + 1, az, ITEM_AXE_STONE);
+        int a_logs = 0, b_logs = 0;
+        for (int y = 0; y < 6; y++) {
+            a_logs += world_block(ax, base + y, az) == BLK_LOG;
+            b_logs += world_block(bx, base + y, bz) == BLK_LOG;
+        }
+        printf("  two trees 3 apart, canopies touching: one swing took %d blocks; "
+               "the tree hit has %d of 6 logs left, its neighbour %d of 6\n",
+               f.felled, a_logs, b_logs);
+        CHECK(f.was_tree, "breaking the trunk did not fell a tree");
+        // The one you hit: only what is BELOW the break stays. Broken at
+        // base + 1, so that is the single log at base.
+        CHECK(a_logs == 1, "the felled tree kept %d logs, expected the 1 below the break", a_logs);
+        // AND THE NEIGHBOUR KEEPS EVERY LOG. This is the whole check.
+        CHECK(b_logs == 6, "felling one tree took %d logs off the tree 3 blocks away whose canopy it touched",
+              6 - b_logs);
+    }
 
     // Placing sets ST_PLACED, which is what makes all of the above work.
     ray_hit_t h = {.x = 20, .y = base, .z = 20, .px = 20, .py = base, .pz = 20, .face = MESH_DIR_PY};
@@ -8441,6 +8790,9 @@ int main(void) {
     check_texture_budget();
     check_pens();
     check_shoving();
+    check_mob_steering();
+    check_mesh_budget();
+    check_eviction_releases();
     check_breeding();
     check_cave_mouths();
     check_population();

@@ -82,5 +82,6 @@
 - title: Releases
   pages:
     - {url: /releases/index.html, name: Version history}
+    - {url: /releases/v0.2.1.html, name: "v0.2.1 — What Playing It Found"}
     - {url: /releases/v0.2.0.html, name: "v0.2.0 — Fred's Farm Update"}
     - {url: /releases/v0.1.0.html, name: "v0.1.0 — The Base Game"}

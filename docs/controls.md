@@ -46,6 +46,11 @@ with seeds it plants; pointed at nothing in particular while holding bread it
 eats the bread. When it refuses, it says why on one line at the bottom of the
 screen — read that line, it is usually the answer.</p>
 
+<p class="note"><b>A thing with a screen always wins.</b> Pointing at a chest, a gate,
+a crafting table or any machine opens it, whatever you happen to be holding — so you
+can walk up to a gate with a handful of wheat and it still opens, and your pizza does
+not get eaten instead of the chest being opened.</p>
+
 ## Looking by turning the badge
 
 There is a gyroscope in the Tanmatsu, and *Settings → Controls → Gyroscope look*

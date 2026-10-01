@@ -557,6 +557,20 @@ def sm_planks():
     return sm_rgb(lum, (164, 128, 78))
 
 
+def sm_gate():
+    """THE GATE'S OWN WOOD (F-140): the plank pattern in a darker, redder
+    timber, so the one block in a fence you can walk through does not
+    look like the rest of the fence.
+
+    Same boards and the same joints -- it is still carpentry, and a gate
+    drawn in a different STYLE would read as a different material rather
+    than as stained wood. Only the colour moves."""
+    lum, _ = sm_planks_lum(11)
+    # A touch more contrast than planks: a darker wood loses detail at
+    # block size, and the gate is a thing you want to pick out.
+    return sm_rgb(lum * 1.25, (124, 86, 52))
+
+
 def sm_planks_lum(tag):
     """The plank pattern on its own, so a block that is MADE of planks
     can put something on top of it rather than inventing its own wood."""
@@ -1362,15 +1376,45 @@ CROPS = {
     # a yellow fringe.
     "wheat":  dict(stem=(122, 150, 66), leaf=(140, 164, 74), fruit=(232, 202, 96), style="ear",
                    ripe_stem=(206, 174, 74), ripe_leaf=(222, 192, 92)),
-    "potato": dict(stem=(70, 122, 52), leaf=(86, 142, 60), fruit=(232, 216, 120), style="flower"),
-    "tomato": dict(stem=(74, 118, 54), leaf=(92, 140, 64), fruit=(212, 58, 42), style="berry"),
+    # AND SO DOES EVERY OTHER CROP NOW (F-137). Wheat was given this
+    # treatment on its own and the rest were left green, which measured
+    # like this against the tall grass they grow beside:
+    #
+    #     tall grass   mean  77,135, 36
+    #     ripe potato        79,130, 56   <- 21 away. The same colour.
+    #     ripe tomato        93,113, 52   <- 32
+    #     ripe beans         97,140, 64   <- 35
+    #     ripe wheat        209,179, 78   <- 145, and nobody loses wheat
+    #
+    # That is the player's report ("they look very much like ordinary
+    # tall grass or flowers, so they are hard to see") as a number, and
+    # it matters most for the three crops that are FOUND rather than
+    # planted: a wild potato is one column in seven thousand, and being
+    # the same colour as the weed beside it is what made it unfindable.
+    #
+    # So a ripe plant takes the colour of its harvest, which is the rule
+    # wheat already followed. The tomato keeps green foliage on purpose --
+    # a tomato plant IS green, and what says "tomato" is the fruit, so it
+    # gets the colour back in the berries instead (stage 3 draws them big).
+    "potato": dict(stem=(70, 122, 52), leaf=(86, 142, 60), fruit=(240, 226, 138), style="flower",
+                   ripe_stem=(150, 150, 74), ripe_leaf=(178, 172, 92)),
+    # The tomato is tuned against TWO things, not one: a wild tomato that
+    # reads as a red flower is still a thing worth walking to, but a
+    # tomato that reads as tall grass is lost. So the foliage lifts to an
+    # olive that is far from grass, and the fruit stays a red that is
+    # darker and deeper than a flower's.
+    "tomato": dict(stem=(74, 118, 54), leaf=(92, 140, 64), fruit=(206, 44, 34), style="berry",
+                   ripe_stem=(112, 124, 56), ripe_leaf=(134, 142, 64)),
     # The pods are warmer than the leaves on purpose: a pod the same
     # green as the plant is a leaf as far as 16 pixels are concerned.
-    "beans":  dict(stem=(78, 132, 60), leaf=(96, 152, 70), fruit=(198, 176, 92), style="pod"),
-    "rice":   dict(stem=(104, 154, 78), leaf=(120, 168, 88), fruit=(214, 202, 112), style="blade"),
+    "beans":  dict(stem=(78, 132, 60), leaf=(96, 152, 70), fruit=(206, 180, 94), style="pod",
+                   ripe_stem=(146, 142, 76), ripe_leaf=(170, 162, 88)),
+    "rice":   dict(stem=(104, 154, 78), leaf=(120, 168, 88), fruit=(214, 202, 112), style="blade",
+                   ripe_stem=(184, 174, 98), ripe_leaf=(202, 192, 110)),
     # The upper half of the rice plant: taller, thinner, and it is the
     # half that carries the grain when it is ripe (blocks.h, BF2_TALL_TOP).
-    "rice_top": dict(stem=(110, 158, 84), leaf=(126, 172, 94), fruit=(222, 210, 120), style="grain"),
+    "rice_top": dict(stem=(110, 158, 84), leaf=(126, 172, 94), fruit=(222, 210, 120), style="grain",
+                     ripe_stem=(192, 182, 104), ripe_leaf=(208, 198, 116)),
 }
 
 STAGE_TOP = [11, 8, 4, 1]   # the y a plant reaches at each stage (0 is the top of the tile)
@@ -1437,15 +1481,28 @@ def sm_crop(name, stage):
             elif style == "flower":       # potato: small pale flowers
                 px(x0, y0 + 1, c["fruit"], 6)
                 if stage == 3:
-                    px(x0 + 1, y0 + 2, _shade_t(c["fruit"], -22), 6)
+                    # A RIPE ONE IS IN FULL FLOWER, and a flower that is
+                    # one texel wide is not a flower at the distance a
+                    # plant is spotted from (F-137).
+                    px(x0 + 1, y0 + 1, _shade_t(c["fruit"], -14), 6)
+                    px(x0, y0 + 2, _shade_t(c["fruit"], -22), 6)
+                    px(x0 + 1, y0 + 2, _shade_t(c["fruit"], -30), 6)
+                    px(x0, y0, _shade_t(c["fruit"], 22), 6)
             elif style == "berry":        # tomato: round fruit, hanging
                 fy = y0 + 4
                 px(x0, fy, c["fruit"], 4)
                 px(x0 + 1, fy, _shade_t(c["fruit"], -18), 4)
                 if stage == 3:
+                    # A RIPE TOMATO IS THE WHOLE POINT OF THE PLANT, so
+                    # the fruit is a 2x3 cluster rather than a dot: the
+                    # foliage stays green and the RED is what carries
+                    # across a field (F-137).
                     px(x0, fy + 1, _shade_t(c["fruit"], -26), 4)
                     px(x0 + 1, fy + 1, _shade_t(c["fruit"], -34), 4)
                     px(x0, fy - 1, _shade_t(c["fruit"], 28), 4)  # a highlight, so it reads as round
+                    px(x0 + 1, fy - 1, _shade_t(c["fruit"], 10), 4)
+                    px(x0, fy + 2, _shade_t(c["fruit"], -40), 4)
+                    px(x0 + 1, fy + 2, _shade_t(c["fruit"], -46), 4)
             elif style == "pod":          # beans: pods hanging along the
                                           # stem, two texels wide so they
                                           # are not mistaken for a leaf
@@ -1900,7 +1957,9 @@ def sm_item_fence(gate=False):
     picture with the rails pulled in between the posts, which is what
     the block itself looks like from the side."""
     img = _icon()
-    wood = (168, 132, 78)
+    # The gate carries its own darker timber here too, or the inventory
+    # would disagree with the block (F-140).
+    wood = (124, 92, 56) if gate else (168, 132, 78)
     for x in (4, 11):
         _rect(img, x, 2 if not gate else 4, x + 2, 14, wood)
         _rect(img, x, 2 if not gate else 4, x + 1, 14, _shade(wood, 20))
@@ -2456,6 +2515,7 @@ TEXTURES = {
     "log_side.png": sm_log_side,
     "log_top.png": sm_log_top,
     "planks.png": sm_planks,
+    "gate.png": sm_gate,
     "leaves.png": sm_leaves,
     "coal_ore.png": sm_coal_ore,
     "miner_face.png": sm_face,
@@ -2713,9 +2773,68 @@ def check_textures():
     return 0 if not bad else 1
 
 
+# HOW FAR APART A RIPE CROP AND A WEED HAVE TO LOOK (F-137).
+#
+# The three crops a player has to FIND rather than plant -- potato,
+# beans, tomato -- are generated ripe, one column in a few thousand, in
+# grassland that also carries tall grass and flowers at 9 to 16% of
+# columns. So the only thing that makes one findable is looking
+# different from the weed beside it, and they did not: a ripe potato's
+# mean colour was 21 units from tall grass, which is the same colour.
+#
+# Measured rather than eyeballed, because "looks different" is exactly
+# the kind of judgement that passes review and fails in a field. The
+# comparison is against the plants they actually grow among.
+RIPE_VS_WEEDS_MIN = 55.0
+WEEDS = ("tall_grass.png", "flower_yellow.png", "flower_red.png")
+# A ripe crop may resemble a FLOWER -- a flower is worth picking up too,
+# so walking over to look costs nothing. It may not resemble tall grass,
+# which is the thing a player has learned to ignore.
+RIPE_VS_GRASS = {"potato_3.png", "beans_3.png", "tomato_3.png",
+                 "wheat_3.png", "rice_3.png", "rice_top_3.png"}
+
+
+def _visible_mean(name):
+    im = Image.open(OUT / name)
+    rgb = np.asarray(im.convert("RGB")).astype(float)
+    vis = np.asarray(im)[:, :, 3] > 127 if im.mode == "RGBA" else np.ones(rgb.shape[:2], bool)
+    if not vis.any():
+        return None
+    return rgb[vis].mean(0)
+
+
+def check_crop_contrast():
+    """A ripe crop must not read as the tall grass it grows beside."""
+    bad = []
+    grass = _visible_mean("tall_grass.png")
+    if grass is None:
+        print("FAIL: tall_grass.png is empty")
+        return 1
+    for name in sorted(RIPE_VS_GRASS):
+        if not (OUT / name).exists():
+            bad.append("%s: missing" % name)
+            continue
+        m = _visible_mean(name)
+        if m is None:
+            bad.append("%s: every texel is transparent" % name)
+            continue
+        d = float(np.linalg.norm(m - grass))
+        if d < RIPE_VS_WEEDS_MIN:
+            bad.append("%s: ripe, but only %.0f from tall grass (want %.0f) -- a crop nobody can "
+                       "pick out of a meadow is a crop nobody finds"
+                       % (name, d, RIPE_VS_WEEDS_MIN))
+    for line in bad:
+        print("FAIL: " + line)
+    worst = min((float(np.linalg.norm(_visible_mean(n) - grass)), n)
+                for n in sorted(RIPE_VS_GRASS) if (OUT / n).exists())
+    print("ripe crops vs tall grass: %d checked, closest is %s at %.0f (floor %.0f)"
+          % (len(RIPE_VS_GRASS), worst[1], worst[0], RIPE_VS_WEEDS_MIN))
+    return 0 if not bad else 1
+
+
 def main():
     if "--check" in sys.argv:
-        sys.exit(check_textures() | check_materials())
+        sys.exit(check_textures() | check_materials() | check_crop_contrast())
     tiles = []
     for name, fn in TEXTURES.items():
         img = fn()

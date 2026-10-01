@@ -9,6 +9,8 @@
 // =====================================================================
 
 #include "world/chunk_render.h"
+
+#include "common/psram.h"  // sm_free_bytes(): the floor the trim defends
 #include <math.h>
 #include <string.h>
 #include "common/texcache.h"
@@ -33,6 +35,8 @@ static struct {
     [VM_LOG_SIDE]      = {"log_side.png", 0xFF644C2Eu},
     [VM_LOG_TOP]       = {"log_top.png", 0xFFA88452u},
     [VM_PLANKS]        = {"planks.png", 0xFFA4804Eu},
+    // A darker timber, so a gate is not a fence (F-140).
+    [VM_GATE]          = {"gate.png", 0xFF7C5636u},
     [VM_LEAVES]        = {"leaves.png", 0xFF3A7026u},
     [VM_COAL]          = {"coal_ore.png", 0xFF606062u},
     [VM_GLASS]         = {"glass.png", 0xFFC8D8DEu},
@@ -140,6 +144,10 @@ static uint32_t   s_mean[VM_COUNT];
 static bool       s_ready;
 static bool       s_textured = true;
 static sm_view_t  s_view;
+// How many meshes the budget has handed back, for the log line.
+static uint32_t   s_trimmed_total;
+// How many meshes the budget has given back, for the log line.
+static uint32_t   s_trimmed_total;
 static int32_t    s_origin_x, s_origin_z;
 static int        s_drawn, s_sections, s_resident, s_missing;
 static int        s_evicted_total;  // chunks dropped from the resident set, since boot
@@ -153,6 +161,20 @@ static int        s_evicted_total;  // chunks dropped from the resident set, sin
 // player stood still (F-41). The static assertions below are why that
 // cannot come back: raise a radius past what the ring holds and the
 // build stops.
+// HOW FAR BEYOND THE DRAW DISTANCE A MESH IS STILL WORTH KEEPING, and
+// how little PSRAM may be left before the trim gets aggressive. The
+// slack is one chunk's diagonal or so: enough that walking to and fro
+// across the boundary does not free and rebuild the same section.
+#define MESH_KEEP_SLACK  20.0f
+#define MESH_FLOOR_BYTES (1024u * 1024u)
+
+// HOW FAR BEYOND THE DRAW DISTANCE A MESH IS STILL WORTH KEEPING, and
+// how little PSRAM may be left before the trim gets aggressive. The
+// slack is a chunk's diagonal or so: enough that walking to and fro
+// across the boundary does not free and rebuild the same section.
+#define MESH_KEEP_SLACK  20.0f
+#define MESH_FLOOR_BYTES (1024u * 1024u)
+
 #define VIEW_NEAR_LOAD   3
 #define VIEW_NEAR_EVICT  5
 #define VIEW_MED_LOAD    5
@@ -304,6 +326,10 @@ int chunk_render_evicted(void) {
     return s_evicted_total;
 }
 
+int chunk_render_trimmed(void) {
+    return (int)s_trimmed_total;
+}
+
 void chunk_render_stats(int* chunks_drawn, int* sections_drawn, int* resident, int* missing) {
     if (chunks_drawn != NULL) *chunks_drawn = s_drawn;
     if (sections_drawn != NULL) *sections_drawn = s_sections;
@@ -345,13 +371,76 @@ void chunk_render_stream(double wx, double wz) {
             chunk_worker_request_save(c->cx, c->cz);
             continue;
         }
-        for (int m = 0; m < CH_MESH_N; m++) mesh_free(&c->lod[m]);
-        c->lod_built    = 0;
-        c->lod_stale    = 0;
-        c->lod_urgent   = 0;
-        c->lod_inflight = 0;
-        c->cstate       = CS_FREE;
+        // THE SHARED RELEASE, not a second copy of it: the meshes, the
+        // block entities and the CREATURES all go (world/chunk.h,
+        // chunk_release). This path used to free only the meshes, which
+        // is how an evicted chunk's animals stayed in the pool for ever
+        // (F-132).
+        chunk_release(c);
         s_evicted_total++;
+    }
+
+    // ... AND GIVE BACK THE MESHES OF WHAT IS STILL RESIDENT BUT NO
+    // LONGER DRAWN (F-135). The ring is five chunks deep and the draw
+    // distance is less than three of them, so most of what the cache
+    // held was geometry the draw pass would never submit again. Nothing
+    // freed it, so it grew until PSRAM ran out -- and once it had, a
+    // rebuild could not allocate, which does not slow the frame down, it
+    // LEAVES THE BLOCK YOU BROKE ON THE SCREEN.
+    //
+    // NOTHING HERE NEEDS SAVING, and that is worth saying out loud next
+    // to the eviction above, which does. A mesh is DERIVED: it is built
+    // from the block planes and can be built again. This frees triangles
+    // and nothing else -- not the blocks, not the records, not the
+    // animals, not the chunk's place in the ring -- so a trimmed chunk
+    // is still fully resident and still fully on the card. The only
+    // consequence is that the draw pass asks for the geometry again if
+    // the player walks back.
+    //
+    // Done every frame rather than only when memory is short, so the
+    // cache sits at a size instead of sawtoothing between fine and
+    // broken. The slack stops a chunk on the boundary being freed and
+    // rebuilt as the player steps back and forth.
+    s_trimmed_total += (uint32_t)chunk_store_trim_meshes(wx, wz, s_view.draw_dist + MESH_KEEP_SLACK);
+
+    // AND A FLOOR UNDER THE FREE MEMORY, because the pass above is
+    // measured in distance and what actually matters is bytes: a dense
+    // near field can fill PSRAM inside the draw distance all by itself.
+    // So if it is still short, give up the far half of what is drawn --
+    // the coarse band first, which is the cheapest thing to look at and
+    // the cheapest to rebuild.
+    if (sm_free_bytes() < MESH_FLOOR_BYTES) {
+        s_trimmed_total += (uint32_t)chunk_store_trim_meshes(wx, wz, s_view.coarse_dist);
+        if (sm_free_bytes() < MESH_FLOOR_BYTES) {
+            s_trimmed_total += (uint32_t)chunk_store_trim_meshes(wx, wz, s_view.fancy_dist);
+        }
+    }
+
+    // ... AND GIVE BACK THE MESHES OF WHAT IS STILL RESIDENT BUT NO
+    // LONGER DRAWN (F-135). The ring is five chunks deep and the draw
+    // distance is less than three of them, so most of what the cache
+    // held was geometry the draw pass would never submit again. Nothing
+    // freed it, so it grew until PSRAM ran out -- and once it had, a
+    // rebuild could not allocate, which does not slow the frame down, it
+    // LEAVES THE BLOCK YOU BROKE ON THE SCREEN.
+    //
+    // Done every frame rather than only when memory is short, so the
+    // cache sits at a size instead of sawtoothing between fine and
+    // broken. The slack stops a chunk on the boundary being freed and
+    // rebuilt as the player steps back and forth.
+    s_trimmed_total += chunk_store_trim_meshes(wx, wz, s_view.draw_dist + MESH_KEEP_SLACK);
+
+    // AND A FLOOR UNDER THE FREE MEMORY, because the pass above is
+    // measured in distance and what actually matters is bytes: a dense
+    // near field can fill PSRAM inside the draw distance all by itself.
+    // So if it is still short, give up the far half of what is drawn --
+    // the coarse band first, which is the cheapest thing to look at and
+    // the cheapest to rebuild.
+    if (sm_free_bytes() < MESH_FLOOR_BYTES) {
+        s_trimmed_total += chunk_store_trim_meshes(wx, wz, s_view.coarse_dist);
+        if (sm_free_bytes() < MESH_FLOOR_BYTES) {
+            s_trimmed_total += chunk_store_trim_meshes(wx, wz, s_view.fancy_dist);
+        }
     }
 
     // Ask for what is missing, nearest first: a ring at a time outwards,

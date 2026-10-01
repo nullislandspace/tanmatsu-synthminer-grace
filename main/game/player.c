@@ -628,10 +628,24 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                 p->use_msg_ticks = 0;
                 trace_edit('U', u.x, u.y, u.z, block_def(u.block)->name, 1);
                 if (u.sound != SND_NONE) sfx_play_place(u.block);
-            } else if (u.msg != USE_SAID_NOTHING) {
+            } else if (u.msg != USE_SAID_NOTHING && !at_screen) {
                 // It refused, and it has a reason. Held for about two
                 // seconds, and repeated presses keep it up rather than
                 // making it flicker.
+                //
+                // A BLOCK WITH A SCREEN BEHIND IT WINS OVER A REFUSAL
+                // (F-136), which is the same rule eating already follows
+                // thirty lines up and for the same reason. The held item
+                // gets first refusal so a bucket can find its own water
+                // -- but a refusal must not EAT THE CLICK. Walking up to
+                // a fence gate holding wheat and being told "plant this
+                // in tilled soil" while the gate stays shut is the trap:
+                // the hand had nothing to do with the gate, and the
+                // player pressed the key at a gate.
+                //
+                // Only the refusal defers. An item that actually ACTS
+                // still wins, because that is a thing the player asked
+                // for and got.
                 p->use_msg       = u.msg;
                 p->use_msg_ticks = USE_MSG_TICKS;
                 sfx_play(SFX_DENY);

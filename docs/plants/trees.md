@@ -13,6 +13,11 @@ at once** — trunk, branches and leaves — and every log of it drops where you
 standing. You do not have to climb it and you do not have to chop it block by
 block.
 
+**One tree, and only that tree.** A fell follows the trunk you hit upwards and takes
+the canopy around its top; a neighbour whose branches are touching yours keeps every
+one of its logs. In a thick forest this matters — before v0.2.1 a single swing could
+walk from one canopy into the next and bring down a whole grove.
+
 An [axe](../tools/axe.html) makes it quicker: a log is 2 seconds by hand, 1 with a
 wooden axe, half a second with a stone one.
 
@@ -55,9 +60,14 @@ replant never runs down.
 
 ## Leaves
 
-Leaves drop nothing when you break them, and they come down with the tree anyway.
-[Shears](../tools/shears.html) cut them faster than anything else, which is the
-only reason to bother.
+**Shears are the only thing that takes a leaf.** Cut leaves with shears and you get
+the leaf block; break them with an axe, a fist or anything else and they are simply
+destroyed — which is what felling a tree does to its canopy.
+
+That is worth knowing because leaves are the biggest pile of green matter in the game
+and they **rot down in a [composter](../devices/composter.html)**. A canopy cleared
+with [shears](../tools/shears.html) is a lot of compost and a lot of fishing bait for
+something you were cutting anyway.
 
 What leaves *are* good for is **compost**: they rot down in a
 [composter](../devices/composter.html), and so do flowers, tall grass and crop

@@ -24,9 +24,12 @@ wheat, wheat seeds, tomatoes, tomato seeds, potatoes, beans, rice, and **wool**.
 **Does not:** raw meat, fish, cooked dishes, cheese, sausages, or anything made of stone
 or metal.
 
-That list is mostly **what you clear anyway**. Felling a tree gives you a canopy of
-leaves; tilling a field means pulling up grass and flowers. The composter is a use for
-the by-product rather than another thing to farm.
+That list is mostly **what you clear anyway**. Tilling a field means pulling up grass and
+flowers, and a tree's canopy is forty-odd leaves — though note that **leaves only drop to
+[shears](../tools/shears.html)**; an axe destroys them. If you want the compost, cut the
+canopy with shears before you take the trunk.
+
+The composter is a use for the by-product rather than another thing to farm.
 
 ## What comes out
 

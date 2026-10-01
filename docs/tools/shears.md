@@ -7,7 +7,7 @@ summary: Two iron ingots, and the only way to get wool without killing the sheep
 |---|---|
 | **Recipe** | **2 iron ingots**, at a [crafting table](../devices/crafting-table.html) |
 | **Uses** | **220** |
-| **Speeds up** | Leaves, and nothing else |
+| **Speeds up** | Leaves — and it is the only thing that makes them *drop* |
 | **Damage** | 1 — the same as your fist |
 
 ## Wool
@@ -41,12 +41,15 @@ things that make the mid-game pleasant are behind two iron ingots.
 
 ## Leaves
 
-Shears cut leaves faster than anything else — 0.2 seconds against 0.4 by hand. Leaves
-drop nothing either way, and a felled tree brings its own leaves down with it, so this
-is a minor use.
+**Shears are the only thing that takes a leaf.** Cut leaves with shears and the leaf
+block drops; break them with an axe, a fist or anything else and they are destroyed.
+They are quicker too — 0.2 seconds against 0.4 by hand.
 
-It is worth knowing if you want a lot of leaves for the
-[composter](../devices/composter.html), which is a genuine reason to clear a canopy.
+This is a real use, not a footnote: leaves **rot down in a
+[composter](../devices/composter.html)**, a tree's canopy is forty-odd blocks of them,
+and that is compost for your fields and worms for your rod out of something you were
+clearing anyway. Felling a tree with an **axe** destroys its leaves; felling it with
+**shears** brings the whole canopy home.
 
 ## Worth making early
 

@@ -20,19 +20,33 @@
 //  without twenty minutes of jumping at trunks, and a player's own
 //  timber-framed house does not collapse when they mis-click a beam.
 //
-//  Felling is a flood fill through GROWN tree blocks only, and it is
-//  bounded three ways, all of which matter:
+//  FELLING FOLLOWS THE TRUNK, NOT THE CANOPY (F-133). It was a flood
+//  fill through every grown tree cell, bounded by a box round the break
+//  -- and because the canopies of a forest TOUCH, leaves conducted that
+//  flood from one tree into the next. On the player's own save, single
+//  swings took 108 to 494 blocks and felled 9 to 36 separate trunks.
 //
-//    * y >= the broken block's y -- so breaking a trunk at head height
-//      does not take the stump you are standing on, and a tree growing
-//      out of a cliff does not reach down it;
-//    * FELL_RADIUS horizontally and FELL_HEIGHT up -- so one tree whose
-//      canopy touches another cannot take the whole forest;
-//    * FELL_MAX blocks in total -- a hard stop, so a pathological shape
-//      cannot stall a tick however the other two are tuned.
+//  A tree is a COLUMN of logs with a canopy within two blocks of its top:
+//  that is what worldgen_tree_shape builds, and it is the only shape
+//  anything here grows, because the generator and a sapling share that
+//  one function (world/worldgen.h). So a fell is:
 //
-//  Pure: no engine, no allocation (the fill has a fixed-size stack).
-//  tools/worldcheck.c tests the rule both ways.
+//    * the logs of THIS column, upwards from the block broken -- never
+//      downwards, so the stump stays and a tree growing out of a cliff
+//      does not reach down it. No radius is needed: the trunk ends where
+//      the logs end;
+//    * the leaves near that column (FELL_LEAF_*), which is where its own
+//      canopy is. A neighbour's leaves that reach into the same space go
+//      too, and that is a nibble out of one canopy rather than the loss
+//      of a whole tree;
+//    * never another standing trunk, whatever is touching what.
+//
+//  FELL_MAX is still there as a backstop so a pathological shape cannot
+//  stall a tick, but nothing reaches it any more: a tree is about fifty
+//  blocks.
+//
+//  Pure: no engine, no allocation. tools/worldcheck.c tests the rule
+//  both ways.
 // =====================================================================
 
 #include <stdbool.h>
@@ -43,9 +57,18 @@
 #include "items/inventory.h"
 #include "items/items.h"
 
-#define FELL_RADIUS 8   // blocks from the break, horizontally
-#define FELL_HEIGHT 24  // ... and upwards
-#define FELL_MAX    512 // total blocks one fell can take
+// WHAT ONE SWING TAKES. A tree is a column of logs with a canopy round
+// its top (world/worldgen.h, worldgen_tree_shape), so the trunk needs no
+// bound at all -- it ends where the logs end -- and the canopy is found
+// by looking NEAR the column rather than by walking out from it.
+//
+// The generator's canopy sits within 2 blocks of the trunk horizontally
+// and from one below the topmost log to two above it. These are that,
+// with a block of slack up and down.
+#define FELL_LEAF_R    2   // blocks from the trunk column, horizontally
+#define FELL_LEAF_DOWN 3   // ... below the topmost log
+#define FELL_LEAF_UP   3   // ... and above it
+#define FELL_MAX    512 // total blocks one fell can take: a backstop, not a shape
 
 // What a break did, so the caller can make the right noise, spawn the
 // right drops and show the right particles.

@@ -740,10 +740,11 @@ static void frame_stats(void) {
     // boot; this is the part that grows with the view distance.
     int          mesh_n = 0, chunk_n = 0;
     size_t const mesh_bytes = chunk_store_mesh_bytes(&mesh_n, &chunk_n);
-    ESP_LOGI(TAG, "psram: meshes %u KiB in %d of %d built (%d chunks resident) | slab %u KiB | %u KiB free",
+    ESP_LOGI(TAG,
+             "psram: meshes %u KiB in %d of %d built (%d chunks resident) | slab %u KiB | %u KiB free | trimmed %d",
              (unsigned)(mesh_bytes / 1024), mesh_n, chunk_n * CH_MESH_N, chunk_n,
              (unsigned)(chunk_store_bytes() / 1024),
-             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
+             (unsigned)(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024), chunk_render_trimmed());
 
     // ... and the same numbers to the card, where they will still be
     // when a bug is noticed an hour from now (common/trace.h).

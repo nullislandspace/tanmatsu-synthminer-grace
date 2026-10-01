@@ -53,7 +53,8 @@ you are a long way from anything edible.
 
 For the [composter](../devices/composter.html):
 
-**Rots down:** leaves (both kinds), flowers (both colours), tall grass, crop stalks,
+**Rots down:** leaves (both kinds — but they only drop to
+[shears](../tools/shears.html)), flowers (both colours), tall grass, crop stalks,
 seeds, wheat, potatoes, tomatoes, beans, rice, and **wool**.
 
 **Does not:** raw meat, fish, cooked dishes, cheese, sausages, or anything made of

@@ -1938,6 +1938,7 @@ types the code:
 | 57 | **Played, and the numbers say it is free** | done | 2026-09-28, the user's first test game: *"Water works surprisingly well."* The flight recorder agrees and says why. The physics queue peaked at **201 cells, dropped 0, carried 0, and returned to 0 every time** -- settled water really does cost nothing, which is the claim the whole design rests on. Mesh lag stayed at a **median of 89 ms** with every real case between 78 and 163 ms, so the remesh churn I had predicted from water edits marking sections urgent did not happen. 114 chunks saved at a mean of 16.8 ms, no compaction, no card refusals. **The one alarming number in the report was mine** (F-118): a 31281 ms mesh lag that turned out to be the recorder matching a mesh against an unrelated edit. Also visible for the first time: `pace_after_write`, the cargo left from the refuted erase-cycle theory, **waited 173 ms across four pauses, worst 68 ms** -- it is not inert, and now has a measured cost rather than a suspicion. |
 | 58 | **Water you can actually see through** | done, **default on** | 2026-09-29, the user, after being told partial heights were the expensive part: *"Currently we have fake transparency for water (like leaves). How much actual FPS impact would it be to have actual water transparency?"* The estimate said 5-20%, scaling with how much water fills the view. They asked for it behind a key so the two could be compared in one place, played it, and reported *"The new transparent water looked much better and framerates seems comparable."* Now a Graphics setting, **on by default and on for upgrades too** (D-103). `SE_TRI_BLEND` in the engine (2.5): a 50/50 RGB565 mix, and -- the part that matters -- blended triangles sorted after every opaque one and far-to-near among themselves, which cost **one bit of the existing depth key and no extra pass**, because a positive float never sets its sign bit and the top bit was always spare. D-86 is amended a second time: water is no longer only its surface's cut-out, it is a real mix, and `water_blend.png` is the same texture without its checkerboard. **The frame-rate claim is the user's, not the trace's**: their A/B in one spot is controlled and the trace was not, because nothing recorded which mode was running -- which is now fixed (`trace_event`, F-119). |
 | 59 | **Wood and flowers that come back** | done | 2026-09-30, the user, in one message: *"Logs (trees) and yellow flowers need to be renewable resources. So cutting trees should drop one or two seedlings that can be planted to grow into a new tree. And throwing compost onto the ground should grow a 3x3 grid of yellow flowers."* **Which closes the last hole in the economy.** Stone, ore, crops, wool, meat, milk and fish all come back; WOOD did not -- there is no recipe anywhere that makes a log, so a player who cleared the forest round their house had cleared it for good. Yellow flowers were the same and worse: a pork sausage needs one for its spice, so picking the meadow stopped the sausage maker. **Two permanent block ids** (49, 50) and **one new module** (`world/tree.{c,h}`). Felling leaves **one or two seedlings PER TREE, not per block** -- forty saplings off one oak would make the first tree the last one anybody had to plant -- rolled from the world's own hash so a replay reproduces a woodpile, and **of the species felled**, because a birch wood that grew back oak is not the wood anybody planted. **A SAPLING IS A CROP** and that is why it cost almost nothing: BF_CROP gives it stages in the state byte, the chunk's shared slow clock, the phase bits that stop a whole chunk ripening on one instant, the catch-up when a chunk returns after an hour away, and the compost that pushes any plant on a stage. None of that machinery had to learn the word sapling. The ONE difference is what happens at the last stage -- a wheat plant stops and waits to be cut, this turns into a tree -- and it is a **two-row table** in tree.c and not a block flag, because `flags2` has no bits left and because a flag would say only THAT a block is a sapling where every caller wants to know WHICH tree. One in-game day, which is wheat's; it plants on **grass or dirt and not a tilled field**, the only seed in the game that does, so it gets a refusal of its own rather than sending the player to look for a hoe. **The tree is the generator's own tree** (D-136): the canopy loop came out of `place_tree` into `worldgen_tree_shape`, emitted cell by cell to two writers that could not be less alike -- the generator stamps into ONE chunk on the core-1 worker and drops whatever falls outside, which is what makes a tree seamless at a border, while a sapling writes through `world_set` on the main task so the light flood, the mesher and the save all hear about it. One shape in the codebase instead of two that agree until somebody edits one. It takes the world seed, so a planted tree is the tree that spot would have grown. **A sapling with a ceiling over it waits** rather than growing half a tree, and the sweep asks again every pass and not only when a stage is owed -- without that, one planted in the wrong place would sit at its last stage for ever with nothing ever looking at it again. **Compost on bare grass raises a 3x3 of yellow flowers**, doing what it can: cells that are not grass or are not clear are skipped rather than refusing the lot, and it only refuses, and says so, when all nine are already done. Host-checked: which sapling comes off which trunk, 400 rolls of the one-or-two (210 singles, 190 pairs), planting refused on farmland and on stone, a seedling grown into a trunk-and-canopy that is GROWN and not PLACED so it fells like any other, the ceiling case both ways, and the flower bed on grass and on nothing else. Not renewable yet: **red flowers**, which the user did not ask for -- nothing is blocked, since the sausage maker takes either colour. |
+| 60 | **Grass that spreads, and grass that dies** | todo | 2026-10-01, the user asked whether placing a dirt block regrows the grass top and whether grass under a placed block goes away. **Both are no.** The only grass-to-dirt rule in the game runs once at GENERATION time and only for Far Lands columns (`farlands.c`, "id[y] == BLK_GRASS && id[y+1] != BLK_AIR"); nothing touches it in the live world. So a floor laid on a meadow keeps its green edges, and dirt is dirt for ever. **THE TWO HALVES SHIP TOGETHER, and that is the whole of why this is a step rather than a three-line fix.** Grass that dies under a block without grass that spreads back is a ratchet: every house, path and tilled field converts grass to dirt permanently and the world only ever gets browner, which is worse than the cosmetic bug it fixes. Death is a rule at the moment of placing (one test in `world_set`). Spreading needs a SLOW SWEEP, and the shape for it already exists -- `crops_tick()` visits one chunk slot a tick and walks a marked chunk column by column from the height summary (world/crops.h), which is exactly the budget a grass pass wants. The user: *"Let's leave the grass thing for another time, just make sure it's on our todo list."* |
 
 ---
 
@@ -6600,6 +6601,246 @@ types the code:
   rate/channel/bitrate combinations, ahead of ffmpeg's own MP2 encoder on 23
   of 24 signal cases, level ratio 1.0000, clean under ASan and UBSan. Two
   findings came out of it and are worth more than the code: F-95 and F-96.
+
+- **F-132** 2026-10-01, **the user, after a long session on v0.2.0**: *"breeding
+  seems broken. After feeding the animals, they go close to each other but it
+  looks like they miss their destination by a few pixels and never spawn a young
+  animal."* Then, decisively: *"I just tested, loading fresh into the game,
+  breeding works."*
+
+  **A CHUNK LEAVING THE RING NEVER RELEASED ITS ANIMALS OR ITS RECORDS**, and
+  the cause is two eviction paths that disagreed. `chunk_render_stream()` freed
+  the meshes and set `CS_FREE`; the drop of the records lived in `chunk_claim`
+  behind `if (c->cstate != CS_FREE)` -- which the streamer had just falsified.
+  So neither path ever ran it.
+
+  Measured on the user's own save (824 chunks, 103 of them holding animals):
+  **the mob pool filled after 94 chunks**, and from that moment `mob_spawn`
+  returns -1, so `breed_pass` has no calf to show and `mob_populate_chunk`
+  places no herds. Re-visiting one chunk five times left **five copies of the
+  same animal standing in each other**, which is the *"they merge into each
+  other, facing opposite directions"* the user also reported -- and an orphan is
+  not `resident()`, so the shove pass skips it and it sits inside the player
+  for ever. `mob_pick` does not check residency either, which is how two
+  animals could both say *"It eats out of your hand"* and neither ever breed.
+  Their save has 140 animals and **no babies at all**.
+
+  `blockent_drop_chunk` was behind the same guard, so chests and furnaces leaked
+  identically, 192 slots.
+
+  Fixed by making it ONE path: `chunk_release()` in chunk.c drops the records,
+  frees the meshes and marks the slot free, and both callers go through it. The
+  save ordering is unchanged and still checked -- an edited chunk requests a
+  save and is never released until it is clean, and the save writes the clock,
+  the records AND the animals (region.c).
+
+  **The lesson is the shape of the bug, not the bug.** It was invisible in a
+  frame and obvious over a session, it came back clean on every fresh load, and
+  the one check that could have caught it did not exist. `check_eviction_releases`
+  now walks a chunk in and out twelve times and asserts the pools come back to
+  where they started, through both callers.
+
+- **F-133** 2026-10-01, the user: *"tree felling needs to get fixes. It should
+  only cut down the tree I'm felling, not trees around it as well."*
+
+  The fell was a 26-neighbour flood through every grown tree cell, bounded by a
+  box round the break -- and **leaves conducted it**. In a forest the canopies
+  touch, so one swing walked out of the tree you hit and into its neighbours.
+  Replaying the seven fells from the user's flight recorder on their own
+  terrain: single swings took **108 to 494 blocks and felled 9 to 36 separate
+  trunks**.
+
+  It also broke the thing felling exists for. A fell drops one or two saplings
+  PER SWING (D-136), so clearing a grove of thirty trees handed back two
+  seedlings: wood stopped being renewable in the one biome where most of it is
+  cut.
+
+  **A tree is a COLUMN.** `worldgen_tree_shape` builds one as a single stack of
+  logs with a canopy within two blocks of its top, and it is the only shape
+  anything in this game grows -- the generator and a sapling share that
+  function. So the fell follows the logs upward from the break (no radius
+  needed: the trunk ends where the logs end) and then takes the leaves near
+  that column. It never crosses to another standing trunk. Re-measured: **54 to
+  72 blocks, exactly one trunk column, every time.**
+
+  The check that was supposed to catch this put the neighbouring tree **twelve
+  blocks away** -- outside any bound the old flood had, so it passed all the way
+  through the shipped build. It now also has two trees three blocks apart with
+  overlapping canopies, and asserts the neighbour keeps every log. Another
+  proxy, another F-120.
+
+- **F-134** 2026-10-01, the user, reading the manual: *"the documentation you
+  wrote says leaves are compostable, but there are never any leaves dropped."*
+
+  True on both counts. `BLOCK_COMPOST[BLK_LEAVES]` has said leaves rot down
+  since step 9, and the block table gave leaves **no drop row at all** -- so the
+  compost rule was reachable only by a player who could not exist. A canopy is
+  the biggest pile of green matter in the game and none of it could be picked
+  up.
+
+  Leaves now drop to **shears and nothing else**, which gives `TOOL_SHEARS` its
+  second job and leaves an axe destroying a canopy, as felling should. The rule
+  is the `tool` column rather than a new flag: those two rows are the only ones
+  that name TOOL_SHEARS, and `flags2` has no bits left anyway (blocks.h).
+
+- **F-135** 2026-10-01, the user: *"There were a few graphical glitches, like
+  trees still showing as standing after I cut them down... The 'not updating
+  visuals' needs to be fixed too. I was already on 'near' distance rendering."*
+
+  **THE MESH CACHE WAS UNBOUNDED.** A mesh lived until its chunk left the ring,
+  and a chunk stays resident far beyond the distance it is still drawn at: the
+  near view draws to 40 blocks and evicts at 5 chunks, which is 80. So up to 72
+  of the 121 resident chunks held geometry the draw pass would never submit
+  again, and the only thing that ever freed a mesh was eviction.
+  `chunk_store_mesh_bytes()` existed -- and was called in exactly one place, to
+  print a log line.
+
+  The flight recorder had it all. Of 182 edits in that session, **two were never
+  redrawn**, and both are inside the one 70-second window where free PSRAM was
+  under 512 KiB (down to **70 KiB**, mesh cache **10.2 MB**). One was a
+  161-block fell made while standing *inside* the chunk; the player stayed there
+  16 seconds and that chunk was never meshed again for the remaining 1,478
+  seconds. Outside that window all 180 other edits were answered, in 47 to 238
+  ms.
+
+  The mechanism, read end to end: `MESH_REALLOC` returns NULL -> `mesh.failed`
+  (mesh.c) -> `chunkmesh_build` returns false -> `r->ok = 0` -> the worker's
+  `fresh` test fails and **the old mesh stays in the slot**. The stale bit is
+  correctly kept, so it retries -- and the retry fails too, for as long as
+  memory is short. A tree you cut down goes on standing there.
+
+  `chunk_store_trim_meshes()` gives back the geometry of anything resident but
+  no longer drawn, every frame, with a floor under free PSRAM as a backstop. A
+  mesh is DERIVED -- nothing to save, and the draw pass asks again if the player
+  walks back. The host check builds real geometry over 49 chunks (16 MB), trims,
+  and asserts the memory comes back, the chunks stay resident, the near chunk
+  keeps its meshes and nothing is left claiming to be built.
+
+  Note what was NOT wrong: the user asked for edited chunks to have the highest
+  priority, and they already did -- `lod_urgent` puts them at the FRONT of the
+  queue, which is why the normal case is 47-238 ms. Priority was never the
+  problem. Allocation was.
+
+- **F-136** 2026-10-01, the user: *"Fence gates, crafting bench and the other
+  'machines' should not refuse a click to open even when holding a random block.
+  This is especially noticeable when opening gates or using the crafting bench
+  while holding wheat or fertilizer."*
+
+  The held item got first refusal -- which it needs, because a bucket casts its
+  own ray -- but a refusal **ate the click**. Holding wheat at a fence gate,
+  `interact_use_item` tried to plant, failed with `USE_NEEDS_SOIL`, printed it,
+  and the gate stayed shut. Eating already had the right rule thirty lines
+  above (`at_screen`, D-08's "a block with a screen behind it wins"); the item
+  branch did not.
+
+  Now a refusal defers to a usable block. An item that actually ACTS still wins,
+  because that is a thing the player asked for and got. Not host-checkable:
+  player.c is not in the pure set.
+
+- **F-137** 2026-10-01, the user: *"I couldn't find potatoes, beans and tomatoes
+  in the wild, had to cheat them in... I think one of the problems is simply
+  that they look very much like ordinary tall grass or flowers, so they are hard
+  to see."*
+
+  Generation was innocent, and measuring it first was worth the time: their own
+  seed has **14 potato, 54 bean and 7 tomato plants inside the area the save
+  covers**, nearest potato 95 blocks from spawn, nearest beans 49. (The tomato
+  is 485 away, because that world has 13 birch-wood columns within 768 blocks of
+  spawn -- birch being rare multiplies with tomatoes being rare inside it.)
+
+  The plants were there. They were **the same colour as the weeds**:
+
+  | | mean RGB | distance from tall grass |
+  |---|---|---|
+  | tall grass | 77,135,36 | -- |
+  | ripe potato | 79,130,56 | **21** |
+  | ripe tomato | 93,113,52 | 32 |
+  | ripe beans | 97,140,64 | 35 |
+  | ripe wheat | 209,179,78 | 145 |
+
+  Wheat was fine because the user had already asked for it ("the wheat should be
+  fully yellow when ripe") -- and that request was the fix for every other crop
+  too. A ripe plant now takes the colour of its harvest, and the ripe fruit is
+  drawn as a cluster rather than a dot. Potato 21 -> 103, beans 35 -> 93, rice
+  -> 136; the tomato keeps green foliage on purpose (a tomato plant IS green)
+  and gets its signal back from a 2x3 red berry, 32 -> 61.
+
+  Each one's nearest look-alike is now a FLOWER rather than tall grass, which is
+  the right trade: a flower is worth picking up (a sausage needs one), so walking
+  over to look costs nothing. Tall grass is the thing a player learns to ignore.
+  `make texcheck` now measures it, with a floor of 55, because "looks different"
+  is exactly the judgement that passes review and fails in a meadow.
+
+- **F-138** 2026-10-01, the user: *"Animals also still merge into the player when
+  following and into each other."* ... *"When following a player, there should be a
+  reasonable standoff distance (but maybe the max distance between a player and an
+  animal to make it follow/detect the player should also increase a bit)."*
+
+  The merging had two causes and F-132 was only one of them. The other is
+  arithmetic: a lured animal walks at **1.4x its own speed** and the shove pass
+  moves it back at **a third of MOB_PUSH**, so the walk wins and the draw happens
+  *inside* the player. Measured against the shipped build: a pig settled **0.05
+  blocks** from the player. Now `MOB_FOLLOW_STANDOFF` 2.0 -- outside both bodies,
+  well inside the 4.5-block reach, and the distance a dog's heel already assumed.
+  After: 1.94 to 2.00.
+
+  And the range: `MOB_FOLLOW_RANGE` 7 -> 12. Measured, a **sheep nine blocks away
+  never noticed the food at all** and drifted to 11.4; seven blocks is inside the
+  fog on this screen, so leading a herd meant walking into each animal in turn.
+
+- **F-139** 2026-10-01, the user: *"I also noticed an animal in the water that
+  turned around 180 degrees every frame, so this could be a pathfinding bug as
+  well?"* ... *"it might be reasonable to make sure an animal can't turn more than
+  once a second. And when an animal is already in the water, it should ignore the
+  water as a hazard and just head to the nearest shore if one is in a reasonable
+  detection range."* And then, on being shown the trace: *"If no shore is in range,
+  just keep swimming in the same direction. It will reach a shore eventually."*
+
+  **A SWIMMING BODY BOBS, AND THE BOB WAS THE BUG.** `MOB_SWIM_UP` lifts an animal
+  until its feet clear the surface; on that tick `in_water()` says no, so it is no
+  longer `reckless`, so `hazard_ahead()` is consulted -- and deep water in front of
+  something standing on dry land IS a hazard, so it turned 2.2 radians away. Next
+  tick it sank back, swam on, bobbed up, turned again. Traced tick by tick: swims
+  straight from t=0 to t=28 while y climbs 20.00 -> 21.21, and reverses the instant
+  it clears the surface.
+
+  Measured in open water: **1.9 reversals a second** before, **0.1 after**. Three
+  changes, and the first two were guesses that did not reach it -- worth recording
+  as such:
+
+  * `face()` rations a BIG turn to one a second (`MOB_TURN_COOLDOWN`), while small
+    corrections stay free so anything can still track a mate or a player. Every
+    turn in the file goes through it. On its own this only halved the spin, because
+    it was limiting a symptom;
+  * `shore_dir()` looks 10 blocks rather than 6 and breaks ties towards the heading
+    already chosen, so the middle of a pond is not a coin flip. Also not the cause;
+  * **`afloat()`** -- in the water OR with water under its feet -- is what the
+    `reckless` test and the swim branch ask now. That is the fix.
+
+  Plus the user's own rule for the last case: no shore within range means **hold
+  the heading** (`MOB_SWIM_COMMIT`, three seconds) instead of falling through to a
+  fresh random direction every twenty ticks. A random walk does not leave a lake; a
+  straight line does.
+
+  `check_mob_steering` measures both as a rate and a distance, because that is what
+  was being reported.
+
+- **F-140** 2026-10-01, the user: *"As for the fence gate, can we make its texture
+  a different shade of wood, to distinguish it more from ordinary fences?"*
+
+  A gate was `VM_PLANKS`, exactly the fence it stands in -- so the one block in a
+  run you can walk through looked like all the others, which matters most when the
+  cows are out. Now `VM_GATE` and `gate.png`: the same boards and joints in a
+  darker, redder timber (72 units away from planks), because a gate drawn in a
+  different *style* would read as a different material rather than as stained wood.
+  The item icon moved with it.
+
+  **And it broke a test, which is the part worth keeping.** `meshcheck` filtered the
+  gate's triangles on `VM_PLANKS` -- correct the day it was written -- so the whole
+  open-versus-shut section silently matched nothing and said *"a gate drew
+  nothing"*. It asks `voxel_face_mat(BLK_FENCE_GATE, VF_SIDE)` now, and asserts the
+  gate and the fence are NOT the same material, which is the property the user
+  actually wanted.
 
 ## Verification
 

@@ -161,6 +161,13 @@ typedef enum {
     VM_SAPLING_BIRCH_1,
     VM_SAPLING_BIRCH_2,
     VM_SAPLING_BIRCH_3,
+    // THE GATE'S OWN WOOD (the user, 2026-10-01: "can we make its texture
+    // a different shade of wood, to distinguish it more from ordinary
+    // fences?"). A gate was VM_PLANKS, exactly like the fence it stands
+    // in, so the one block in a pen you can actually walk through looked
+    // like all the others -- which matters most when you are in a hurry
+    // and the cows are out.
+    VM_GATE,
     VM_COUNT
 } vox_mat_t;
 

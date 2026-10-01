@@ -154,6 +154,11 @@ typedef struct {
     bool        shorn;
     uint32_t    age_shorn;  // ticks since the fleece came off
     uint8_t     hurt;      // ticks left of the flinch, and of being unhittable
+    // TICKS BEFORE IT MAY MAKE ANOTHER BIG TURN (MOB_TURN_COOLDOWN).
+    // Never saved: a creature that comes back off the card faces
+    // wherever it was facing and may turn at once, which nobody can tell
+    // from the alternative.
+    uint8_t     turn_cd;
     uint8_t     say;       // mob_say_t, drained by the caller each tick
 } mob_t;
 
@@ -166,8 +171,58 @@ typedef struct {
 #define MOB_BREED_CD    6000u
 // How close two of them have to be, and how far a creature will follow
 // somebody holding its food.
+//
+// THE FOLLOW RANGE IS 12 AND NOT 7 (the user, 2026-10-01: "maybe the max
+// distance between a player and an animal to make it follow/detect the
+// player should also increase a bit"). Seven blocks is inside the fog on
+// a handheld: an animal noticed you only once you were nearly on top of
+// it, which made leading a herd anywhere a matter of walking into each
+// one in turn.
 #define MOB_BREED_RANGE 2.5f
-#define MOB_FOLLOW_RANGE 7.0f
+#define MOB_FOLLOW_RANGE 12.0f
+
+// ... AND HOW CLOSE IT COMES BEFORE IT STOPS WALKING (F-138). A lured
+// animal walked at the player at 1.4x its own speed, and the shove that
+// is supposed to keep bodies apart moves it back at a third of that --
+// so it won every time and stood INSIDE the player, which is what the
+// user saw ("animals also still merge into the player when following").
+//
+// Two blocks is outside both bodies and well inside the 4.5-block reach,
+// so the animal is still there to be fed, milked or sheared. It is also
+// what a dog's heel distance already assumed.
+#define MOB_FOLLOW_STANDOFF 2.0f
+
+// HOW OFTEN A CREATURE MAY CHANGE ITS MIND ABOUT WHICH WAY IT FACES, and
+// what counts as changing it (the user, 2026-10-01: "it might be
+// reasonable to make sure an animal can't turn more than once a second").
+//
+// An animal in water re-asked shore_dir() EVERY TICK, and the answer
+// flips when two shores are equidistant and the body drifts between
+// them -- so it spun 180 degrees a frame and went nowhere. The same
+// shape of thing happens to anything that reacts to what is in front of
+// it: hazard_ahead turns it 2.2 radians and the next tick turns it back.
+//
+// So a BIG turn is rationed and a small one is not: tracking a mate or a
+// player is a few degrees a tick and never blocked, while a reversal
+// costs a second's commitment to the direction already chosen.
+#define MOB_TURN_COOLDOWN 20u    // ticks: one second at 20 Hz
+#define MOB_TURN_BIG      0.7f   // radians: about 40 degrees
+
+// HOW FAR AN ANIMAL IN THE WATER LOOKS FOR DRY LAND. Six blocks was the
+// width of a pond it could not see out of; ten is far enough to cross
+// most of what the generator puts in the way (the user: "it should
+// ignore the water as a hazard and just head to the nearest shore if one
+// is in a reasonable detection range").
+#define MOB_SHORE_RANGE 10
+
+// ... AND HOW LONG IT COMMITS TO A HEADING WHEN THERE IS NO SHORE IN
+// RANGE AT ALL. This is the case that actually spun: shore_dir() returns
+// "nowhere", the swim branch does nothing, and the ordinary wander
+// re-rolls a random direction every twenty ticks -- a random walk, which
+// measured 1.9 reversals a second in open water and never gets out of a
+// lake. Three seconds of holding one heading is a straight line, and a
+// straight line reaches a bank.
+#define MOB_SWIM_COMMIT 60u
 // A tamed dog that has been left behind gives up walking and appears
 // beside its owner. Minecraft's rule, and the one that stops a dog
 // being a thing you lose to a cliff.

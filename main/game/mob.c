@@ -192,6 +192,34 @@ static uint32_t roll(mob_t const* m, uint32_t now, uint32_t salt) {
     return sm_hash3((int32_t)m->id, (int32_t)now, (int32_t)m->kind, 0x4D0B5EEDu ^ salt);
 }
 
+// WHICH WAY IT FACES, AND HOW OFTEN IT MAY CHANGE ITS MIND (F-139).
+//
+// A small correction is free -- walking towards a mate or a player is a
+// few degrees a tick and must not be rationed, or nothing could track
+// anything. A BIG turn costs a second's commitment, which is the whole
+// fix for the creature the user watched spinning 180 degrees a frame in
+// a pond: shore_dir() was being re-asked every tick and its answer
+// flipped between two equidistant shores as the body drifted.
+//
+// Returns true if the turn was taken.
+static bool face(mob_t* m, float yaw) {
+    float d = yaw - m->yaw;
+    // Shortest way round, so turning from 350 degrees to 10 is 20 and
+    // not 340 -- otherwise every wrap of the circle reads as a reversal.
+    while (d > 3.14159265f) d -= 6.28318531f;
+    while (d < -3.14159265f) d += 6.28318531f;
+    float const mag = d < 0.0f ? -d : d;
+
+    if (mag < MOB_TURN_BIG) {
+        m->yaw = yaw;  // a correction, not a decision
+        return true;
+    }
+    if (m->turn_cd > 0) return false;  // it has just committed to a direction
+    m->yaw     = yaw;
+    m->turn_cd = (uint8_t)MOB_TURN_COOLDOWN;
+    return true;
+}
+
 // --- Gravity, and the water they float in -------------------------------
 
 #define MOB_GRAVITY    0.04f
@@ -237,6 +265,26 @@ static bool in_water(mob_t const* m) {
     int32_t const x = (int32_t)floor(m->body.x), z = (int32_t)floor(m->body.z);
     if (block_liquid(world_block(x, (int32_t)floor(m->body.y + MOB_WET_UP), z))) return true;
     return block_liquid(world_block(x, (int32_t)floor(m->body.y - MOB_WET_DOWN), z));
+}
+
+// IS IT IN THE WATER OR ON IT? A swimming body BOBS: MOB_SWIM_UP lifts
+// it until its feet are above the surface, at which point in_water()
+// says no -- and that single tick is enough to turn a swim into a
+// hazard-avoidance reversal, because water ahead IS a hazard to
+// something standing on dry land. The next tick it sinks back, swims
+// on, bobs up, and turns again.
+//
+// THAT is the creature the user watched spinning 180 degrees a frame in
+// a lake (F-139). Nothing to do with which shore it had picked: it was
+// being asked, every other tick, whether it was an animal on a beach
+// looking at a river.
+//
+// So: anything with water under its feet is still at sea, and water
+// ahead of it is the way home rather than a danger.
+static bool afloat(mob_t const* m) {
+    if (in_water(m)) return true;
+    int32_t const x = (int32_t)floor(m->body.x), z = (int32_t)floor(m->body.z);
+    return block_liquid(world_block(x, (int32_t)floor(m->body.y) - 1, z));
 }
 
 // IS THE THING IN FRONT A FENCE? A creature hops over a one-block step
@@ -339,7 +387,9 @@ static void pick_intent(mob_t* m, uint32_t now) {
     }
     m->intent     = MOB_WANDER;
     m->intent_for = (uint16_t)(20u + (r >> 16) % 50u);
-    m->yaw        = (float)((r >> 4) % 628u) / 100.0f;  // 0 .. 2pi
+    // Through face(), like every other turn: an amble that reversed on
+    // the tick after a reversal is the same jitter from a third source.
+    face(m, (float)((r >> 4) % 628u) / 100.0f);  // 0 .. 2pi
 }
 
 // --- Shoving -------------------------------------------------------------
@@ -410,11 +460,12 @@ static float shore_dir(mob_t const* m) {
     int32_t const y = (int32_t)floor(m->body.y);
     float         best_yaw = -1.0f;
     int           best_d = 99;
+    float         best_turn = 99.0f;
 
     for (int a = 0; a < 8; a++) {
         float const yaw = (float)a * 0.785398f;  // an eighth of a turn
         float const sx = sinf(yaw), sz = cosf(yaw);
-        for (int d = 1; d <= 6 && d < best_d; d++) {
+        for (int d = 1; d <= MOB_SHORE_RANGE && d <= best_d; d++) {
             int32_t const x = (int32_t)floor(m->body.x + (double)sx * (double)d);
             int32_t const z = (int32_t)floor(m->body.z + (double)sz * (double)d);
             // Land is a floor within a step of the surface with no more
@@ -428,8 +479,21 @@ static float shore_dir(mob_t const* m) {
                     depth++;
                 }
                 if (depth <= MOB_WADE_DEPTH) {
-                    best_d   = d;
-                    best_yaw = yaw;
+                    // TIES GO TO WHERE IT IS ALREADY HEADED, which is
+                    // the other half of not spinning: the middle of a
+                    // pond has two shores exactly as near, and picking
+                    // the first one in a fixed scan order means the
+                    // choice flips as the body drifts across the
+                    // midline (F-139).
+                    float td = yaw - m->yaw;
+                    while (td > 3.14159265f) td -= 6.28318531f;
+                    while (td < -3.14159265f) td += 6.28318531f;
+                    float const turn = td < 0.0f ? -td : td;
+                    if (d < best_d || turn < best_turn) {
+                        best_d    = d;
+                        best_yaw  = yaw;
+                        best_turn = turn;
+                    }
                 }
                 break;
             }
@@ -504,6 +568,7 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
 
         mob_def_t const* d = mob_def(m->kind);
         if (m->hurt > 0) m->hurt--;
+        if (m->turn_cd > 0) m->turn_cd--;
         if (m->love > 0) m->love--;
         if (m->breed_cd > 0) m->breed_cd--;
 
@@ -549,10 +614,10 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
             m->intent = MOB_STAND;
         } else if (m->intent != MOB_FLEE && mate != NULL) {
             m->intent = MOB_SEEK;
-            m->yaw    = (float)atan2(mate->body.x - m->body.x, mate->body.z - m->body.z);
+            face(m, (float)atan2(mate->body.x - m->body.x, mate->body.z - m->body.z));
         } else if (m->intent != MOB_FLEE && (lured || heel)) {
             m->intent = MOB_FOLLOW;
-            m->yaw    = (float)atan2(dx, dz);
+            face(m, (float)atan2(dx, dz));
         } else if (m->intent_for == 0) {
             pick_intent(m, now);
         }
@@ -580,18 +645,40 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         // and plenty of things put an animal in a lake without it
         // choosing anything.
         bool const swimming = in_water(m);
-        if (swimming && m->intent != MOB_FOLLOW) {
+        if (afloat(m) && m->intent != MOB_FOLLOW) {
             float const to_land = shore_dir(m);
             if (to_land >= 0.0f) {
-                m->yaw        = to_land;
+                // THE TURN IS RATIONED and the swim is not: if it may not
+                // turn yet it keeps swimming the way it already was,
+                // which is how it crosses a pond instead of pivoting in
+                // the middle of one (F-139).
+                face(m, to_land);
                 m->intent     = MOB_WANDER;
                 m->intent_for = 20;
-                yaw           = to_land;
+                yaw           = m->yaw;
+            } else {
+                // AND IF THERE IS NO SHORE IN RANGE, SWIM ON. Falling
+                // through to the ordinary wander meant a fresh random
+                // direction every twenty ticks, which is a random walk:
+                // 1.9 reversals a second, measured, and it never left
+                // the water. Holding the heading is a straight line, and
+                // a straight line finds a bank.
+                m->intent = MOB_WANDER;
+                if (m->intent_for < (uint16_t)MOB_SWIM_COMMIT) m->intent_for = (uint16_t)MOB_SWIM_COMMIT;
+                yaw = m->yaw;
             }
         }
         switch (m->intent) {
             case MOB_WANDER: speed = swimming ? d->speed * 1.3f : d->speed; break;
-            case MOB_FOLLOW: speed = d->speed * 1.4f; break;
+            // CLOSE ENOUGH IS CLOSE ENOUGH (F-138). A lured animal used
+            // to walk at the player until the shove pass and its own
+            // legs reached a draw -- which they did INSIDE the player,
+            // because 1.4x its speed beats a third of MOB_PUSH. It now
+            // stops a body's width short and stands there, which is
+            // still well within reach to feed, milk or shear.
+            case MOB_FOLLOW:
+                speed = to_you > (double)MOB_FOLLOW_STANDOFF ? d->speed * 1.4f : 0.0f;
+                break;
             case MOB_SEEK: speed = d->speed * 1.4f; break;
             case MOB_FLEE:
                 speed = d->speed * 2.0f;
@@ -614,9 +701,14 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
             // ... and an animal already IN the water is past being
             // warned about it: it is swimming for the shore, and the
             // shore is on the other side of more water.
-            bool const reckless = m->intent == MOB_FOLLOW || swimming;
+            // AFLOAT, not merely submerged: a body bobbing at the surface
+            // is still at sea (afloat(), F-139).
+            bool const reckless = m->intent == MOB_FOLLOW || afloat(m);
             if (!reckless && hazard_ahead(m, sx, sz)) {
-                m->yaw += 2.2f;
+                // Turn away -- but only if it is allowed to turn. Without
+                // the ration this fired every tick at the lip of a drop
+                // and the animal shivered in place (F-139).
+                face(m, m->yaw + 2.2f);
                 speed = 0.0f;
             } else {
                 m->body.vx = sx * speed;

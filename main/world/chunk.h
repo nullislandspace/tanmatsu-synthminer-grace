@@ -288,6 +288,14 @@ static inline mesh_t* chunk_mesh(chunk_t* c, int lod, int sect) {
 bool chunk_store_init(void);
 void chunk_store_shutdown(void);
 
+// Let go of everything a slot holds -- meshes, block entities and
+// creatures -- and mark it free. The ONE release path: chunk_claim uses
+// it to reuse a slot and the streamer uses it to evict (F-132, which is
+// what happened when they were two separate pieces of code). Only ever
+// called on a chunk that is saved, which every caller guarantees by
+// refusing to let go of a CF_EDITED one.
+void chunk_release(chunk_t* c);
+
 // Drop every resident chunk WITHOUT saving. For changing worlds: the
 // title screen's scratch terrain must not still be in the ring when a
 // real world opens, or the player spawns inside somebody else's hill.
@@ -307,6 +315,19 @@ size_t chunk_store_bytes(void);
 // actually held. Also reports how many meshes are non-empty and how
 // many chunks are resident.
 size_t chunk_store_mesh_bytes(int* meshes, int* chunks);
+
+// Free the meshes of every resident chunk whose nearest edge is further
+// than `keep` blocks from (wx, wz), and say how many were freed.
+//
+// THE ONLY THING THAT BOUNDS THE MESH CACHE (F-135). Without it a mesh
+// lived until its chunk left the ring, which is far beyond the distance
+// it was last drawn at -- and a cache that fills PSRAM does not merely
+// slow a frame down, it makes a rebuild FAIL, and a failed rebuild
+// leaves the block you just broke on the screen.
+//
+// Cheap and reversible: the draw pass asks for anything it wants and
+// finds not built. A job already in flight is left alone.
+int chunk_store_trim_meshes(double wx, double wz, float keep);
 
 // The slot a chunk coordinate maps to, whatever is in it.
 static inline int chunk_slot(int32_t cx, int32_t cz) {

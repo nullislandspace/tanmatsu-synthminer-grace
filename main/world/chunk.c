@@ -92,6 +92,60 @@ void chunk_store_shutdown(void) {
     memset(s_slots, 0, sizeof(s_slots));
 }
 
+// GIVE BACK THE GEOMETRY NOBODY IS LOOKING AT (F-135).
+//
+// A mesh was held for exactly as long as its chunk was resident, and a
+// chunk stays resident far beyond the distance it is still DRAWN at: the
+// near view draws to 40 blocks and evicts at 5 chunks, which is 80. So
+// up to 72 of the 121 resident chunks held geometry that the draw pass
+// would never submit again, and the only thing that ever freed a mesh
+// was the chunk leaving the ring altogether.
+//
+// On the player's own session the cache grew to 10.2 MB and left 70 KiB
+// of PSRAM free. What that costs is not a slow frame: mesh.c sets
+// `failed` when a realloc returns NULL, chunkmesh_build reports it, and
+// the worker then KEEPS THE OLD MESH -- so a tree you just cut down goes
+// on standing there, for as long as memory stays short. Two edits in
+// that session were never redrawn, and both are inside the one window
+// where free PSRAM was under 512 KiB.
+//
+// Freeing one is cheap and reversible: `lod_built` goes back to 0 and
+// the draw pass asks for it again the moment it is wanted. `lod_inflight`
+// is deliberately NOT touched -- a job already on the worker will land
+// and be accepted as usual.
+int chunk_store_trim_meshes(double wx, double wz, float keep) {
+    if (keep < 0.0f) return 0;
+    double const keep2 = (double)keep * (double)keep;
+    int          freed = 0;
+
+    for (int i = 0; i < CH_SLOT_COUNT; i++) {
+        chunk_t* c = &s_slots[i];
+        if (c->cstate != CS_READY || c->lod == NULL) continue;
+
+        // The nearest point of this chunk's column to the player,
+        // horizontally -- the same shape the draw pass measures, so a
+        // chunk is never trimmed while any of it is still in range.
+        double const x0 = (double)(c->cx * CH_W), x1 = x0 + (double)CH_W;
+        double const z0 = (double)(c->cz * CH_D), z1 = z0 + (double)CH_D;
+        double const dx = wx < x0 ? x0 - wx : (wx > x1 ? wx - x1 : 0.0);
+        double const dz = wz < z0 ? z0 - wz : (wz > z1 ? wz - z1 : 0.0);
+        if (dx * dx + dz * dz <= keep2) continue;
+
+        for (int m = 0; m < CH_MESH_N; m++) {
+            mesh_t* mesh = &c->lod[m];
+            if (mesh->vcap == 0 && mesh->tcap == 0) continue;
+            mesh_free(mesh);
+            uint16_t const bit = (uint16_t)((uint16_t)1u << m);
+            c->lod_built &= (uint16_t)~bit;
+            // Not stale either: nothing is waiting for it. "Not built"
+            // is what makes the draw pass ask again.
+            c->lod_stale &= (uint16_t)~bit;
+            freed++;
+        }
+    }
+    return freed;
+}
+
 size_t chunk_store_mesh_bytes(int* meshes, int* chunks) {
     size_t bytes = 0;
     int    m_n = 0, c_n = 0;
@@ -148,6 +202,41 @@ chunk_t* chunk_slot_claimed(int32_t cx, int32_t cz) {
     return (c->cstate != CS_FREE && c->cx == cx && c->cz == cz) ? c : NULL;
 }
 
+// THE ONE WAY A SLOT LETS GO OF WHAT IS IN IT, and it is one function
+// because it was two and they disagreed (F-132).
+//
+// A chunk leaving the ring has to give up THREE things: its meshes, its
+// block entities and its creatures. The streamer's eviction path
+// (chunk_render.c) freed the meshes and set CS_FREE; the drop of the
+// records lived here in chunk_claim, behind `if (c->cstate != CS_FREE)`
+// -- which the streamer had just made false. So between them, nothing
+// ever released an evicted chunk's records:
+//
+//   * every animal in an evicted chunk stayed in the pool as an orphan,
+//     so MOB_MAX filled after about ninety chunks of walking and
+//     NOTHING COULD BE BORN after that -- mob_spawn returns -1 and
+//     breed_pass has no calf to show for a pen full of fed animals;
+//   * coming back to a chunk DECODED ITS ANIMALS AGAIN beside the
+//     orphans, so a field visited five times held five copies of the
+//     same cow standing in each other;
+//   * and the same for block entities, 192 of them, which would in time
+//     stop a chest from being a chest.
+//
+// Both callers come through here now, so there is no second copy to
+// drift. Safe to call on a slot that is already free: dropping the
+// records of a chunk nobody has is dropping nothing.
+void chunk_release(chunk_t* c) {
+    if (c == NULL) return;
+    // The records first, while cx/cz still say which chunk this was.
+    // They are already on the card: a chunk is CF_EDITED from the moment
+    // it is generated or loaded (chunk_worker.c) and neither caller will
+    // let go of one that still is.
+    blockent_drop_chunk(c->cx, c->cz);
+    mob_drop_chunk(c->cx, c->cz);
+    free_slot_meshes(c);
+    c->cstate = CS_FREE;
+}
+
 chunk_t* chunk_claim(int32_t cx, int32_t cz) {
     if (s_slab == NULL) return NULL;  // the store was never started, or is shut down
     chunk_t* c = &s_slots[chunk_slot(cx, cz)];
@@ -158,20 +247,7 @@ chunk_t* chunk_claim(int32_t cx, int32_t cz) {
     if (c->cstate == CS_LOADING || c->cstate == CS_SAVING) return NULL;
     if (c->cstate == CS_READY && (c->flags & CF_EDITED) != 0) return NULL;
 
-    // EVICTION. Whatever was in this slot is leaving, and its block
-    // entities go with it -- they are already on the card, since an
-    // edited chunk cannot be claimed away (the line above), and a
-    // furnace kept in the pool after its chunk left would be a furnace
-    // in a place the world no longer has.
-    if (c->cstate != CS_FREE) {
-        blockent_drop_chunk(c->cx, c->cz);
-        // AND THE CREATURES IN IT. They have just been written with the
-        // chunk (region.c); one kept in the pool after its chunk left
-        // would be a cow standing in a place the world no longer has.
-        mob_drop_chunk(c->cx, c->cz);
-    }
-
-    free_slot_meshes(c);
+    chunk_release(c);
     c->lod_stale = CH_MESH_ALL;
     memset(c->id, BLK_AIR, CH_CELLS);
     memset(c->st, 0, CH_CELLS);

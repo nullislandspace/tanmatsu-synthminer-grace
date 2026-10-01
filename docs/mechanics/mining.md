@@ -32,6 +32,7 @@ drop. The game tells you what you need before you start.
 | Furnace | **Any pickaxe** |
 | Sausage maker | **Any pickaxe** |
 | **Iron ore** | **Stone pickaxe or better** |
+| **Leaves** | **Shears** — anything else destroys them |
 
 Everything else in the game drops for bare hands. A tool just makes it faster.
 
@@ -43,7 +44,7 @@ Seconds. A dash means the tool does not help.
 |---|---|---|---|---|---|
 | Flowers, tall grass, crops, saplings, torches | instant | — | — | — | — |
 | Snow | 0.5 | 0.25 | 0.13 | 0.08 | Shovel |
-| Leaves | 0.4 | 0.2 | — | — | Shears |
+| Leaves | 0.4 | 0.2 | — | — | **Shears** *(the only thing they drop for)* |
 | Sand | 0.75 | 0.4 | 0.2 | 0.1 | Shovel |
 | Gravel | 0.9 | 0.45 | 0.2 | 0.15 | Shovel |
 | Dirt, grass, farmland | 1.0 | 0.5 | 0.25 | 0.17 | Shovel |
@@ -71,7 +72,10 @@ By hand it is seven and a half seconds and gives you nothing.
 ### A tree comes down whole
 
 Break any part of a **trunk the world grew** and the entire tree goes — trunk, branches and
-leaves — and every log drops, plus **one or two saplings**. One swing, forty blocks.
+leaves — and every log drops, plus **one or two saplings**. One swing, fifty-odd blocks.
+
+**Only the tree you hit.** The fell follows your trunk upwards and clears the canopy around
+its top. A neighbouring tree whose branches touch yours keeps all of its logs.
 
 Logs **you** placed are not part of a tree and come down one at a time, so a log cabin does
 not collapse when you take out a wall.

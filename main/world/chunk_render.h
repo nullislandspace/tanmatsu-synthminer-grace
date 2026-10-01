@@ -119,6 +119,13 @@ void chunk_render_stats(int* chunks_drawn, int* sections_drawn, int* resident, i
 // eviction radius are fighting each other.
 int chunk_render_evicted(void);
 
+// How many meshes the budget has handed back since boot (F-134). A
+// number worth watching: the mesh cache used to grow until PSRAM ran
+// out, and a rebuild that cannot allocate leaves stale geometry on the
+// screen -- so this rising steadily is the system working, and the free
+// PSRAM beside it in the log is the thing it is defending.
+int chunk_render_trimmed(void);
+
 // The texture file a material is drawn with, or NULL. The inventory
 // uses it to draw a block as ITSELF rather than as the flat average
 // colour that stood in for it (D-03) -- one table of files, not two.

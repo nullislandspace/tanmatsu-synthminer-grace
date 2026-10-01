@@ -709,6 +709,14 @@ static void check_fence_mesh(void) {
     mesh_free(&m);
 
     // (c) OPEN AND SHUT ARE DIFFERENT PICTURES.
+    //
+    // THE GATE'S MATERIAL IS ASKED FOR, not assumed. This test used to
+    // filter on VM_PLANKS because that is what a gate was made of, and
+    // the day the gate got a timber of its own (F-140) the whole section
+    // quietly matched nothing and reported "a gate drew nothing". The
+    // block registry is the authority on what a block is made of, here
+    // as everywhere else.
+    uint8_t const gate_mat = (uint8_t)voxel_face_mat(BLK_FENCE_GATE, VF_SIDE);
     vg_clear();
     memset(data, 0, sizeof(data));
     vg_fill(1, 1, 1, 3, 1, 3, BLK_GRASS);
@@ -719,7 +727,7 @@ static void check_fence_mesh(void) {
     float shut_x0 = 99.0f, shut_x1 = 0.0f, shut_z0 = 99.0f, shut_z1 = 0.0f;
     int   shut_n = 0;
     for (int i = 0; i < m.tn; i++) {
-        if (m.t[i].mat != VM_PLANKS) continue;
+        if (m.t[i].mat != gate_mat) continue;
         shut_n++;
         uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
         for (int k = 0; k < 3; k++) {
@@ -737,7 +745,7 @@ static void check_fence_mesh(void) {
     float open_z0 = 99.0f, open_z1 = 0.0f;
     int   open_n = 0;
     for (int i = 0; i < m.tn; i++) {
-        if (m.t[i].mat != VM_PLANKS) continue;
+        if (m.t[i].mat != gate_mat) continue;
         open_n++;
         uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
         for (int k = 0; k < 3; k++) {
@@ -747,6 +755,11 @@ static void check_fence_mesh(void) {
     }
     mesh_free(&m);
     CHECK(shut_n > 0 && open_n > 0, "voxel: a gate drew nothing");
+    // A GATE MUST NOT BE THE SAME WOOD AS THE FENCE IT STANDS IN. It is
+    // the one block in a run you can walk through, and the user could
+    // not pick it out (F-140).
+    CHECK(gate_mat != (uint8_t)voxel_face_mat(BLK_FENCE, VF_SIDE),
+          "voxel: a gate and a fence are drawn in the same material (%d)", (int)gate_mat);
     // Shut, it spans the gap along x and is thin across it; open, the
     // panel has swung round, so it reaches further across z than the
     // shut one ever does.

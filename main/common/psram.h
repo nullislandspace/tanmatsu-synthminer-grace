@@ -20,6 +20,7 @@
 // =====================================================================
 
 #include <stddef.h>
+#include <stdint.h>  // SIZE_MAX, for sm_free_bytes() on the host
 
 #ifdef SM_HOST
 
@@ -29,6 +30,11 @@
 #define sm_realloc(p, n) realloc((p), (n))
 #define sm_free(p)       free(p)
 
+// HOW MUCH IS LEFT. On the host, "plenty": a PC's heap is not the thing
+// this is for, and a check that trimmed caches on the host would be
+// testing the host's malloc. The badge answers honestly.
+#define sm_free_bytes() ((size_t)SIZE_MAX)
+
 #else
 
 #include "esp_heap_caps.h"
@@ -36,5 +42,11 @@
 #define sm_calloc(n, s)  heap_caps_calloc((n), (s), MALLOC_CAP_SPIRAM)
 #define sm_realloc(p, n) heap_caps_realloc((p), (n), MALLOC_CAP_SPIRAM)
 #define sm_free(p)       heap_caps_free(p)
+
+// WHAT IS LEFT OF PSRAM. Read rather than guessed, because the mesh
+// cache is the one thing here that grows without being asked to and the
+// consequence of letting it win is invisible: a mesh that cannot be
+// allocated is a block you broke that stays on screen (F-135).
+#define sm_free_bytes() heap_caps_get_free_size(MALLOC_CAP_SPIRAM)
 
 #endif
