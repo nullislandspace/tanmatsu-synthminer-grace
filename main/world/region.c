@@ -1,12 +1,21 @@
 // =====================================================================
 //  SynthMiner  --  region files (see region.h)
 // ---------------------------------------------------------------------
-//  On-disk layout, little-endian throughout:
+//  On-disk layout, little-endian throughout (version 2, which is what this
+//  build writes; version 1 is read exactly as it was written):
 //
 //    0x000  header                      64 bytes
-//    0x040  directory copy A           520 bytes: 64 x 8, u32 serial, u32 crc32
-//    0x248  directory copy B           520 bytes: the same shape
-//    0x480  payloads, appended, 4-byte aligned
+//    0x040  directory copy A           776 bytes: 64 x 12, u32 serial, u32 crc32
+//    0x348  directory copy B           776 bytes: the same shape
+//    0x610  payloads, appended, 4-byte aligned
+//
+//  Version 1 was the same shape with 8-byte entries: copies at 0x040 and
+//  0x248, payloads from 0x480 -- 48 bytes past the end of copy B, because
+//  DATA_OFF was a round number rather than a derived one. Existing v1 files
+//  have that gap, so reading them has to keep it: data_off(1) is 1152, not
+//  64 + 2 * 520. Only the entry grew, so a v1 file needs no
+//  migration to READ -- it just cannot be written, because a directory is
+//  one block of fixed-size entries and cannot hold both.
 //
 //  Each directory copy carries its own serial and its own CRC over
 //  (entries + serial). A reader takes the copy that validates and has
@@ -27,13 +36,28 @@
 #include "world/vfs_compat.h"
 
 #define HDR_SIZE    64u
-#define ENT_SIZE    8u
-#define DIR_ENTRIES ((uint32_t)REGION_CHUNKS * ENT_SIZE)      /* 512 */
-#define DIR_SIGNED  (DIR_ENTRIES + 4u)                        /* entries + serial: what the CRC covers */
-#define DIR_BLOCK   (DIR_SIGNED + 4u)                         /* + the CRC itself = 520 */
-#define DIR_A_OFF   HDR_SIZE                                  /* 0x040 */
-#define DIR_B_OFF   (DIR_A_OFF + DIR_BLOCK)                   /* 0x248 */
-#define DATA_OFF    1152u                                     /* 0x480, past both copies */
+
+// Entry size is a property of the FILE, not of the chunk: a directory is
+// one block of fixed-size entries, so 8 and 12 cannot be mixed in the same
+// file. That is why a version-1 region has to be rewritten whole before it
+// can be written to (see region_rewrite), and why every offset below is a
+// function of the version rather than a constant.
+#define ENT_SIZE_V1   8u   // u32 offset, u16 length, u8 codec, u8 flags
+#define ENT_SIZE_V2   12u  // u32 offset, u32 length, u8 codec, u8 flags, 2 reserved
+#define DIR_TAIL      8u   // u32 serial + u32 crc32
+#define DIR_BLOCK_V1  ((uint32_t)REGION_CHUNKS * ENT_SIZE_V1 + DIR_TAIL)  /* 520 */
+#define DIR_BLOCK_V2  ((uint32_t)REGION_CHUNKS * ENT_SIZE_V2 + DIR_TAIL)  /* 776 */
+#define DATA_OFF_V1   1152u  /* 0x480 -- 48 past the end of copy B, as the files on disk have it */
+
+static uint32_t ent_size(int v) { return v == 1 ? ENT_SIZE_V1 : ENT_SIZE_V2; }
+static uint32_t dir_block(int v) { return v == 1 ? DIR_BLOCK_V1 : DIR_BLOCK_V2; }
+static uint32_t dir_b_off(int v) { return HDR_SIZE + dir_block(v); }
+// Version 1's data area does not start where its directory ends: DATA_OFF
+// was a round number (0x480), not 64 + 2 * 520, and the files written under
+// it have that gap. Version 2 has no gap, so only v1 needs the exception.
+static uint32_t data_off(int v) {
+    return v == 1 ? DATA_OFF_V1 : HDR_SIZE + 2u * dir_block(v);
+}
 
 // CRC-32 (ISO-HDLC, the zlib/PNG polynomial), nibble at a time.
 //
@@ -61,7 +85,7 @@ static uint32_t sm_crc32(uint8_t const* buf, size_t len) {
 
 typedef struct {
     uint32_t offset;  // 0 = the chunk is not in this region
-    uint16_t length;
+    uint32_t length;  // version 1 stored a uint16 here; the reader widens it
     uint8_t  codec;   // reserved: the payload carries its own
     uint8_t  flags;
 } entry_t;
@@ -71,6 +95,7 @@ typedef struct {
     uint32_t serial;
     uint32_t waste;
     int      current;  // which copy was current: 0 = A, 1 = B
+    int      version;  // which entry layout this file uses: 1 or 2
 } region_t;
 
 // --- Little-endian helpers (the file is bytes, not a struct) ----------
@@ -235,8 +260,10 @@ int region_migrate(char const* dir) {
     return moved;
 }
 
-static long dir_off(int slot) {
-    return (long)(slot == 0 ? DIR_A_OFF : DIR_B_OFF);
+// Copy A always starts at the header; copy B sits after A, and how far
+// after depends on the entry size, so the version is part of the address.
+static long dir_off(int slot, int version) {
+    return (long)(slot == 0 ? HDR_SIZE : dir_b_off(version));
 }
 
 // --- Header -----------------------------------------------------------
@@ -259,61 +286,91 @@ static bool header_write(FILE* f, int32_t rx, int32_t rz, uint32_t waste) {
 // True only if this really is one of our regions, built the same way.
 // A dimension mismatch means the file was written by a different build
 // of the game; refusing it is better than reading nonsense terrain.
-static bool header_read(FILE* f, uint32_t* waste) {
+// The version is reported, not checked against this build's: reading a
+// version-1 file is allowed and expected, and the version is what says how
+// big its entries are. A version this build has never seen is refused --
+// guessing at an unknown layout is how a world gets read as rubbish.
+static bool header_read(FILE* f, uint32_t* waste, int* version) {
     uint8_t h[HDR_SIZE];
     if (fseek(f, 0, SEEK_SET) != 0) return false;
     if (fread(h, 1, sizeof(h), f) != sizeof(h)) return false;
-    if (memcmp(h, REGION_MAGIC, 4) != 0 && memcmp(h, REGION_MAGIC_WAS, 4) != 0) return false;
-    if (get_u16(h + 4) != REGION_VERSION) return false;
+    if (memcmp(h, REGION_MAGIC, 4) != 0 && memcmp(h, REGION_MAGIC_V1, 4) != 0 &&
+        memcmp(h, REGION_MAGIC_WAS, 4) != 0) {
+        return false;
+    }
+    uint32_t const v = get_u16(h + 4);
+    if (v != REGION_VERSION && v != REGION_VERSION_WAS) return false;
     if (get_u16(h + 6) != REGION_DIM) return false;
     if (get_u16(h + 16) != CH_W || get_u16(h + 18) != CH_H || get_u16(h + 20) != CH_D) return false;
     *waste = get_u32(h + 24);
+    *version = (int)v;
     return true;
 }
 
 // --- Directory --------------------------------------------------------
 
-static bool dir_read(FILE* f, int slot, entry_t* dir, uint32_t* serial) {
-    uint8_t buf[DIR_BLOCK];
-    if (fseek(f, dir_off(slot), SEEK_SET) != 0) return false;
-    if (fread(buf, 1, sizeof(buf), f) != sizeof(buf)) return false;
-    if (get_u32(buf + DIR_SIGNED) != sm_crc32(buf, DIR_SIGNED)) return false;
+// The two layouts, read and written from the same buffer. `version` is the
+// file's, taken from the header: it decides the entry size, where copy B
+// starts, and therefore what the CRC covers.
+static bool dir_read(FILE* f, int slot, int version, entry_t* dir, uint32_t* serial) {
+    // STATIC, and that is a stack decision rather than tidiness: this module
+    // is single-threaded (the handle cache above has no lock), and this
+    // block was the last thing on the worker's stack when it overflowed
+    // (F-146).
+    static uint8_t buf[DIR_BLOCK_V2];
+    size_t const block = dir_block(version);
+    size_t const entries = (size_t)REGION_CHUNKS * ent_size(version);
+    if (fseek(f, dir_off(slot, version), SEEK_SET) != 0) return false;
+    if (fread(buf, 1, block, f) != block) return false;
+    if (get_u32(buf + entries + 4u) != sm_crc32(buf, entries + 4u)) return false;
 
     for (int i = 0; i < REGION_CHUNKS; i++) {
-        uint8_t const* e = buf + (size_t)i * ENT_SIZE;
-        dir[i].offset    = get_u32(e);
-        dir[i].length    = get_u16(e + 4);
-        dir[i].codec     = e[6];
-        dir[i].flags     = e[7];
+        uint8_t const* e = buf + (size_t)i * ent_size(version);
+        dir[i].offset = get_u32(e);
+        // Version 1's length is a uint16 at +4; version 2's is a uint32.
+        dir[i].length = version == 1 ? (uint32_t)get_u16(e + 4) : get_u32(e + 4);
+        dir[i].codec  = e[version == 1 ? 6 : 8];
+        dir[i].flags  = e[version == 1 ? 7 : 9];
     }
-    *serial = get_u32(buf + DIR_ENTRIES);
+    *serial = get_u32(buf + entries);
     return true;
 }
 
+// Always writes the CURRENT layout: a version-1 file is upgraded before
+// anything is written into it, so this never has to reproduce the old one.
 static bool dir_write(FILE* f, int slot, entry_t const* dir, uint32_t serial) {
-    uint8_t buf[DIR_BLOCK];
+    // Static for the same reason as the reader above, and by the same
+    // argument. Both copies are written one after the other, never at the
+    // same time.
+    static uint8_t buf[DIR_BLOCK_V2];
     memset(buf, 0, sizeof(buf));
     for (int i = 0; i < REGION_CHUNKS; i++) {
-        uint8_t* e = buf + (size_t)i * ENT_SIZE;
+        uint8_t* e = buf + (size_t)i * ENT_SIZE_V2;
         put_u32(e, dir[i].offset);
-        put_u16(e + 4, dir[i].length);
-        e[6] = dir[i].codec;
-        e[7] = dir[i].flags;
+        put_u32(e + 4, dir[i].length);
+        e[8] = dir[i].codec;
+        e[9] = dir[i].flags;
+        e[10] = 0;  // reserved, written as zero so a later field has room
+        e[11] = 0;
     }
-    put_u32(buf + DIR_ENTRIES, serial);
-    put_u32(buf + DIR_SIGNED, sm_crc32(buf, DIR_SIGNED));
-    if (fseek(f, dir_off(slot), SEEK_SET) != 0) return false;
-    if (fwrite(buf, 1, sizeof(buf), f) != sizeof(buf)) return false;
+    put_u32(buf + (size_t)REGION_CHUNKS * ENT_SIZE_V2, serial);
+    put_u32(buf + (size_t)REGION_CHUNKS * ENT_SIZE_V2 + 4u, sm_crc32(buf, (size_t)REGION_CHUNKS * ENT_SIZE_V2 + 4u));
+    if (fseek(f, dir_off(slot, REGION_VERSION), SEEK_SET) != 0) return false;
+    if (fwrite(buf, 1, DIR_BLOCK_V2, f) != DIR_BLOCK_V2) return false;
     return fflush(f) == 0;
 }
 
 // Load whichever directory copy is valid and newest. False if neither
 // is -- the region is then beyond saving and reads as empty.
-static bool region_open_state(FILE* f, region_t* r) {
-    entry_t  a[REGION_CHUNKS], b[REGION_CHUNKS];
+static bool region_open_state(FILE* f, int version, region_t* r) {
+    // Two whole directories is 1,536 bytes of stack, the biggest single
+    // item on the deepest path this module takes (F-146). Both are consumed
+    // into `r` before this returns, so one shared pair is enough, and the
+    // single-threaded rule is the same as the buffers above.
+    static entry_t a[REGION_CHUNKS], b[REGION_CHUNKS];
     uint32_t sa = 0, sb = 0;
-    bool const oka = dir_read(f, 0, a, &sa);
-    bool const okb = dir_read(f, 1, b, &sb);
+    bool const oka = dir_read(f, 0, version, a, &sa);
+    bool const okb = dir_read(f, 1, version, b, &sb);
 
     if (!oka && !okb) return false;
     // Serial numbers wrap; the newer one is the one the other is behind.
@@ -321,6 +378,7 @@ static bool region_open_state(FILE* f, region_t* r) {
     memcpy(r->dir, use_b ? b : a, sizeof(r->dir));
     r->serial  = use_b ? sb : sa;
     r->current = use_b ? 1 : 0;
+    r->version = version;
     return true;
 }
 
@@ -329,12 +387,13 @@ static bool region_create(FILE* f, int32_t rx, int32_t rz, region_t* r) {
     memset(r, 0, sizeof(*r));
     r->serial  = 1;
     r->current = 0;
+    r->version = REGION_VERSION;
     if (!header_write(f, rx, rz, 0)) return false;
     if (!dir_write(f, 0, r->dir, 1)) return false;
     if (!dir_write(f, 1, r->dir, 0)) return false;
     // Make sure the file really extends to the data area, so the first
     // append lands where the directory says it will.
-    if (fseek(f, (long)DATA_OFF - 1, SEEK_SET) != 0) return false;
+    if (fseek(f, (long)data_off(REGION_VERSION) - 1, SEEK_SET) != 0) return false;
     uint8_t const zero = 0;
     if (fwrite(&zero, 1, 1, f) != 1) return false;
     return fflush(f) == 0;
@@ -375,11 +434,20 @@ static void region_recover_tmp(char const* path) {
     FILE* t = fopen(tmp, "rb");
     if (t == NULL) return;
     // Only if it is big enough to hold a header and both directories;
-    // a half-written temp is worse than none.
+    // a half-written temp is worse than none. "Big enough" depends on the
+    // layout the temp was written in, so the header is read first -- and a
+    // temp that has no readable header is not a region, whatever its size.
+    uint32_t waste    = 0;
+    int      version  = REGION_VERSION;
+    if (!header_read(t, &waste, &version)) {
+        fclose(t);
+        sm_remove(tmp);
+        return;
+    }
     fseek(t, 0, SEEK_END);
     long const sz = ftell(t);
     fclose(t);
-    if (sz < (long)DATA_OFF) {
+    if (sz < (long)data_off(version)) {
         sm_remove(tmp);
         return;
     }
@@ -405,6 +473,7 @@ int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
 
     uint32_t waste = 0;
     region_t r;
+    int      version = 0;
     // EVERY FAILURE DROPS THE HANDLE, and this is not tidiness -- it is
     // the difference between a card hiccup and a world that stops
     // arriving.
@@ -416,7 +485,7 @@ int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
     // missing" with the streamer asking 240 times a second and loading
     // nothing, for ever. Before the cache existed each read opened
     // fresh and a transient error simply retried.
-    if (!header_read(f, &waste) || !region_open_state(f, &r)) {
+    if (!header_read(f, &waste, &version) || !region_open_state(f, version, &r)) {
         cache_drop(path);
         return -1;
     }
@@ -504,16 +573,35 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     }
     region_t r;
     uint32_t waste = 0;
+    int      version = REGION_VERSION;
     if (existing <= 0) {
         if (!region_create(f, rx, rz, &r)) {
             cache_drop(path);
             return false;
         }
-    } else if (!header_read(f, &waste) || !region_open_state(f, &r)) {
+    } else if (!header_read(f, &waste, &version) || !region_open_state(f, version, &r)) {
         cache_drop(path);
         return false;
     }
     r.waste = waste;
+
+    // A version-1 file cannot be written: the directory is one block of
+    // fixed-size entries, so growing them moves copy B and the data area
+    // too, and there is nowhere to put a 12-byte entry in an 8-byte slot.
+    // So the file is rewritten whole here, once, in the new layout -- which
+    // is what compaction already does, so it is the same code. Every write
+    // to it after this is an ordinary append.
+    if (r.version != REGION_VERSION) {
+        if (!region_compact(dir, rx, rz)) return false;
+        // Compaction replaces the file, so the handle it had is gone.
+        f = cache_open(path, false);
+        if (f == NULL) return false;
+        if (!header_read(f, &waste, &version) || !region_open_state(f, version, &r)) {
+            cache_drop(path);
+            return false;
+        }
+        r.waste = waste;
+    }
 
     int const idx = region_local(c->cz) * REGION_DIM + region_local(c->cx);
 
@@ -522,7 +610,7 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     //    at bytes that were never written is not.
     if (fseek(f, 0, SEEK_END) != 0) goto fail;
     long end = ftell(f);
-    if (end < (long)DATA_OFF) end = (long)DATA_OFF;
+    if (end < (long)data_off(r.version)) end = (long)data_off(r.version);
     long const pad = (4 - (end & 3)) & 3;
     for (long i = 0; i < pad; i++) {
         uint8_t const zero = 0;
@@ -537,7 +625,11 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     if (r.dir[idx].offset != 0) r.waste += r.dir[idx].length;
 
     r.dir[idx].offset = (uint32_t)at;
-    r.dir[idx].length = (uint16_t)n;
+    // The length is a uint32 now, so nothing is truncated here. It used to
+    // be a uint16, and a chunk bigger than 65535 would have written a
+    // directory entry pointing at bytes that are not there -- which is why
+    // the buffer had to be capped below the format rather than sized to it.
+    r.dir[idx].length = (uint32_t)n;
     r.dir[idx].codec  = 0;
     r.dir[idx].flags  = 0;
 
@@ -573,21 +665,26 @@ bool region_should_compact(char const* dir, int32_t rx, int32_t rz) {
     }
     uint32_t waste = 0;
     bool     yes   = false;
-    if (header_read(f, &waste)) {
+    int      version = 0;
+    if (header_read(f, &waste, &version)) {
         if (fseek(f, 0, SEEK_END) == 0) {
             long const size = ftell(f);
-            yes = size > (long)DATA_OFF && waste > (uint32_t)(size / 2);
+            yes = size > (long)data_off(version) && waste > (uint32_t)(size / 2);
         }
     }
     return yes;
 }
 
-bool region_compact(char const* dir, int32_t rx, int32_t rz) {
-    char path[192], tmp[200];
-    if (!region_path(path, sizeof(path), dir, rx, rz)) return false;
-    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) return false;
-
-    // Compaction replaces the file underneath everybody, so the cached
+// --- Rewriting a region whole ----------------------------------------
+//
+// Compaction and the version upgrade are the same job: read whichever
+// directory is valid, pack every payload from the start of the data area,
+// rebuild both copies. The upgrade is compaction that happens before the
+// first write rather than after a lot of them -- and it is the only way a
+// version-1 file can become version 2, because entry size is a property of
+// the file and a directory cannot hold both.
+static bool region_rewrite(char const* path, char const* tmp, int32_t rx, int32_t rz) {
+    // Rewriting replaces the file underneath everybody, so the cached
     // handle has to go BEFORE anything is opened or renamed -- a handle
     // to a file that has since been removed reads whatever the driver
     // feels like.
@@ -597,7 +694,8 @@ bool region_compact(char const* dir, int32_t rx, int32_t rz) {
     if (in == NULL) return false;
     uint32_t waste = 0;
     region_t r;
-    if (!header_read(in, &waste) || !region_open_state(in, &r)) {
+    int      version = 0;
+    if (!header_read(in, &waste, &version) || !region_open_state(in, version, &r)) {
         fclose(in);
         return false;
     }
@@ -611,10 +709,15 @@ bool region_compact(char const* dir, int32_t rx, int32_t rz) {
     if (!region_create(out, rx, rz, &nr)) goto fail;
 
     static uint8_t buf[CHUNK_PAYLOAD_MAX];
-    long           at = (long)DATA_OFF;
+    long           at = (long)data_off(REGION_VERSION);
     for (int i = 0; i < REGION_CHUNKS; i++) {
         entry_t const e = r.dir[i];
-        if (e.offset == 0 || e.length == 0 || e.length > sizeof(buf)) continue;
+        if (e.offset == 0 || e.length == 0) continue;
+        // Unreachable now that the buffer covers the true worst case
+        // (chunk_codec.h). It used to be reachable, and it dropped the
+        // chunk quietly; a rewrite that cannot carry a chunk should say so
+        // rather than produce a file with a hole in it.
+        if (e.length > sizeof(buf)) goto fail;
         if (fseek(in, (long)e.offset, SEEK_SET) != 0) goto fail;
         if (fread(buf, 1, e.length, in) != e.length) goto fail;
         at += (4 - (at & 3)) & 3;
@@ -652,4 +755,11 @@ fail:
     fclose(out);
     sm_remove(tmp);
     return false;
+}
+
+bool region_compact(char const* dir, int32_t rx, int32_t rz) {
+    char path[192], tmp[200];
+    if (!region_path(path, sizeof(path), dir, rx, rz)) return false;
+    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) return false;
+    return region_rewrite(path, tmp, rx, rz);
 }

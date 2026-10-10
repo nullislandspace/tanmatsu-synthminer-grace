@@ -211,7 +211,7 @@ size_t blockent_encode_chunk(int32_t cx, int32_t cz, uint8_t* out, size_t cap) {
         blockent_t const* b = &s_pool[i];
         if (b->kind == BE_NONE) continue;
         if (chunk_of(b->x) != cx || chunk_of(b->z) != cz) continue;
-        if (pos + 2 > cap) return 0;
+        if (pos + 2 > cap) break;  // the buffer is full: write what is in it
 
         // Each record is a u16 length then its fields, so a reader can
         // step over one whose kind it does not know.
@@ -221,7 +221,7 @@ size_t blockent_encode_chunk(int32_t cx, int32_t cz, uint8_t* out, size_t cap) {
         tag_write_init(&w, out + pos, cap - pos);
         write_record(&w, b);
         size_t const rec = tag_write_done(&w);
-        if (rec == 0) return 0;  // did not fit: write no section at all
+        if (rec == 0) break;     // ... and so is this one
 
         out[rec_len_at]     = (uint8_t)(rec & 0xFF);
         out[rec_len_at + 1] = (uint8_t)((rec >> 8) & 0xFF);
@@ -229,12 +229,22 @@ size_t blockent_encode_chunk(int32_t cx, int32_t cz, uint8_t* out, size_t cap) {
         written++;
     }
 
+    // THE COUNT IS WHAT WENT IN, as mob.c does it: a reader told about a
+    // record that is not there would walk off the end. A chest full of
+    // slots is the biggest record in the format, so this is the encoder
+    // most likely to run out of room -- and the one whose loss a player
+    // would notice, because a furnace's contents are not regenerated.
+    if (written < n) chunk_note_drops((uint32_t)(n - written));
+    if (written == 0) return 0;
+    out[body_at]     = (uint8_t)(written & 0xFF);
+    out[body_at + 1] = (uint8_t)((written >> 8) & 0xFF);
+
     size_t const body = pos - body_at;
     out[len_at]       = (uint8_t)(body & 0xFF);
     out[len_at + 1]   = (uint8_t)((body >> 8) & 0xFF);
     out[len_at + 2]   = (uint8_t)((body >> 16) & 0xFF);
     out[len_at + 3]   = (uint8_t)((body >> 24) & 0xFF);
-    return written == n ? pos : 0;
+    return pos;
 }
 
 static void read_slot(tag_reader_t* r, inv_slot_t* out) {

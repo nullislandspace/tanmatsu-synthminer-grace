@@ -27,6 +27,18 @@
 #define CODEC_RAW 0
 #define CODEC_RLE 1
 
+// --- What a section could not hold ------------------------------------
+
+static uint32_t s_section_drops;
+
+uint32_t chunk_section_drops(void) {
+    return s_section_drops;
+}
+
+void chunk_note_drops(uint32_t n) {
+    s_section_drops += n;
+}
+
 size_t chunk_rle_encode(uint8_t const* plane, size_t n, uint8_t* out, size_t out_cap) {
     size_t w = 0;
     size_t i = 0;

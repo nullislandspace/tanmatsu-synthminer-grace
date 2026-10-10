@@ -163,6 +163,10 @@ void trace_tick(trace_tick_t const* s) {
             s->save_n, s->save_avg_us, s->save_max_us);
     }
     if (s->save_failed > 0 || s->paced_ms > 0) say("  cardfail=%d paced=%dms", s->save_failed, s->paced_ms);
+    // NOT the card. The encoder ran out of room, so the chunk went down
+    // with fewer records than it held -- a furnace that comes back empty
+    // is this, and it is the only way to see it.
+    if (s->section_dropped > 0) say("  secdrop=%d", s->section_dropped);
     if (s->phys_pending > 0 || s->phys_fired > 0 || s->phys_dropped > 0) {
         say("  phys pending=%d peak=%d fired=%d dropped=%d carried=%d", s->phys_pending, s->phys_peak,
             s->phys_fired, s->phys_dropped, s->phys_carried);

@@ -1097,26 +1097,43 @@ size_t mob_encode_chunk(int32_t cx, int32_t cz, uint8_t* out, size_t cap) {
         mob_t const* m = &s_pool[i];
         if (!m->alive) continue;
         if (chunk_of((int32_t)floor(m->body.x)) != cx || chunk_of((int32_t)floor(m->body.z)) != cz) continue;
-        if (pos + 2 > cap) return 0;
+        if (pos + 2 > cap) break;  // the buffer is full: write what is in it
         size_t const rec_len_at = pos;
         pos += 2;
         tag_writer_t w;
         tag_write_init(&w, out + pos, cap - pos);
         write_record(&w, m);
         size_t const rec = tag_write_done(&w);
-        if (rec == 0) return 0;  // did not fit: write no section at all
+        if (rec == 0) break;     // ... and so is this one
         out[rec_len_at]     = (uint8_t)(rec & 0xFF);
         out[rec_len_at + 1] = (uint8_t)((rec >> 8) & 0xFF);
         pos += rec;
         written++;
     }
 
+    // THE COUNT IS WHAT WENT IN, not what was there. A reader told about
+    // a record that is not in the section would walk off the end, so a
+    // section that filled the buffer has to say how many records it
+    // actually holds.
+    //
+    // It used to abandon the whole section and report nothing. The save
+    // still SUCCEEDED -- chunk_encode cannot refuse a buffer it owns --
+    // so the chunk was written without its creatures and evicted, and
+    // the loss was permanent, because a chunk is rolled once and does
+    // not repopulate (D-146). Writing what fits turns a whole section
+    // lost into as much as fits, and the rest into a count that moves.
+    if (written < n) chunk_note_drops((uint32_t)(n - written));
+    if (written == 0) return 0;
+
+    out[body_at]     = (uint8_t)(written & 0xFF);
+    out[body_at + 1] = (uint8_t)((written >> 8) & 0xFF);
+
     size_t const body = pos - body_at;
     out[len_at]       = (uint8_t)(body & 0xFF);
     out[len_at + 1]   = (uint8_t)((body >> 8) & 0xFF);
     out[len_at + 2]   = (uint8_t)((body >> 16) & 0xFF);
     out[len_at + 3]   = (uint8_t)((body >> 24) & 0xFF);
-    return written == n ? pos : 0;
+    return pos;
 }
 
 static uint8_t kind_by_name(char const* s) {

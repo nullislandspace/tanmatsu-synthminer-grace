@@ -766,6 +766,21 @@ static void check_worldgen(void) {
 
 #define TEST_DIR "build/host/worldtest"
 
+// The version-2 layout as region.c writes it (F-144): header, two directory
+// copies of 776, payloads from 0x610. Version 1's were 520 and 0x480, and
+// the dual-format check below still reads a file built that way.
+#define V2_DIR_A      64
+#define V2_DIR_BLOCK  776
+#define V2_DIR_B      (V2_DIR_A + V2_DIR_BLOCK)          /* 0x348 */
+#define V2_DATA       (V2_DIR_A + 2 * V2_DIR_BLOCK)      /* 0x610 */
+
+// Version 1's data area is NOT 64 + 2 * 520: DATA_OFF was written as the
+// round number 0x480, so every v1 file on disk has 48 unused bytes between
+// the end of copy B and the first payload. The test has to reproduce that,
+// because it is testing what is really on somebody's card.
+#define V1_DIR_BLOCK  520
+#define V1_DATA       1152
+
 static uint8_t g_ia[CH_CELLS], g_sa[CH_CELLS], g_ib[CH_CELLS], g_sb[CH_CELLS];
 
 static void fill_chunk(chunk_t* c, uint8_t* id, uint8_t* st, int32_t cx, int32_t cz, uint32_t seed) {
@@ -1017,7 +1032,7 @@ static void check_region_damage(void) {
 
     // Now destroy the other copy too: the region is beyond saving and
     // must say so, rather than hand back rubbish.
-    poke(path, 0x248, 64, 0xCD);
+    poke(path, V2_DIR_B, 64, 0xCD);
     int const r2 = region_read_chunk(TEST_DIR, &b, NULL);
     printf("  both directory copies destroyed: read returned %d\n", r2);
     CHECK(r2 == -1, "a region with no valid directory did not report an error (got %d)", r2);
@@ -1030,7 +1045,7 @@ static void check_region_damage(void) {
     sm_remove(path2);
     fill_chunk(&a, g_ia, g_sa, -8, -8, GEN_SEED);
     CHECK(region_write_chunk(TEST_DIR, &a), "setup write failed");
-    poke(path2, 0x480 + 8, 200, 0xEE);
+    poke(path2, V2_DATA + 8, 200, 0xEE);
     memset(&b, 0, sizeof(b));
     b.id = g_ib;
     b.st = g_sb;
@@ -1084,7 +1099,7 @@ static void check_torn_write(void) {
     CHECK(g_ib[marker] == BLK_PLANKS, "the second save is not the one that reads back");
 
     // Now interrupt save 2: destroy the directory copy it wrote.
-    poke(path, 0x040, 520, 0x5A);
+    poke(path, V2_DIR_A, V2_DIR_BLOCK, 0x5A);
 
     memset(&b, 0, sizeof(b));
     b.id = g_ib;
@@ -1172,6 +1187,613 @@ static void check_compaction(void) {
     CHECK(lost == 0, "compaction lost %d chunks", lost);
     CHECK(wrong == 0, "compaction resurrected %d stale chunk copies", wrong);
     CHECK(!region_should_compact(TEST_DIR, 0, 1), "the region still wants compacting afterwards");
+}
+
+// The same CRC region.c computes (ISO-HDLC, nibble table), written out here
+// rather than called in: the point is that a version-1 file built by an
+// independent implementation of the format validates. If the test used the
+// same function to write and to check, it would prove nothing.
+static uint32_t w_crc32(uint8_t const* buf, size_t len) {
+    static uint32_t const T[16] = {
+        0x00000000u, 0x1DB71064u, 0x3B6E20C8u, 0x26D930ACu, 0x76DC4190u, 0x6B6B51F4u,
+        0x4DB26158u, 0x5005713Cu, 0xEDB88320u, 0xF00F9344u, 0xD6D6A3E8u, 0xCB61B38Cu,
+        0x9B64C2B0u, 0x86D3D2D4u, 0xA00AE278u, 0xBDBDF21Cu,
+    };
+    uint32_t c = 0xFFFFFFFFu;
+    for (size_t i = 0; i < len; i++) {
+        c ^= buf[i];
+        c = (c >> 4) ^ T[c & 0x0Fu];
+        c = (c >> 4) ^ T[c & 0x0Fu];
+    }
+    return ~c;
+}
+
+static void w_put_u16(uint8_t* p, uint16_t v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+}
+static void w_put_u32(uint8_t* p, uint32_t v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+    p[2] = (uint8_t)(v >> 16);
+    p[3] = (uint8_t)(v >> 24);
+}
+static uint16_t w_get_u16(uint8_t const* p) {
+    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+}
+
+// The dual-format loader (F-144). Built by hand, because this build no
+// longer writes version 1 -- and that is the point: what has to be read is
+// whatever is sitting on somebody's card.
+static void check_region_versions(void) {
+    printf("region format versions\n");
+
+    char path[192];
+    region_path(path, sizeof(path), TEST_DIR, 3, 0);
+    region_close_all();
+    sm_remove(path);
+
+    chunk_t a, b;
+    size_t const marker = CH_IDX(3, 41, 4);
+    fill_chunk(&a, g_ia, g_sa, 24, 0, GEN_SEED);  // region 3, local index 0
+    g_ia[marker] = BLK_GLASS;
+
+    static uint8_t payload[CHUNK_PAYLOAD_MAX];
+    size_t const   n = chunk_encode(&a, NULL, 0, payload, sizeof(payload));
+    CHECK(n > 0, "the version-1 test chunk would not encode");
+    CHECK(n <= 65535, "the test chunk (%zu) is bigger than a version-1 entry can hold", n);
+
+    FILE* f = fopen(path, "wb");
+    CHECK(f != NULL, "could not create the version-1 region");
+    if (f == NULL) return;
+
+    uint8_t h[64];
+    memset(h, 0, sizeof(h));
+    memcpy(h, REGION_MAGIC_V1, 4);
+    w_put_u16(h + 4, REGION_VERSION_WAS);
+    w_put_u16(h + 6, REGION_DIM);
+    w_put_u32(h + 8, 3);
+    w_put_u32(h + 12, 0);
+    w_put_u16(h + 16, CH_W);
+    w_put_u16(h + 18, CH_H);
+    w_put_u16(h + 20, CH_D);
+    fwrite(h, 1, sizeof(h), f);
+
+    uint8_t dir[776];
+    memset(dir, 0, sizeof(dir));
+    w_put_u32(dir, V1_DATA);  // where version 1's payloads started
+    w_put_u16(dir + 4, (uint16_t)n);
+    w_put_u32(dir + 512, 1);  // serial
+    w_put_u32(dir + 516, w_crc32(dir, 516));
+    fwrite(dir, 1, V1_DIR_BLOCK, f);
+    memset(dir, 0, sizeof(dir));
+    w_put_u32(dir + 512, 0);
+    w_put_u32(dir + 516, w_crc32(dir, 516));
+    fwrite(dir, 1, V1_DIR_BLOCK, f);
+    // Version 1's gap, reproduced exactly: copy B ends at 1104 and the
+    // first payload is at 1152.
+    for (size_t i = 64 + 2 * (size_t)V1_DIR_BLOCK; i < V1_DATA; i++) fputc(0, f);
+    fwrite(payload, 1, n, f);
+    fclose(f);
+
+    memset(&b, 0, sizeof(b));
+    b.id = g_ib;
+    b.st = g_sb;
+    b.cx = 24;
+    b.cz = 0;
+    int const r = region_read_chunk(TEST_DIR, &b, NULL);
+    printf("  a version-1 region read back as %d\n", r);
+    CHECK(r == 1, "a version-1 region did not read (got %d)", r);
+    CHECK(memcmp(g_ia, g_ib, CH_CELLS) == 0, "the version-1 chunk came back wrong");
+
+    // Reading must not quietly rewrite it: the upgrade belongs to a write.
+    region_close_all();
+    f = fopen(path, "rb");
+    if (f != NULL) {
+        if (fread(h, 1, sizeof(h), f) == sizeof(h)) {
+            CHECK(memcmp(h, REGION_MAGIC_V1, 4) == 0 && w_get_u16(h + 4) == REGION_VERSION_WAS,
+                  "reading a version-1 file changed its version");
+        }
+        fclose(f);
+    }
+
+    // The first write upgrades the whole file. Entry size is a property of
+    // the file, so a 12-byte entry cannot go into an 8-byte directory --
+    // which is why this is a rewrite and not a per-chunk upgrade.
+    fill_chunk(&a, g_ia, g_sa, 24, 0, GEN_SEED);
+    g_ia[marker] = BLK_PLANKS;
+    CHECK(region_write_chunk(TEST_DIR, &a), "writing to a version-1 region failed");
+
+    region_close_all();
+    f = fopen(path, "rb");
+    CHECK(f != NULL, "the upgraded region is not there");
+    if (f != NULL) {
+        if (fread(h, 1, sizeof(h), f) == sizeof(h)) {
+            CHECK(memcmp(h, REGION_MAGIC, 4) == 0 && w_get_u16(h + 4) == REGION_VERSION,
+                  "the write did not upgrade the region to version 2");
+        }
+        fseek(f, 0, SEEK_END);
+        long const sz = ftell(f);
+        fclose(f);
+        CHECK(sz >= (long)V2_DATA, "the upgraded file is smaller than its own data area (%ld)", sz);
+    }
+
+    memset(&b, 0, sizeof(b));
+    b.id = g_ib;
+    b.st = g_sb;
+    b.cx = 24;
+    b.cz = 0;
+    CHECK(region_read_chunk(TEST_DIR, &b, NULL) == 1, "the upgraded region did not read back");
+    CHECK(g_ib[marker] == BLK_PLANKS, "the write through the upgrade did not take");
+}
+
+// The chunk the uint16 length could not carry, measured through the encoders
+// themselves rather than assumed (F-143), and round-tripped through a region
+// file. This is what the change was for, so it is tested as a round trip.
+static void check_worst_chunk(void) {
+    printf("the worst chunk the format can hold\n");
+
+    // The pool is PSRAM and the earlier chunk_store_shutdown() gave it
+    // back, so it has to be taken again here.
+    CHECK(blockent_init(), "the block entity pool would not allocate");
+    blockent_clear();
+    mob_reset();
+    uint32_t const before = chunk_section_drops();
+
+    // A full pool of the biggest record in each, all in one chunk.
+    uint16_t worst_item = 0;
+    for (uint16_t i = BLK_COUNT; i < BLK_COUNT + ITEM_COUNT; i++) {
+        if (strlen(item_def(i).name) > strlen(item_def(worst_item).name)) worst_item = i;
+    }
+    CHECK(strlen(item_def(worst_item).name) <= TAG_NAME_MAX,
+          "the longest item name (%u) is past TAG_NAME_MAX", (unsigned)strlen(item_def(worst_item).name));
+
+    int worst_kind = 0;
+    for (int i = 0; i < MOB_KIND_COUNT; i++) {
+        if (strlen(MOBS[i].name) > strlen(MOBS[worst_kind].name)) worst_kind = i;
+    }
+
+    int32_t const cx = 32, cz = 0;  // region 4, which nothing above has touched
+    for (int i = 0; i < BE_MAX; i++) {
+        // World coordinates, not chunk coordinates: the encoder groups by
+        // chunk_of(x), so these all have to land inside chunk (cx, cz).
+        blockent_t* b = blockent_add(cx * CH_W + (i % 16), 40, cz * CH_D + (i / 16), BE_CHEST);
+        CHECK(b != NULL, "the block entity pool would not take %d records", i + 1);
+        if (b == NULL) return;
+        for (int s = 0; s < BE_SLOTS; s++) b->slot[s] = (inv_slot_t){worst_item, ITEM_STACK_MAX, 0};
+    }
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_spawn((uint8_t)worst_kind, (double)(cx * CH_W + (i % 16)) + 0.5, 45.0,
+                  (double)(cz * CH_D + (i / 16)) + 0.5, true);
+        mob_t* m = mob_at_mut(i);
+        if (m == NULL || !m->alive) continue;
+        m->tame = true;
+        m->sitting = true;
+        m->shorn = true;
+        m->age_shorn = 1;
+        m->love = 1;
+        m->breed_cd = 1;
+    }
+    CHECK(blockent_count() == BE_MAX, "%d block entities instead of %d", blockent_count(), BE_MAX);
+    CHECK(mob_live() == MOB_MAX, "%d creatures instead of %d", mob_live(), MOB_MAX);
+    CHECK(strlen(item_def(worst_item).name) == 18, "the longest item name is now %s", item_def(worst_item).name);
+
+    static uint8_t sec[CHUNK_SECTIONS_MAX];
+    size_t const be = blockent_encode_chunk(cx, cz, sec, sizeof(sec));
+    CHECK(be == SECTION_FRAME + 2u + (size_t)BE_MAX * BE_RECORD_WORST,
+          "the worst block entity section is %u bytes, chunk_codec.h says %u", (unsigned)be,
+          (unsigned)(SECTION_FRAME + 2u + (size_t)BE_MAX * BE_RECORD_WORST));
+    size_t const mo = mob_encode_chunk(cx, cz, sec, sizeof(sec));
+    // The chest number is a measurement: every slot holds the longest name
+    // in the table, so what the encoder writes is exactly what chunk_codec.h
+    // claims. The creature number is a ceiling -- it was taken with a mob
+    // name as long as the format allows, and the table's longest is shorter.
+    // What has to hold is that the encoder never goes past it.
+    CHECK(mo <= SECTION_FRAME + 2u + (size_t)MOB_MAX * MOB_RECORD_WORST,
+          "the worst creature section is %u bytes, past what chunk_codec.h allows (%u)", (unsigned)mo,
+          (unsigned)(SECTION_FRAME + 2u + (size_t)MOB_MAX * MOB_RECORD_WORST));
+    printf("  chest section %u of %u, creature section %u of %u\n", (unsigned)be,
+           (unsigned)(SECTION_FRAME + 2u + (size_t)BE_MAX * BE_RECORD_WORST), (unsigned)mo,
+           (unsigned)(SECTION_FRAME + 2u + (size_t)MOB_MAX * MOB_RECORD_WORST));
+    CHECK(chunk_section_drops() == before, "the worst chunk dropped %u records",
+          (unsigned)(chunk_section_drops() - before));
+
+    // And through the region file, which is where the length lives.
+    chunk_t a, b2;
+    fill_chunk(&a, g_ia, g_sa, cx, cz, GEN_SEED);
+    CHECK(region_write_chunk(TEST_DIR, &a), "the worst chunk would not be written");
+
+    memset(&b2, 0, sizeof(b2));
+    b2.id = g_ib;
+    b2.st = g_sb;
+    b2.cx = cx;
+    b2.cz = cz;
+    blockent_clear();
+    mob_reset();
+    int const r = region_read_chunk(TEST_DIR, &b2, NULL);
+    CHECK(r == 1, "the worst chunk did not read back (got %d)", r);
+    CHECK(blockent_count() == BE_MAX, "%d block entities came back, wanted %d", blockent_count(), BE_MAX);
+    CHECK(mob_live() == MOB_MAX, "%d creatures came back, wanted %d", mob_live(), MOB_MAX);
+    CHECK(memcmp(g_ia, g_ib, CH_CELLS) == 0, "the worst chunk's planes did not survive");
+
+    blockent_clear();
+    mob_reset();
+}
+
+// ---------------------------------------------------------------------
+//  Worlds copied off a real device
+//
+//  Everything above this is the code checked against itself. This is the
+//  code checked against somebody's save data: the region files as they came
+//  off a badge, every one of them version 1 -- the only reason the loader
+//  has to read a layout it no longer writes (F-144).
+//
+//  READ ONLY. The files are copied into the build directory first, so a bug
+//  here cannot damage the originals, and "reading a version-1 file does not
+//  rewrite it" is measured rather than assumed.
+//
+//  Skipped when the directory is not there, so `make check` stays green on a
+//  machine without somebody's save data. SM_REAL_WORLD_DIR overrides it.
+// ---------------------------------------------------------------------
+
+#define REAL_DEFAULT "../synthminer_test/synthminer"
+#define REAL_COPY    "build/host/realworlds"
+
+static bool dd_exists(char const* path);
+static void dd_rmtree(char const* path);
+
+typedef struct {
+    int    files;        // region files read
+    int    not_regions;  // .smr files that are not regions: replays
+    int    chunks;       // chunks that read
+    int    empty;        // directory slots with nothing in them
+    int    cur_a, cur_b; // which copy the reader picked per file
+    long   bytes;        // bytes on card
+    long   payload;      // bytes of chunk payload
+    size_t longest_entry;
+    size_t longest_record;
+    int    clock_sections, entity_sections, be_sections, records;
+    int    bad_magic, bad_crc, bad_bounds, bad_planes, bad_clock, off_end, mismatch, changed;
+} real_tally_t;
+
+static real_tally_t g_real;
+
+static uint32_t w_get_u32(uint8_t const* p) {
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+// The layout, rebuilt here from the version rather than taken from region.c.
+// Version 1's data area is 1152, not 64 + 2 * 520 -- the 48-byte gap the real
+// files have (F-144), and the thing this check exists to catch.
+static int real_ent(int v) { return v == 1 ? 8 : 12; }
+static int real_dir_block(int v) { return REGION_CHUNKS * real_ent(v) + 8; }
+static long real_data_off(int v) {
+    return v == 1 ? (long)V1_DATA : (long)(64 + 2 * real_dir_block(v));
+}
+
+// A plane decoded here rather than through chunk_rle_decode(), so the
+// comparison is between the loader and the file, not between the loader and
+// itself.
+static bool real_plane(uint8_t const* in, size_t n, uint8_t* plane, bool rle) {
+    if (!rle) {
+        if (n != CH_CELLS) return false;
+        memcpy(plane, in, CH_CELLS);
+        return true;
+    }
+    if ((n & 1u) != 0) return false;  // pairs, always
+    size_t w = 0;
+    for (size_t i = 0; i < n; i += 2) {
+        size_t const run = (size_t)in[i + 1] + 1;
+        if (w + run > CH_CELLS) return false;
+        memset(&plane[w], in[i], run);
+        w += run;
+    }
+    return w == CH_CELLS;
+}
+
+// A section walked by hand: u16 record count, then u16 length plus tagged
+// fields per record. What has to hold is that the records add up to the
+// section and that nothing runs past what the directory claimed.
+static void real_sections(uint8_t const* data, size_t len, real_tally_t* t) {
+    size_t r = 0;
+    while (r + 5 <= len) {
+        uint8_t const id = data[r];
+        size_t const  n  = w_get_u32(data + r + 1);
+        r += 5;
+        if (r + n > len) {
+            t->off_end++;
+            return;
+        }
+        if (id == SECTION_CHUNK_CLOCK) {
+            t->clock_sections++;
+            if (n != 4) t->bad_clock++;
+        } else if (id == SECTION_BLOCK_ENTITIES || id == SECTION_ENTITIES) {
+            if (id == SECTION_BLOCK_ENTITIES) t->be_sections++; else t->entity_sections++;
+            if (n < 2) {
+                t->bad_clock++;
+                return;
+            }
+            size_t const count = w_get_u16(data + r);
+            size_t       q     = 2;
+            for (size_t i = 0; i < count; i++) {
+                if (q + 2 > n) {
+                    t->off_end++;
+                    return;
+                }
+                size_t const rl = w_get_u16(data + r + q);
+                q += 2;
+                if (q + rl > n) {
+                    t->off_end++;
+                    return;
+                }
+                t->records++;
+                if (rl > t->longest_record) t->longest_record = rl;
+                q += rl;
+            }
+            if (q != n) t->off_end++;  // bytes no record accounts for
+        }
+        r += n;
+    }
+    if (r != len) t->off_end++;  // trailing bytes after the last section
+}
+
+static bool real_copy_file(char const* from, char const* to) {
+    char const* slash = strrchr(to, '/');
+    if (slash != NULL) {
+        char dir[256];
+        snprintf(dir, sizeof(dir), "%.*s", (int)(slash - to), to);
+        if (!sm_mkdir_p(dir)) return false;
+    }
+    FILE* in = fopen(from, "rb");
+    if (in == NULL) return false;
+    FILE* out = fopen(to, "wb");
+    if (out == NULL) {
+        fclose(in);
+        return false;
+    }
+    uint8_t part[4096];
+    size_t  n;
+    while ((n = fread(part, 1, sizeof(part), in)) > 0) fwrite(part, 1, n, out);
+    fclose(in);
+    fclose(out);
+    return true;
+}
+
+static void real_file(char const* path, real_tally_t* t) {
+    FILE* f = fopen(path, "rb");
+    if (f == NULL) {
+        t->bad_magic++;
+        return;
+    }
+    uint8_t h[64];
+    if (fread(h, 1, sizeof(h), f) != sizeof(h)) {
+        fclose(f);
+        t->bad_magic++;
+        return;
+    }
+    bool const region = memcmp(h, REGION_MAGIC, 4) == 0 || memcmp(h, REGION_MAGIC_V1, 4) == 0 ||
+                        memcmp(h, REGION_MAGIC_WAS, 4) == 0;
+    if (!region) {
+        fclose(f);
+        t->not_regions++;
+        return;
+    }
+    int const version = (int)w_get_u16(h + 4);
+    if (version != 1 && version != 2) {
+        fclose(f);
+        t->bad_magic++;
+        return;
+    }
+    if (w_get_u16(h + 6) != REGION_DIM || w_get_u16(h + 16) != CH_W || w_get_u16(h + 18) != CH_H ||
+        w_get_u16(h + 20) != CH_D) {
+        fclose(f);
+        t->bad_magic++;
+        return;
+    }
+    int32_t const rx = (int32_t)w_get_u32(h + 8);
+    int32_t const rz = (int32_t)w_get_u32(h + 12);
+
+    fseek(f, 0, SEEK_END);
+    long const size = ftell(f);
+    fclose(f);
+    if (size < (long)real_data_off(version)) {
+        t->bad_bounds++;
+        return;
+    }
+
+    // The whole file at once: this is a check, not a streamer.
+    uint8_t* buf = (uint8_t*)malloc((size_t)size);
+    if (buf == NULL) {
+        t->bad_magic++;
+        return;
+    }
+    f = fopen(path, "rb");
+    if (f == NULL || fread(buf, 1, (size_t)size, f) != (size_t)size) {
+        if (f != NULL) fclose(f);
+        free(buf);
+        t->bad_magic++;
+        return;
+    }
+    fclose(f);
+    t->files++;
+    t->bytes += size;
+    uint32_t const crc_before = w_crc32(buf, (size_t)size);
+
+    // The region root is two levels up from the file, and the header's own
+    // rx/rz must put the file back where it was found -- otherwise the
+    // bucket arithmetic and the data disagree.
+    char          root[256], bucket[256];
+    char const*   slash = strrchr(path, '/');
+    if (slash == NULL) {
+        free(buf);
+        return;
+    }
+    snprintf(bucket, sizeof(bucket), "%.*s", (int)(slash - path), path);
+    char const* up = strrchr(bucket, '/');
+    if (up == NULL) {
+        free(buf);
+        return;
+    }
+    snprintf(root, sizeof(root), "%.*s", (int)(up - bucket), bucket);
+    char rebuilt[256];
+    region_path(rebuilt, sizeof(rebuilt), root, rx, rz);
+    CHECK(strcmp(rebuilt, path) == 0, "%s is not where the bucket arithmetic puts it", path);
+
+    int  const ents = REGION_CHUNKS * real_ent(version);
+    long const oa   = 64, ob = 64 + real_dir_block(version);
+    uint8_t const* a = buf + oa;
+    uint8_t const* b = buf + ob;
+    bool const oka = w_crc32(a, (size_t)ents + 4) == w_get_u32(a + ents + 4);
+    bool const okb = w_crc32(b, (size_t)ents + 4) == w_get_u32(b + ents + 4);
+    if (!oka) t->bad_crc++;
+    if (!okb) t->bad_crc++;
+    if (!oka && !okb) {
+        free(buf);
+        return;
+    }
+    uint32_t const sa = w_get_u32(a + ents), sb = w_get_u32(b + ents);
+    bool const use_b = okb && (!oka || (int32_t)(sb - sa) > 0);
+    if (use_b) t->cur_b++; else t->cur_a++;
+    uint8_t const* cur = use_b ? b : a;
+
+    static uint8_t pid[CH_CELLS], pst[CH_CELLS];
+
+    for (int i = 0; i < REGION_CHUNKS; i++) {
+        uint8_t const* e   = cur + (size_t)i * real_ent(version);
+        uint32_t const off = w_get_u32(e);
+        uint32_t const len = version == 1 ? (uint32_t)w_get_u16(e + 4) : w_get_u32(e + 4);
+        if (off == 0 || len == 0) {
+            t->empty++;
+            continue;
+        }
+        if (off < (uint32_t)real_data_off(version) || (long)off + (long)len > size) {
+            t->bad_bounds++;
+            continue;
+        }
+        if (len > CHUNK_PAYLOAD_MAX) {
+            t->bad_bounds++;
+            continue;
+        }
+        t->payload += (long)len;
+        if (len > t->longest_entry) t->longest_entry = len;
+
+        uint8_t const* p = buf + off;
+        size_t         r = 4;
+        bool           ok = p[0] == 1;
+        for (int plane = 0; plane < 2 && ok; plane++) {
+            if (r + 2 > len) {
+                ok = false;
+                break;
+            }
+            size_t const pl = (size_t)p[r] | ((size_t)p[r + 1] << 8);
+            r += 2;
+            if (r + pl > len) {
+                ok = false;
+                break;
+            }
+            if (!real_plane(p + r, pl, plane == 0 ? pid : pst, p[2 + plane] == 1)) {
+                ok = false;
+                break;
+            }
+            r += pl;
+        }
+        if (!ok) {
+            t->bad_planes++;
+            continue;
+        }
+        real_sections(p + r, len - r, t);
+
+        // The same bytes through the loader that has to read them on the
+        // badge: planes, sections and the chunk's clock.
+        chunk_t c;
+        memset(&c, 0, sizeof(c));
+        c.id = g_ib;
+        c.st = g_sb;
+        c.cx = rx * REGION_DIM + (i % REGION_DIM);
+        c.cz = rz * REGION_DIM + (i / REGION_DIM);
+        if (region_read_chunk(root, &c, NULL) != 1) {
+            t->mismatch++;
+            continue;
+        }
+        t->chunks++;
+        if (memcmp(pid, g_ib, CH_CELLS) != 0 || memcmp(pst, g_sb, CH_CELLS) != 0) t->mismatch++;
+    }
+
+    // Reading a version-1 file must not rewrite it -- the upgrade belongs to
+    // a write. Measured here on the copy, so the originals stay untouched.
+    f = fopen(path, "rb");
+    if (f != NULL) {
+        uint8_t* again = (uint8_t*)malloc((size_t)size);
+        if (again != NULL && fread(again, 1, (size_t)size, f) == (size_t)size) {
+            if (w_crc32(again, (size_t)size) != crc_before) t->changed++;
+        }
+        if (again != NULL) free(again);
+        fclose(f);
+    }
+
+    blockent_clear();
+    mob_reset();
+    free(buf);
+}
+
+static void real_walk(char const* src, char const* dst, real_tally_t* t) {
+    sm_dir_t* d = sm_dir_open(src);
+    if (d == NULL) return;
+    bool        is_dir = false;
+    char const* name;
+    while ((name = sm_dir_next(d, &is_dir)) != NULL) {
+        char from[256], to[256];
+        if (snprintf(from, sizeof(from), "%s/%s", src, name) >= (int)sizeof(from)) continue;
+        if (snprintf(to, sizeof(to), "%s/%s", dst, name) >= (int)sizeof(to)) continue;
+        if (is_dir) {
+            real_walk(from, to, t);
+        } else if (strstr(name, ".smr") != NULL) {
+            if (real_copy_file(from, to)) real_file(to, t);
+        }
+    }
+    sm_dir_close(d);
+}
+
+static void check_real_worlds(void) {
+    printf("real device worlds\n");
+
+    char const* src = getenv("SM_REAL_WORLD_DIR");
+    if (src == NULL || *src == '\0') src = REAL_DEFAULT;
+    if (!dd_exists(src)) {
+        printf("  skipped: %s is not there\n", src);
+        return;
+    }
+
+    region_set_ext(REGION_EXT);
+    region_close_all();
+    dd_rmtree(REAL_COPY);
+    memset(&g_real, 0, sizeof(g_real));
+
+    real_walk(src, REAL_COPY, &g_real);
+
+    printf("  %d region files (%d .smr that are not regions), %d chunks read, %d empty slots\n",
+           g_real.files, g_real.not_regions, g_real.chunks, g_real.empty);
+    printf("  %ld B on card, %ld B of payload, longest entry %u B\n", g_real.bytes, g_real.payload,
+           (unsigned)g_real.longest_entry);
+    printf("  sections: %d clock, %d block entity, %d entity, %d records, longest record %u B\n",
+           g_real.clock_sections, g_real.be_sections, g_real.entity_sections, g_real.records,
+           (unsigned)g_real.longest_record);
+    printf("  directory copies chosen: A %d, B %d\n", g_real.cur_a, g_real.cur_b);
+
+    CHECK(g_real.files > 0, "nothing read from %s", src);
+    CHECK(g_real.bad_magic == 0, "%d files were not regions this build can read", g_real.bad_magic);
+    CHECK(g_real.bad_crc == 0, "%d directory copies failed their own CRC", g_real.bad_crc);
+    CHECK(g_real.bad_bounds == 0, "%d entries pointed before the data area or past the end of the file",
+          g_real.bad_bounds);
+    CHECK(g_real.bad_planes == 0, "%d chunks did not decode", g_real.bad_planes);
+    CHECK(g_real.bad_clock == 0, "%d sections were the wrong shape for their id", g_real.bad_clock);
+    CHECK(g_real.off_end == 0, "%d sections or records ran past what the directory claimed", g_real.off_end);
+    CHECK(g_real.mismatch == 0, "%d chunks came back different from an independent decode", g_real.mismatch);
+    CHECK(g_real.changed == 0, "%d version-1 files were rewritten by being read", g_real.changed);
+    CHECK(g_real.longest_entry <= CHUNK_PAYLOAD_MAX, "the biggest real chunk (%u B) is past the buffer (%u B)",
+          (unsigned)g_real.longest_entry, (unsigned)CHUNK_PAYLOAD_MAX);
+    CHECK(g_real.longest_record <= BE_RECORD_WORST, "the longest real record (%u B) is past what chunk_codec.h "
+          "allows (%u B)", (unsigned)g_real.longest_record, (unsigned)BE_RECORD_WORST);
 }
 
 // ---------------------------------------------------------------------
@@ -2124,6 +2746,38 @@ static void check_slots(void) {
               "a readable world does not read as a world");
         worldstore_delete("slot8");
         CHECK(worldstore_slot_state(7, &peek) == SLOT_EMPTY, "deleting a damaged world did not free its slot");
+    }
+
+    // A SAVE INTERRUPTED BETWEEN THE TEMP AND THE RENAME (F-146). The level
+    // is built in `level.smw.tmp` and only then put in place, so what a
+    // crash leaves is the previous level plus a temp -- never a 0-byte
+    // level, which is the shape that made two real worlds read as
+    // "(damaged)" on the badge with all of their terrain intact. Two things
+    // have to hold: the temp is put back, and a slot holding only a temp is
+    // not offered as free.
+    {
+        char dir[192], path[224], tmp[240];
+        snprintf(dir, sizeof(dir), "%s/worlds/slot8", STORE_BASE);
+        CHECK(sm_mkdir_p(dir), "could not make slot 8's directory");
+        snprintf(path, sizeof(path), "%s/level.smw", dir);
+        snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+
+        CHECK(worldstore_create_in(7, "Interrupted", 7u, &meta, &player), "could not save into slot 8");
+        CHECK(!dd_exists(tmp), "a completed save left its temp behind");
+        CHECK(worldstore_slot_state(7, &peek) == SLOT_WORLD, "a world written through a temp does not read as a world");
+
+        // The shape the crash leaves: the temp, and nothing where the level
+        // should be.
+        CHECK(sm_remove(path), "could not remove the level to stand an interrupted save in");
+        CHECK(dd_write(tmp, "SMW1 a level the rename never reached"), "could not write the leftover temp");
+        CHECK(worldstore_slot_state(7, &peek) == SLOT_DAMAGED, "a world left only as a temp reads as an empty slot");
+        CHECK(dd_exists(path) && !dd_exists(tmp), "the leftover temp was not put back");
+        CHECK(dd_reads(path, "SMW1 a level the rename never reached"), "what was put back is not the bytes that were left");
+        CHECK(!worldstore_create_in(7, "Over it", 1u, &meta, &player),
+              "a world was created over a world left as a temp");
+        worldstore_delete("slot8");
+        CHECK(worldstore_slot_state(7, &peek) == SLOT_EMPTY, "deleting the recovered world did not free its slot");
+        printf("  a save stopped before the rename: the temp was put back and the slot stayed taken\n");
     }
 
     // Deleting frees the slot, directory and all.
@@ -4583,6 +5237,42 @@ static void check_animals(void) {
     CHECK(back->age == 4321 && back->health == 3, "the dog came back with age %u and %d health", back->age,
           back->health);
     CHECK(back->body.x > 6.2 && back->body.x < 6.3, "the dog moved in the save (x %.3f)", back->body.x);
+
+    // --- A section that fills the buffer writes what fits (F-142) -----
+    //
+    // It used to abandon the whole section and report nothing: the save
+    // still succeeded, the chunk went down without its creatures, and
+    // the loss was permanent, because a chunk is rolled once (D-146).
+    // Now the records that fit are written, the count matches them, and
+    // the rest is counted.
+    mob_reset();
+    for (int i = 0; i < 12; i++) mob_spawn(MOB_PIG, (double)i + 0.5, 20.0, 6.5, false);
+    CHECK(mob_live() == 12, "%d pigs instead of 12", mob_live());
+
+    static uint8_t tight[1024];
+    size_t const   all = mob_encode_chunk(0, 0, tight, sizeof(tight));
+    CHECK(all > 0, "twelve pigs wrote nothing");
+    // Twelve identical pigs, so the same buffer can be handed a cap that
+    // holds the header (5 for the section frame, 2 for the count) and
+    // exactly one record of (u16 length + fields).
+    size_t const   slot   = (all - 7) / 12;
+    size_t const   one    = 7 + slot;
+    uint32_t const before = chunk_section_drops();
+    size_t const   fits   = mob_encode_chunk(0, 0, tight, one);
+    CHECK(fits == one, "a full buffer wrote %u bytes, wanted %u", (unsigned)fits, (unsigned)one);
+    CHECK(tight[5] == 1, "the section claims %d records, but only %u are in it", tight[5], (unsigned)fits);
+    CHECK(chunk_section_drops() - before == 11, "%u record(s) were not counted as dropped",
+          (unsigned)(chunk_section_drops() - before));
+
+    // And the reader gets exactly what is on the card, not what the
+    // chunk had: a count that is bigger than the section would walk off
+    // the end.
+    mob_reset();
+    mob_decode_section(tight + 5, fits - 5);
+    CHECK(mob_live() == 1, "the reader got %d creatures, wanted the 1 that fit", mob_live());
+
+    printf("  a pig record is %u bytes; %u fit in CHUNK_SECTIONS_MAX\n", (unsigned)slot,
+           (unsigned)(CHUNK_SECTIONS_MAX / slot));
 
     // --- Where a herd comes from -----------------------------------------
     //
@@ -8747,6 +9437,9 @@ int main(void) {
     check_region_damage();
     check_torn_write();
     check_compaction();
+    check_region_versions();
+    check_worst_chunk();
+    check_real_worlds();
     check_sections();
     check_worldstore();
     check_title_world();

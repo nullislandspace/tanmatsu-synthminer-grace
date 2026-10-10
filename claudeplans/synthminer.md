@@ -510,14 +510,39 @@ struct cmr_header {              /* 0x000, 64 bytes */
     uint32_t dir_serial;
     uint8_t  reserved[28];
 };
-struct cmr_entry {               /* 8 bytes, index = lcz*8 + lcx */
+struct cmr_entry {               /* 12 bytes, index = lcz*8 + lcx */
     uint32_t offset;             /* 0 = absent */
-    uint16_t length;
+    uint32_t length;             /* uint16 until F-144 */
     uint8_t  codec;              /* 0 raw, 1 RLE */
     uint8_t  flags;              /* bit0 has_entities */
+    uint8_t  reserved[2];        /* written zero, so a later field has room */
 };
-/* 0x040 directory copy A + crc32; 0x240 copy B + crc32; 0x440 payloads */
+/* 0x040 directory copy A + crc32; 0x348 copy B + crc32; 0x610 payloads */
 ```
+
+**`length` is a uint32 now (F-144).** It used to be a uint16, which capped a chunk
+payload at 65,535 B and left 32,757 for sections once the planes are counted -- 4.5x
+less than the measured worst case (F-143), so **no cap could ever be a guarantee**.
+Widening it is a format change, because entry size is a property of the file: both
+directory copies and the start of the payloads move with it. Version 2 is 12-byte
+entries, copies at `0x040` and `0x348`, payloads from `0x610`. Version 1 keeps its own
+numbers -- 520-byte copies, payloads from `0x480` -- and `0x480` is 48 bytes past the
+end of copy B, because `DATA_OFF` was a round number rather than a derived one, so the
+reader has to keep that gap for the files that already exist.
+
+**A version-1 file is read, never written.** Reading it needs no migration -- only
+where the directory says the bytes are changed -- but writing it does, because a
+directory is one block of fixed-size entries and cannot hold both an 8-byte and a
+12-byte one. **So the upgrade is a whole-file rewrite on the first write, not a
+per-chunk upgrade**, and it is the same code as compaction.
+
+**The magic is a label, not a gate.** New files are `SMR2`; `SMR1` and `CMR1` are
+still read, and the reader branches on the version field rather than on the digit. A
+version this build has never seen is refused rather than guessed at.
+
+**The cap can now make the worst case fit**, which is what F-144 was for: the buffer is
+sized to the measured record maxima rather than to the format's ceiling, so an encoder
+cannot overflow it and `chunk_section_drops()` is a number that must read 0.
 
 **Dual directory + serial + CRC32** is the durability mechanism (D-17). `fsync`
 *is* exported (F-06 corrects an earlier assumption), but a FAT driver's
@@ -7351,10 +7376,311 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 
   Still open: whether the share changes with depth, since the ore richness does.
 
+- **D-148** 2026-10-10, **the user**: **`CHUNK_SECTIONS_MAX` goes from 8192 to
+  16384, and forward compatibility is not a concern.**
+
+  It is a caller's buffer, not part of the format -- a section's length on the card
+  is a u32 and a reader walks whatever it is handed -- so **worlds written under
+  8192 read unchanged**, and no version bump is needed (D-30). The asymmetry runs
+  the other way: a chunk written with a bigger section cannot be read by an older
+  build, whose read buffer is `CHUNK_PAYLOAD_MAX`, and `region_compact()` steps over
+  exactly those chunks. **The user's call was that mixed-version reads on one world
+  folder are not worth designing for.**
+
+  **What raising it cannot buy is a guarantee.** `BE_MAX` is 192 and a chest record
+  is the biggest in the format, so one chunk can want ~78 KiB against any sane cap,
+  and the payload length on the card is a uint16 (Part P), which leaves 32757 for
+  sections once the planes are counted. **That is why the fix had to be the failure
+  mode rather than the number** (F-142), and `chunk_codec.h` now asserts the ceiling
+  so a further raise cannot truncate its own directory entry.
+
+  Costs four statics in `main/world/region.c` -- three `CHUNK_PAYLOAD_MAX` buffers
+  and one `CHUNK_SECTIONS_MAX` -- so **+32 KiB**, in PSRAM (F-37), 0.16% of F-22's
+  free.
+
+  **Superseded by F-144.** The uint16 ceiling this entry depends on is gone, the
+  assertion with it, and the cap is now derived from the measured record maxima -- so
+  those same four statics are 1.1 MiB, not 32 KiB. What still holds is the part the
+  user decided: forward compatibility is not a concern.
+
+- **F-142** 2026-10-10, measured and fixed: **a section that filled its buffer used
+  to lose every record in the chunk and say nothing. It now writes what fits and
+  counts the rest.**
+
+  **What it did before.** `mob_encode_chunk()` and `blockent_encode_chunk()` returned
+  0 when a record did not fit, so the whole section was dropped. **The save still
+  succeeded**: `chunk_encode()` cannot refuse a buffer it owns, because `out_cap` is
+  `CHUNK_PLANES_MAX + CHUNK_SECTIONS_MAX` and the encoders write inside the second.
+  The chunk was written without its creatures and evicted normally. **Nothing pinned
+  a slot -- the fault was purely that the loss was invisible**, and permanent here,
+  because a chunk is rolled once and does not repopulate (D-146). An earlier reading
+  of this said a refused save would pin the chunk in the ring for the session; that
+  was wrong, and the comment in `mob.c` said so until it was corrected.
+
+  **What it does now.** The records that fit are written, the u16 count is what
+  actually went in -- a reader told about a record that is not there would walk off
+  the end -- and the rest is counted by `chunk_section_drops()`, reported as
+  `secdrop=` on the trace line and as an error in the per-second log. **A furnace
+  that comes back empty is now a number that moves**, which is the same argument as
+  `s_refused` (F-125).
+
+  Measured, not guessed:
+
+  | | |
+  |---|---|
+  | A creature record | 58 B typical (56 tagged fields + the u16 length); 119 B with every optional field present |
+  | A chest record | **1,279 B worst case**, the biggest in the format -- 44 B of fields plus 27 filled slots at 46 B each, measured with the longest item name in the table (`steak_and_potatoes`). An empty chest is 44 B. |
+  | Creature records that fit in 16384 | 282 |
+  | At D-147's rate | 2-3 a chunk, ~174 B -- about 1% of the buffer |
+
+  **Tripling `MOB_MAX` costs 28 KiB and is not the reason to be careful.**
+  `sizeof(mob_t)` is 112 (`main/game/mob.h:129`), so the pool goes 14,336 → 43,008
+  B: 0.14% of F-22's free PSRAM, and the app's statics are in PSRAM (F-37), so no
+  internal SRAM is involved. **What actually grows is the separation pass**, the only
+  quadratic thing here (`main/game/mob.c:763`, `:775`): it scans the whole cap, so
+  the loop overhead goes from 8,128 to 73,728 pair tests a tick -- **9x at the same
+  live count**, because the `shove()` calls depend on live and resident, not on the
+  cap.
+
+  **`main/game/mob.h:59` is stale.** It says the pool "costs ~13 KiB", which was true
+  at 104 B a record and is 14 KiB now -- sheep's `shorn` and `age_shorn` added 8
+  bytes. Left as is, because correcting it is a code change nobody asked for.
+
+  `worldcheck` now encodes twelve identical pigs into a cap that holds the header and
+  exactly one record, and checks that the section claims one record, that the count
+  matches what is in it, that eleven were counted as dropped, and that the reader
+  gets exactly what is on the card rather than what the chunk had.
+
+- **F-143** 2026-10-10, measured: **raising the cap costs RAM always and disk only
+  when there is data -- and no buffer size can prevent the loss.**
+
+  **Disk.** `CHUNK_SECTIONS_MAX` is a caller's buffer, not a format field. The
+  directory entry stores the length actually encoded (`entry_t.length`), so a chunk
+  with two pigs writes ~174 B of section, not 16,384. **Nothing on the card is
+  reserved for the cap**, and a region file grows only when a chunk is rewritten with
+  a bigger payload -- by the bytes it actually holds, with the old payload left as
+  `waste` until compaction. **Raising the cap changes no existing file at all.**
+
+  **RAM.** It costs **32 KiB unconditionally**, whatever the data: four statics in
+  `main/world/region.c` -- three `CHUNK_PAYLOAD_MAX` at `:428`, `:464`, `:613` and one
+  `CHUNK_SECTIONS_MAX` at `:451`, each +8 KiB. In PSRAM (F-37), so no internal SRAM
+  is involved. **That is the only unconditional cost of raising it.**
+
+  **Why a bigger buffer cannot prevent the loss.** Worst case for one chunk, measured:
+
+  | | |
+  |---|---|
+  | Planes, worst case (RLE fails on both) | 32,778 B |
+  | The clock | 9 B |
+  | Block entities: `BE_MAX` 192 x 1,279, plus the 7 B section frame | 245,575 B |
+  | Creatures: `MOB_MAX` 128 x 119, plus the 7 B section frame | 15,239 B |
+  | **Total** | **293,601 B** |
+
+  against a directory entry whose length is a uint16 (Part P): **65,535, of which
+  32,757 is left for sections.** The worst case is **4.5x the format's own ceiling**,
+  so a buffer of any size can only postpone the loss, not prevent it. A room full of
+  full chests is not a pathological case -- it is a base.
+
+  **What would prevent it** -- three ways, and all three are a decision, not a fix:
+  - **A per-chunk budget checked at placement rather than at save time.**
+    `blockent_add()` already returns NULL when the pool is full, so it can also refuse
+    a placement that would push a chunk past 17,507 B of worst-case section (32,757
+    less the creatures and the clock). That is 13 worst-case chests per chunk, or 417
+    empty ones. **It turns a silent loss at save time into a visible "you cannot place
+    that here"**, and `chunk_section_drops()` becomes an assertion that must read 0,
+    like `s_refused` (F-125).
+  - **Shrink the record.** Fixed-size slots -- 6 B instead of 46 -- make a chest 206 B
+    and let 85 fit. It conflicts with D-74, which stores items by name on purpose.
+  - **Widen the directory length to u32** and size the buffer to the true worst case
+    (~293 KiB, so ~1.15 MiB of statics). **The only option that guarantees no loss
+    without a gameplay limit** -- and a real format change, since `ENT_SIZE` goes 8 ->
+    10 (it came out as 12, with two reserved bytes) and both directory copies and
+    `DATA_OFF` shift. D-148 already said mixed-version reads are not worth designing
+    for, so this is on the table.
+
+  **The user chose the third** (F-144), so the counter is no longer a report of a loss
+  -- it is a number that must read 0. **The first is still open**, and changed meaning
+  by being chosen second: with the buffer provably big enough, a per-chunk limit is a
+  gameplay guard, not a data-loss necessity (D-149).
+
+  The four statics this entry counted are now at `main/world/region.c:486`, `:509`,
+  `:522` and `:700`; the `:428`/`:451`/`:464`/`:613` above are where they were at the
+  16,384 cap.
+
+- **F-144** 2026-10-10, **the user's call**, done: **the entry length is a uint32, so
+  the buffer can be sized to the true worst case and the loss F-142 made visible stops
+  being possible.**
+
+  | | |
+  |---|---|
+  | Entry, version 1 | 8 B: u32 offset, u16 length, u8 codec, u8 flags |
+  | Entry, version 2 | 12 B: u32 offset, u32 length, u8 codec, u8 flags, 2 reserved |
+  | Directory copy | 520 B -> 776 B |
+  | Copy A / copy B / payloads | `0x040` / `0x248` / `0x480` -> `0x040` / `0x348` / `0x610` |
+  | Magic and version | `SMR1` / 1 -> `SMR2` / 2; `SMR1` and `CMR1` are still read |
+  | The four statics | 163,870 B -> **1,141,626 B (~1.1 MiB)**, 5.4% of F-22's free PSRAM |
+
+  **"Chunks get upgraded as we use them" is not possible**, and the reason is the entry
+  size: a directory is one block of fixed-size entries, so a 12-byte entry cannot go
+  into an 8-byte slot, and growing them moves copy B and the start of the payloads with
+  it. **The whole region file is rewritten in the new layout on its first write** --
+  which is what compaction already does, so the upgrade is that same code -- and a file
+  that is only ever read stays version 1.
+
+  **Version 1's data area is not 64 + 2 * 520.** `DATA_OFF` was the round number 1152,
+  48 bytes past the end of copy B, and every version-1 file on disk has that gap.
+  Deriving it instead of keeping it reads a real world as rubbish -- `worldcheck` caught
+  that, so `data_off()` has an exception for version 1 and version 2 has no gap.
+
+  **What it costs is RAM, always.** 1.1 MiB of statics against F-22's 20,604 KiB free,
+  whatever the data. **The card does not pay it**: the entry stores the length actually
+  encoded, so a chunk with two pigs still writes ~174 B.
+
+  **Two new checks.** `check_region_versions()` builds a version-1 file by hand -- with
+  its own implementation of the CRC, so the test proves the format rather than the code
+  agreeing with itself -- reads it, checks that reading did not quietly rewrite it, then
+  writes and checks that the file came back as version 2. `check_worst_chunk()` fills
+  both pools with the biggest record in each and round-trips the chunk through a region
+  file: 245,575 B of chest section against the 245,575 B `chunk_codec.h` claims, 14,855 B
+  of creature section against the 15,239 B it allows, and `chunk_section_drops()` must
+  read 0. **The chest number is checked as an equality and the creature one as a
+  ceiling**, because the creature constant was measured with a mob name as long as the
+  format allows and the table's longest is `sheep`.
+
+- **D-149** 2026-10-10, **the user**: **enforce a per-chunk limit in-game, with wiggle
+  room, and say so on the HUD** -- "so that any changes or slight math/estimation errors
+  don't immediately become a data loss on chunk save."
+
+  **F-144 changed what this is for.** With the buffer sized to the true worst case, no
+  chunk can overflow it, so the limit no longer prevents data loss. **It is a gameplay
+  guard with a warning**, and the engine refuses before the hard limit is reached so that
+  an estimation error costs a message rather than a world.
+
+  **Not written yet.** Still open: the number -- the user said all of these get tuned
+  later and the pool limit itself is not set in stone -- and whether the HUD message
+  warns at placement or refuses the placement.
+
+  **The user kept it** (2026-10-10): the guard stays, as a gameplay guard with a HUD
+  message, not as a data-loss necessity. Nothing was written for it, so it is still open
+  on the same two questions.
+
+- **F-145** 2026-10-10, measured on the real files: **the worlds copied from the device
+  load exactly as this build reads them** -- 30 region files, 979 chunks, nothing rejected.
+
+  **Read-only, and it has to be.** `check_real_worlds()` copies the folder into
+  `build/host/realworlds` and works on the copy, so the originals are never touched. It
+  skips when the folder is absent and `SM_REAL_WORLD_DIR` overrides the default
+  `../synthminer_test/synthminer`, which is what lets it live inside `make check`: a check
+  that reads a real world is also a check that could write to one.
+
+  | | |
+  |---|---|
+  | Region files | 30, all version 1 (`SMR1`); the 31st `.smr` is a replay (`CMRP`), not a region |
+  | Chunks read | **979** of 1,920 slots, 941 empty |
+  | Bytes on card | 7,518,437 (largest file 2,104,549: `worlds/slot1/region/0.0/r.0.2.smr`) |
+  | Payload bytes | 3,654,926 |
+  | Longest entry | **5,452 B** against `CHUNK_PAYLOAD_MAX` 293,601 |
+  | Sections | 979 clock, 4 block entity, 114 entity, 184 records |
+  | Longest record | 393 B against `BE_RECORD_WORST` 1,279 |
+  | Copies chosen | A 15, B 15 |
+
+  **F-144's 48-byte gap is real, not inferred.** The first payload in these files sits at
+  1152, not at 64 + 2 * 520 = 1144, in every file whose data area is untouched. A
+  `data_off()` derived from the directory instead of kept as the exception reads all 30 as
+  rubbish.
+
+  **The two directory copies are not the same data**, so the choice of copy is not a
+  formality: 29 of the 30 differ by exactly one entry -- the one the last write changed --
+  and picking the stale one reads that chunk from the wrong offset. **The rule is the
+  signed difference, `(int32_t)(sb - sa) > 0`, not `sb > sa`, and the two only part ways at
+  the wrap: no serial here is near 2^32, so a plain magnitude comparison happens to give
+  the same answer on these files, and the signed form is what survives the wrap. **A
+  cross-check that read the rule as `> 2^31` -- the inverse -- took the stale copy for the
+  15 files where copy A is ahead and disagreed with the loader on exactly those 15 chunks;
+  corrected, it agrees on all 979.** That is the whole value of the check: it compares the
+  loader against the file, not against itself.
+
+  **What the check asserts:** magic and version accepted, both copies CRC-valid, every
+  entry inside the data area and inside the file, the planes decoded by an independent RLE
+  decoder equal to the loader's output, every section and record accounted for inside the
+  payload, the bucket arithmetic putting the file back where it was found, and **reading a
+  version-1 file does not rewrite it**. `level.smw` reports format 1 = `SM_LEVEL_FORMAT` in
+  all three worlds, its palette has 51 entries, and the highest saved id in the chunks is
+  48, so the remap is identity-safe on this data.
+
+- **F-146** 2026-10-10, measured and fixed: **the crash on Esc was the chunk worker's
+  stack, not the card** -- and the "(damaged)" world is a second fault sitting on top of it.
+
+  **The fault.** `Stack protection fault` on core 1 in `cmworker`, SP 12 bytes below the
+  guard. `WORKER_STACK` was 6144, which is **6004 B usable** once FreeRTOS's guard is
+  taken. The registers are the exception handler's, not the overflowing function's, but
+  `T3` still pointed at `fseek`/`__flockfile`, so the fault landed on the file I/O at the
+  bottom of the chain.
+
+  **The chain, measured with `-fstack-usage`** (host frames; the badge cannot be built
+  here, so the device's are close but not identical):
+
+  | | |
+  |---|---|
+  | `run_job` -> `do_save` -> `world_chunk_save` | 16 + 48 + 8 |
+  | `region_write_chunk` | 1104 (`region_t` is 784 of it) |
+  | `region_compact` | 448 (`path` 192 + `tmp` 200) |
+  | `region_rewrite` | 1728 (`region_t` + `path` + `tmp`) |
+  | `region_open_state` | **1632** -- two directories, 2 x 768 |
+  | `dir_read` | **848** -- a 776-byte directory block |
+  | **Total** | **5884 B** against 6004 B usable -- 120 B, and the worker's own frame plus the `FILE` calls underneath it is more than that |
+
+  **It is the upgrade path, not the ordinary one**: the first write into a version-1
+  region is a whole-file rewrite. The shallower variants fit -- a plain append is about
+  3808 B and `world_region_maintain` about 4608 B -- **which is why some worlds upgraded
+  fine and this one did not.** F-144 is what made it tight: the entry growing from 8 to 12
+  bytes grew `region_t` from 512 to 768 and the directory block from 520 to 776, and the
+  same chain measured about 4050 B before it.
+
+  **The fix is the buffers, not the number.** `region_open_state`'s two directories and
+  `dir_read`/`dir_write`'s directory block are static, as the rest of the module already
+  is -- it is single-threaded (the handle cache has no lock), and both copies are consumed
+  into `r` before `region_open_state` returns. **The chain is 3472 B now.**
+  `WORKER_STACK` is 8192 as well, because headroom is what made it marginal rather than
+  merely tight. **Nothing recomputes these numbers**, so they live in the comment at
+  `WORKER_STACK`; a check that asserted them would have to guess the libc frames, and this
+  file does not count guesses as measurements.
+
+  **The "(damaged)" name is a different fault, and it is the one that lost data.**
+  `write_level` opened `level.smw` with `"wb"`, which empties the file before anything is
+  in it, so a failure half way through -- here a crash on another task while the main task
+  was saving on Esc -- leaves a 0-byte level. A world with no readable level file is not a
+  world: `worldstore_list()` drops it and the menu shows `SM_STR_WORLDS_DAMAGED`.
+
+  **What the copy from the card shows.** All 34 region files read fine -- 1,028 chunks,
+  nothing rejected, longest entry 5452 B, copies A 18 / B 16 -- so the terrain survived
+  completely. What was lost is only the level: `worlds/slot1/level.smw` and
+  `worlds/slot2/level.smw` are **0 bytes**, `slot3` is intact at 1223 B. **And the versions
+  agree with the chain**: slot3's regions are `SMR2`, so it took the upgrade path and
+  finished it, while the two that read as damaged are still `SMR1` -- the rewrite never
+  completed. The data was never the problem; the level file was.
+
+  **So the level is now built in a temp and only then put in place** -- `level.smw.tmp`,
+  flushed, then `sm_remove` + `sm_rename`, the same order region.c uses for a compaction
+  and for the same reason (`f_rename` will not replace a file that exists, F-06). **The
+  window in which a world has no level file is now the rename, not the whole write.** A
+  leftover temp is put back before anything asks whether the slot is a world, and that
+  matters even when the temp is torn: a world with no level file reads as an EMPTY slot
+  (F-93), which the menu offers as free and which the next world created would be written
+  straight over, while a world whose level will not decode reads as DAMAGED and is left
+  alone. **Recovering the bytes therefore protects the terrain even when the world itself
+  is gone.**
+
+  **New check:** a save that stops before the rename -- the temp is put back and the slot
+  stays taken, and a completed save leaves no temp behind.
+
 ## Verification
 
 - **Host:** `make check` = `worldcheck` + `scenecheck` + `meshcheck` +
   `hostpurity`. Seconds, no badge. Runs as part of `make build`.
+  `worldcheck` also reads the real device worlds from `../synthminer_test/synthminer`
+  through a copy (F-145), so it is green only when that folder is present; without it the
+  check prints `skipped` and the rest still runs.
 - **Device:** `make cycle TEST="perf scene=flyover secs=20"` for the frame rate
   and phase split; `make testrefs` / `make testcompare` with
   `TEST="shots scene=replay_walk ms=..."` for framebuffer-hash regressions.

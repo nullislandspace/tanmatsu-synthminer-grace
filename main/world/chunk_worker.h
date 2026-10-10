@@ -85,6 +85,13 @@ typedef struct {
     // that cannot be written pin their slots, so a card failing for
     // long enough fills the ring and the world stops arriving.
     int32_t save_failed;
+    // Records a section encoder had to leave out because the buffer
+    // filled (chunk_codec.h). Nothing here pins a slot -- the save has
+    // always succeeded, which is exactly why this used to be invisible.
+    // A chest full of slots is the record most likely to do it, and a
+    // furnace's contents are not regenerated, so this is the counter
+    // that says whether they came back.
+    int32_t section_dropped;
     // How long the worker spent deliberately NOT writing, to let the
     // card finish its own housekeeping (chunk_worker.c). Zero on a
     // healthy card; if it climbs, the card is the bottleneck and the

@@ -725,6 +725,15 @@ static void frame_stats(void) {
     if (failed > 0) {
         ESP_LOGE(TAG, "card/s: %d chunk write(s) REFUSED BY THE CARD -- kept in memory and retried", failed);
     }
+    // A different fault, and the one that used to be silent: the section
+    // buffer filled, so the chunk went down with fewer records than it
+    // held. The save still succeeded and the chunk was still evicted --
+    // what is lost is the record, and here permanently, because a chunk
+    // is rolled once (D-146).
+    int const secdrop = io.section_dropped - prev_io.section_dropped;
+    if (secdrop > 0) {
+        ESP_LOGE(TAG, "card/s: %d record(s) LOST to a full section buffer -- written without them", secdrop);
+    }
     int const paced = io.paced_ms - prev_io.paced_ms;
     if (paced > 0) {
         ESP_LOGW(TAG, "card/s: waited %d ms across %d pause(s) for the card to finish its own work", paced,
@@ -781,6 +790,7 @@ static void frame_stats(void) {
             .compact_avg_us = comp_avg,
             .compact_max_us = (int)io.compact_max,
             .save_failed    = failed,
+            .section_dropped = secdrop,
             .paced_ms       = paced,
             .phys_pending   = phys.pending,
             .phys_peak      = phys.peak,

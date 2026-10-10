@@ -12,6 +12,7 @@
 #include <string.h>
 #include "common/psram.h"
 #include "world/chunkmesh.h"
+#include "world/chunk_codec.h"
 #include "world/worldgen.h"
 #include "world/worldstore.h"
 
@@ -57,7 +58,25 @@ static char const TAG[] = "cmworker";
 //   cmworker       4  <- here: has slack, degrades invisibly
 #define WORKER_PRIO  4
 #define WORKER_CORE  1
-#define WORKER_STACK 6144
+// 8 KiB, and it used to be 6144. Measured with -fstack-usage (host frames;
+// the badge's are close but not identical, and it cannot be built here), the
+// deepest path this task can take is the FIRST write into a version-1 region,
+// because the upgrade is a whole-file rewrite:
+//
+//   worker_main -> run_job -> do_save -> world_chunk_save
+//     -> region_write_chunk    1104   (region_t is 784 of it)
+//     -> region_compact         448   (path 192 + tmp 200)
+//     -> region_rewrite        1728   (region_t + path + tmp)
+//     -> region_open_state       80   (was 1632: two directories on the stack)
+//     -> dir_read                48   (was 848: a 776-byte directory block)
+//   = 3472 B plus the worker's own frame and the FILE calls under the deepest one.
+//
+// Before those buffers went static the same path measured 5884 B against
+// 6004 B usable: 120 B for the worker's own frame and the fseek/fread/fwrite
+// underneath it, which is not enough. The badge crashed 12 bytes past the guard
+// on exactly this path (F-146). Static buffers are the fix; the number is raised anyway,
+// because the headroom is what made it marginal rather than merely tight.
+#define WORKER_STACK 8192
 #define QUEUE_DEPTH  48
 #endif
 
@@ -115,6 +134,7 @@ static int32_t  s_load_n, s_save_n;
 static int64_t  s_compact_us, s_compact_max;
 static int32_t  s_compact_n;
 static int32_t  s_save_failed;
+static int32_t  s_section_dropped;
 static int32_t  s_paced_ms, s_paced_n;   // time given back to the card  // writes the card refused; see apply()
 
 void chunk_worker_io_stats(chunk_worker_io_t* out) {
@@ -129,6 +149,7 @@ void chunk_worker_io_stats(chunk_worker_io_t* out) {
     out->compact_us  = s_compact_us;
     out->compact_max = s_compact_max;
     out->save_failed = s_save_failed;
+    out->section_dropped = s_section_dropped;
     out->paced_ms    = s_paced_ms;
     out->paced_n     = s_paced_n;
 }
@@ -273,10 +294,17 @@ static void pace_after_write(int64_t took_us, bool ok) {
 static bool do_save(int32_t cx, int32_t cz) {
     chunk_t const* c = chunk_find(cx, cz);
     if (c == NULL) return false;
+    // What the section encoders could not fit (chunk_codec.h). A chunk
+    // that fills its section buffer is written as it fits and evicted
+    // normally, so this is a loss to count rather than a save to retry
+    // for the rest of the session.
+    uint32_t const drops_before = chunk_section_drops();
 #ifndef SM_HOST
     int64_t const ts0 = esp_timer_get_time();
 #endif
     bool const wrote = world_chunk_save(c);
+    uint32_t const dropped = chunk_section_drops() - drops_before;
+    if (dropped > 0) s_section_dropped += (int32_t)dropped;
 #ifndef SM_HOST
     int64_t const dt = esp_timer_get_time() - ts0;
     if (wrote) {

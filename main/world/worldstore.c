@@ -108,6 +108,25 @@ static void level_path(char* out, size_t cap, char const* slug) {
     if (file_exists(was)) snprintf(out, cap, "%s", was);
 }
 
+// A save that stopped between building the temp and putting it in place
+// (write_level) leaves the whole level sitting in `level.smw.tmp`. Put it
+// back before anything asks whether this is a world.
+//
+// Even a torn temp is worth putting back, and that is the reason this
+// exists: a world with no level file reads as an EMPTY slot (F-93), which
+// the menu offers as free and which the next world created would be written
+// straight over. A world whose level file will not decode reads as DAMAGED
+// and is left alone. Recovering the bytes therefore protects the terrain
+// even when the world itself is gone.
+static void level_recover(char const* slug) {
+    char path[192];
+    level_path(path, sizeof(path), slug);
+    if (file_exists(path)) return;
+    char tmp[200];
+    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) return;
+    if (file_exists(tmp)) sm_rename(tmp, path);
+}
+
 // --- Slugs ------------------------------------------------------------
 
 // A directory name derived from what the player typed: lower case,
@@ -489,9 +508,23 @@ static void read_items(NbtReader* r, world_items_t* items) {
 }
 
 static bool write_level(char const* slug, world_meta_t const* m, player_state_t const* p, world_items_t const* items) {
-    char path[192];
+    // NOT "wb" on the real file. Truncating in place empties the level
+    // before anything is in it, so a failure half way through leaves a
+    // 0-byte level.smw -- and a world with no readable level file is not a
+    // world at all: the list drops it and the menu shows "(damaged)".
+    // Measured on the badge, 2026-10-10: the chunk worker overflowed its
+    // stack during an Esc save and left slot1 and slot2 at 0 bytes with all
+    // 34 of their region files intact (F-146). The terrain survived; only
+    // the level did not, and there is nothing left to rebuild the name, the
+    // spawn or the clock from.
+    //
+    // So the new file is built whole and only then put in place, the same
+    // order region.c uses for a compaction. The window where the world has
+    // no level file is the rename, not the whole write.
+    char path[192], tmp[200];
     level_path(path, sizeof(path), slug);
-    FILE* f = fopen(path, "wb");
+    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) return false;
+    FILE* f = fopen(tmp, "wb");
     if (f == NULL) return false;
 
     // Our own magic first, then the NBT stream. The major version is
@@ -500,6 +533,7 @@ static bool write_level(char const* slug, world_meta_t const* m, player_state_t 
     char const magic[4] = {SM_LEVEL_MAGIC[0], SM_LEVEL_MAGIC[1], SM_LEVEL_MAGIC[2], SM_LEVEL_MAJOR};
     if (fwrite(magic, 1, sizeof(magic), f) != sizeof(magic)) {
         fclose(f);
+        sm_remove(tmp);
         return false;
     }
 
@@ -522,9 +556,22 @@ static bool write_level(char const* slug, world_meta_t const* m, player_state_t 
     write_items(&w, items);
     nbt_write_end(&w);
 
-    bool const ok = w.error == 0;
+    bool const ok = w.error == 0 && fflush(f) == 0;
     fclose(f);
-    return ok;
+    if (!ok) {
+        sm_remove(tmp);
+        return false;
+    }
+    // f_rename will not replace a file that exists, so the old one has to
+    // go first (F-06). From here until the rename lands the temp is the
+    // only copy of the level -- milliseconds, against the whole write for
+    // the shape this replaces. Retries first, because a card that is merely
+    // busy usually takes it a moment later.
+    if (!sm_remove(path)) return false;
+    for (int try = 0; try < 3; try++) {
+        if (sm_rename(tmp, path)) return true;
+    }
+    return false;
 }
 
 // `p` may be NULL when only the metadata is wanted (the world list).
@@ -539,6 +586,7 @@ static bool level_magic(char const magic[4]) {
 // open while they run. `items` NULL skips the dropped items.
 static bool read_level(char const* slug, world_meta_t* m, player_state_t* p, bool palette, world_items_t* items) {
     char path[192];
+    level_recover(slug);
     level_path(path, sizeof(path), slug);
     FILE* f = fopen(path, "rb");
     if (f == NULL) return false;
@@ -781,6 +829,7 @@ slot_state_t worldstore_slot_state(int slot, world_meta_t* meta) {
     memset(meta, 0, sizeof(*meta));
     char slug[SM_WORLD_SLUG_MAX], path[192];
     worldstore_slot_slug(slot, slug, sizeof(slug));
+    level_recover(slug);
     level_path(path, sizeof(path), slug);
     FILE* f = fopen(path, "rb");
     if (f == NULL) return SLOT_EMPTY;

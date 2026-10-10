@@ -11,6 +11,14 @@
 //  is far more than this world touches at once, and a small region
 //  makes compaction cheap.
 //
+//  Each directory entry is: u32 offset, u32 length, u8 codec, u8 flags,
+//  2 reserved = 12 bytes. Version 1's entry had a uint16 length, which
+//  capped a chunk payload at 65535 bytes; widening it is what let the
+//  section buffer be sized to the true worst case rather than to that
+//  ceiling (F-144). Entry size is a property of the FILE, so a directory
+//  cannot hold both -- a version-1 file reads fine and comes back as
+//  version 2 the first time it is written to.
+//
 //  DURABILITY WITHOUT TRUSTING fsync. The directory is stored TWICE,
 //  each copy with its own CRC32 and a serial number, and a write
 //  updates the STALE copy. So whatever happens, one copy is intact:
@@ -42,16 +50,24 @@
 
 #define REGION_DIM   8
 #define REGION_CHUNKS (REGION_DIM * REGION_DIM)
-// "SMR" + the MAJOR version digit. Like level.smw's, it moves only when
-// the layout changes wholesale; a mismatched major is refused, not
-// guessed at. REGION_VERSION below is the minor revision within it.
+// "SMR" + the MAJOR version digit. Like level.smw's, it moves when the
+// layout changes wholesale -- and the u32 entry length did (F-144), because
+// a fixed-size entry means both directory copies and the start of the
+// payloads move with it.
+//
+// The digit is a label, not a gate: what the reader branches on is
+// REGION_VERSION, and version 1 is READ rather than refused, because
+// nothing about a version-1 CHUNK changed -- only where the directory says
+// its bytes are. What this build writes is version 2.
 #define REGION_EXT     ".smr"
 #define REGION_EXT_WAS ".cmr"  // CraftMiner's (D-93)
-#define REGION_MAGIC   "SMR1"
-// And what CraftMiner wrote (D-91): read, never written. A region that
-// is compacted or rewritten comes back under the new name by itself.
-#define REGION_MAGIC_WAS "CMR1"
-#define REGION_VERSION 1
+#define REGION_MAGIC     "SMR2"
+#define REGION_MAGIC_V1  "SMR1"  // what this build wrote before F-144: read, never written
+#define REGION_MAGIC_WAS "CMR1"  // And what CraftMiner wrote (D-91): read, never written. A
+                                 // region that is compacted or rewritten comes back under the
+                                 // new name by itself.
+#define REGION_VERSION      2
+#define REGION_VERSION_WAS  1
 
 // --- Where region files live ------------------------------------------
 //

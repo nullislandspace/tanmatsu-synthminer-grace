@@ -29,6 +29,8 @@
 #include <stdint.h>
 
 #include "world/chunk.h"
+#include "world/blockent.h"
+#include "game/mob.h"
 
 // --- Sections ---------------------------------------------------------
 //
@@ -66,11 +68,41 @@
 // a caller's buffer is this plus whatever it allows them.
 #define CHUNK_PLANES_MAX (4u + 2u * (3u + (size_t)CH_CELLS))
 
-// Room for the sections of one chunk. A chunk with hundreds of entities
-// would be pathological; this is generous and still bounded.
-#define CHUNK_SECTIONS_MAX 8192u
+// Room for the sections of one chunk, sized to the TRUE worst case rather
+// than to a guess. That is only possible now that the region directory's
+// length is a uint32 (F-144): the old uint16 capped a payload at 65535 and
+// left 32757 for sections, which the worst case exceeds by 4.5x, so no cap
+// could ever be a guarantee.
+
+// The record maxima are measured, not estimated (F-142), and worldcheck
+// re-measures them against the live tables so these cannot go stale.
+#define BE_RECORD_WORST   1279u  // 44 B of fields + 27 filled slots at 46 B
+#define MOB_RECORD_WORST  119u   // every optional field present
+#define SECTION_FRAME     5u     // u8 id + u32 length
+
+#define CHUNK_SECTIONS_MAX (SECTION_FRAME + 2u + (size_t)BE_MAX * BE_RECORD_WORST +   /* block entities */ \
+                            SECTION_FRAME + 2u + (size_t)MOB_MAX * MOB_RECORD_WORST +  /* creatures */ \
+                            SECTION_FRAME + 4u)                                        /* the chunk clock */
 
 #define CHUNK_PAYLOAD_MAX (CHUNK_PLANES_MAX + CHUNK_SECTIONS_MAX)
+
+// Because every record here comes from a pool that is itself bounded, the
+// encoders cannot overflow: `chunk_section_drops()` is now a number that
+// must read 0, and the loss F-142 made visible is no longer possible.
+//
+// What it costs is RAM, always, whatever the data -- four statics in
+// region.c, three CHUNK_PAYLOAD_MAX and one CHUNK_SECTIONS_MAX, so
+// 1,141,626 B, about 1.1 MiB of PSRAM (F-37) against F-22's 20,604 KiB
+// free. The card does not pay it: the directory entry stores the length
+// actually encoded, so a chunk with two pigs still writes ~174 B.
+
+// RECORDS A SECTION ENCODER HAD TO LEAVE OUT because the buffer filled.
+// Cumulative since boot, and zero in normal play. The point is that it
+// is a number that MOVES: a section that did not fit used to write
+// nothing at all and say nothing at all, which is the same fault as a
+// full pool (F-125) -- the world stops quietly.
+uint32_t chunk_section_drops(void);
+void     chunk_note_drops(uint32_t n);
 
 // --- The plane codec --------------------------------------------------
 
