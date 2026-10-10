@@ -155,3 +155,16 @@ bool region_compact(char const* dir, int32_t rx, int32_t rz);
 void region_close_all(void);
 
 bool region_should_compact(char const* dir, int32_t rx, int32_t rz);
+
+// Why the last region operation failed, as a short single word for the
+// flight recorder (see common/trace.h). NULL when it did not fail.
+//
+// A word rather than a code, because a code needs a table before anybody
+// can read it, and the trace is read by a person and by a script that
+// already reads keys rather than columns.
+//
+// LITERALS ONLY, and single-threaded for the same reason as the handle
+// cache: the chunk worker captures this pointer on its own task and main
+// prints it later, so a buffer here would be overwritten by the next job
+// before anyone read it.
+char const* region_last_error(void);

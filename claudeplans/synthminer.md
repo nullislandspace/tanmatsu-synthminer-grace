@@ -7762,6 +7762,61 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   `malloc` behaved; a `bounced` that climbs means the app is being handed non-cacheable memory -- which
   is now survivable rather than fatal.
 
+- **F-149** 2026-10-10, done: **the flight recorder now names the chunk it could not read or write.**
+
+  **What the recorder could say before.** A count: `cardfail=31` on the T line, and the
+  analyzer's banner "THE CARD REFUSED 31 CHUNK WRITE(S)". **A count does not say WHICH
+  chunks**, and the chunk is the part a person can go and look at. It matters more for reads
+  than for writes: a refused write leaves the chunk dirty and retried, while **a failed read
+  makes the game generate the chunk fresh and write it back over the player's** -- a furnace,
+  a chest, a planted field, gone, with no record that it was ever there.
+
+  **The line.** Kind `E`, one per failure:
+
+  ```
+  E t=<when> op=load|save ch=<cx>,<cz> why=<reason>
+  ```
+
+  Flushed on the line, like `trace_event`, not at the next second. The point of an error line
+  is the crash that follows it, and a failure that only reaches the file after the game is
+  gone is a failure the recorder did not record.
+
+  **Why the reason is a word and not a code.** `region.c` is in the pure set, so it cannot
+  reach `common/trace.h` (`tools/hostpurity.sh`). It records a reason instead, and the chunk
+  worker captures it on its own task; `apply()` prints it, because the recorder has no lock
+  and only main may write to it. **Literals only, never a buffer** -- the pointer is captured
+  on the worker and read on main, so a buffer would be overwritten by the next job before
+  anybody read it. Single words only, because `traceanalyse.py` reads keys and a reason with a
+  space in it reads as two: `path`, `open`, `header`, `directory`, `payload`, `decode`,
+  `bucket`, `create`, `read`, `write`, `encode`, `remove`, `rename`, `tmp-recovered`,
+  `no-world`, `no-chunk`, `records-dropped`.
+
+  **Two failure modes the code used to answer wrongly, and now fixes.** Both are data loss,
+  and both come from `fopen` not saying why it failed:
+
+  - `region_read_chunk` returned **0** for a region that exists but would not open. 0 means
+    "not stored", so the caller generated the chunk and wrote it back -- over the player's
+    data. It now returns **-1**, and `sm_exists()` (`world/vfs_compat.h`, a `stat` call that
+    graceloader does export) is what tells "the file is not there", which is normal, from
+    "the file is there and the card would not open it", which is not.
+  - `region_write_chunk` went straight to `"w+b"` for a region it believed was new. **An open
+    for write truncates**, so a region that is merely refusing -- very likely fine once the
+    card settles -- lost 64 chunks. It now checks `sm_exists()` first and refuses instead.
+
+  `region_recover_tmp()` reports `tmp-recovered` even when it works, because whether a
+  compaction interrupted mid-rename left the data or lost it is the single most important
+  thing this file can say.
+
+  **What the analyzer does with it.** `tools/traceanalyse.py` gained a chunk-error section:
+  the count, a breakdown by reason, and the first ten with their time and chunk. `worldcheck`
+  asserts the reasons on the damage cases -- `directory` for both copies destroyed, `decode`
+  for a corrupt payload, and **NULL after a healthy read**, which is the assertion that keeps
+  a working chunk from being reported as a failure.
+
+  **Status.** `make check` is green. The device run that prompted this (the 0x106 writes,
+  F-147/F-148) is reported fixed by the user; the longer play session is still pending, and
+  this is what will show whether it stayed fixed.
+
 ## Verification
 
 - **Host:** `make check` = `worldcheck` + `scenecheck` + `meshcheck` +

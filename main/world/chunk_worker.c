@@ -108,6 +108,8 @@ typedef struct {
     uint8_t sect;
     uint8_t ok;
     int32_t cx, cz;
+    char const* why;  // JOB_LOAD/JOB_SAVE: why it failed, NULL if it did not
+    uint16_t  dropped;  // JOB_SAVE: section records the encoder could not fit
     mesh_t  mesh;  // JOB_MESH only; ownership passes to main on receive
 } result_t;
 
@@ -183,7 +185,7 @@ static volatile int  s_in_flight;
 // Bring a chunk into residence: from the card if it is there, generated
 // if it is not. Runs on the worker while the chunk is CS_LOADING, so
 // nothing else may look at it.
-static bool do_load(int32_t cx, int32_t cz) {
+static bool do_load(int32_t cx, int32_t cz, result_t* res) {
     // chunk_slot_claimed, not chunk_find: the chunk is CS_LOADING, which
     // chunk_find hides on purpose so no game code reads a half-filled
     // one. This is the code doing the filling.
@@ -194,6 +196,9 @@ static bool do_load(int32_t cx, int32_t cz) {
     int64_t const tl0 = esp_timer_get_time();
 #endif
     int const r = world_chunk_load(c);
+    // Captured here rather than in run_job, because a job that never
+    // reached the store must not report the previous job's failure.
+    if (r < 0) res->why = worldstore_last_error();
 #ifndef SM_HOST
     if (r == 1) {
         int64_t const dt = esp_timer_get_time() - tl0;
@@ -294,7 +299,7 @@ static void pace_after_write(int64_t took_us, bool ok) {
 #endif
 }
 
-static bool do_save(int32_t cx, int32_t cz) {
+static bool do_save(int32_t cx, int32_t cz, result_t* res) {
     chunk_t const* c = chunk_find(cx, cz);
     if (c == NULL) return false;
     // What the section encoders could not fit (chunk_codec.h). A chunk
@@ -307,7 +312,11 @@ static bool do_save(int32_t cx, int32_t cz) {
 #endif
     bool const wrote = world_chunk_save(c);
     uint32_t const dropped = chunk_section_drops() - drops_before;
-    if (dropped > 0) s_section_dropped += (int32_t)dropped;
+    if (dropped > 0) {
+        s_section_dropped += (int32_t)dropped;
+        res->dropped = (uint16_t)dropped;
+    }
+    if (!wrote) res->why = worldstore_last_error();
 #ifndef SM_HOST
     int64_t const dt = esp_timer_get_time() - ts0;
     if (wrote) {
@@ -354,6 +363,22 @@ static bool do_save(int32_t cx, int32_t cz) {
 // chunk's visible state happens here, which is what makes the contract
 // hold without locks.
 static void apply(result_t* r) {
+    // THE FLIGHT RECORDER FIRST. A chunk whose read failed is generated
+    // fresh and then written back over whatever was on the card, so this
+    // line is the only record that the player's data for that chunk was
+    // ever there. Same for a save the card refused: the chunk stays dirty
+    // and is retried, but a section that would not fit its buffer is gone
+    // either way, and only this says which chunk it was in.
+    //
+    // Main task only, which is the whole point of applying results here:
+    // the recorder has no lock, and the worker would otherwise write into
+    // the same buffer the frame is writing.
+    if (r->kind == JOB_LOAD || r->kind == JOB_SAVE) {
+        char const* const op = (r->kind == JOB_LOAD) ? "load" : "save";
+        if (r->why != NULL) trace_chunk_error(op, r->cx, r->cz, r->why);
+        if (r->dropped > 0) trace_chunk_error(op, r->cx, r->cz, "records-dropped");
+    }
+
     chunk_t*   c    = &(*chunk_slot_at(chunk_slot(r->cx, r->cz)));
     bool const mine = c->cx == r->cx && c->cz == r->cz;
 
@@ -472,13 +497,13 @@ static void run_job(job_t const* j, result_t* r) {
 
     switch (j->kind) {
         case JOB_LOAD:
-            r->ok = do_load(j->cx, j->cz) ? 1 : 0;
+            r->ok = do_load(j->cx, j->cz, r) ? 1 : 0;
             break;
         case JOB_MESH:
             r->ok = do_mesh(j->cx, j->cz, j->lod, j->sect, &r->mesh) ? 1 : 0;
             break;
         case JOB_SAVE:
-            r->ok = do_save(j->cx, j->cz) ? 1 : 0;
+            r->ok = do_save(j->cx, j->cz, r) ? 1 : 0;
             break;
         default:
             break;

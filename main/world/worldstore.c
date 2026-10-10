@@ -57,6 +57,20 @@ static uint8_t s_remap[256];
 static bool    s_remap_needed;
 static int     s_unknown_cells;
 
+// Why the last chunk operation failed. Literals only, for the reason given
+// in worldstore.h: the worker captures this pointer on its task and main
+// prints it on its own.
+static char const* s_last_error;
+
+static void failed(char const* why) { s_last_error = why; }
+
+char const* worldstore_last_error(void) {
+    // The region's reason first: it is the one that names the card call
+    // that failed, and the store has nothing to add to it.
+    char const* const r = region_last_error();
+    return r != NULL ? r : s_last_error;
+}
+
 // --- Paths ------------------------------------------------------------
 
 static void worlds_dir(char* out, size_t cap) {
@@ -1122,7 +1136,15 @@ bool worldstore_open_bench(uint32_t seed, world_meta_t* meta, player_state_t* pl
 // --- Chunks -----------------------------------------------------------
 
 int world_chunk_load(chunk_t* c) {
-    if (!s_open || c == NULL) return -1;
+    s_last_error = NULL;
+    if (!s_open) {
+        failed("no-world");
+        return -1;
+    }
+    if (c == NULL) {
+        failed("no-chunk");
+        return -1;
+    }
     // Nothing is ever stored for a scratch world, so every chunk is
     // "not on the card" and the generator makes it. That is the whole
     // implementation.
@@ -1137,7 +1159,15 @@ int world_chunk_load(chunk_t* c) {
 }
 
 bool world_chunk_save(chunk_t const* c) {
-    if (!s_open || c == NULL) return false;
+    s_last_error = NULL;
+    if (!s_open) {
+        failed("no-world");
+        return false;
+    }
+    if (c == NULL) {
+        failed("no-chunk");
+        return false;
+    }
     // Succeeds without writing. It has to SUCCEED rather than refuse:
     // the streamer will not evict a chunk whose save failed, so a
     // refusal here would pin every edited chunk in the ring forever.

@@ -38,6 +38,12 @@ bool sm_mkdir_p(char const* path) {
     return stat(buf, &st) == 0;
 }
 
+bool sm_exists(char const* path) {
+    if (path == NULL || *path == '\0') return false;
+    struct stat st;
+    return stat(path, &st) == 0;
+}
+
 #ifdef SM_HOST
 
 // ---- Host: plain stdio and dirent -----------------------------------

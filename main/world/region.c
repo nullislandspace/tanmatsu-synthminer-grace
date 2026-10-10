@@ -123,6 +123,25 @@ void region_set_ext(char const* ext) {
     snprintf(s_ext, sizeof(s_ext), "%s", (ext != NULL && *ext != '\0') ? ext : REGION_EXT);
 }
 
+// --- Why the last operation failed ------------------------------------
+
+// Set at the failure points and cleared at the top of every operation, so
+// a caller that has just been handed a failure can say which one it got.
+
+// This exists because a failure here used to be a bare `return false`, and
+// the flight recorder could only count it (common/trace.h). A counter that
+// says "the card refused 31 writes" does not say WHICH chunks, and the
+// chunk is the part a person can go and look at.
+//
+// LITERALS, not a buffer: the chunk worker captures this pointer on its
+// own task and main prints it later, so a buffer here would be overwritten
+// by the next job before anybody read it.
+static char const* s_last_error;
+
+static void failed(char const* why) { s_last_error = why; }
+
+char const* region_last_error(void) { return s_last_error; }
+
 // --- The open-file cache ----------------------------------------------
 //
 // Every read and every write used to fopen() by path and fclose(). On
@@ -296,12 +315,22 @@ static bool header_read(FILE* f, uint32_t* waste, int* version) {
     if (fread(h, 1, sizeof(h), f) != sizeof(h)) return false;
     if (memcmp(h, REGION_MAGIC, 4) != 0 && memcmp(h, REGION_MAGIC_V1, 4) != 0 &&
         memcmp(h, REGION_MAGIC_WAS, 4) != 0) {
+        failed("header");
         return false;
     }
     uint32_t const v = get_u16(h + 4);
-    if (v != REGION_VERSION && v != REGION_VERSION_WAS) return false;
-    if (get_u16(h + 6) != REGION_DIM) return false;
-    if (get_u16(h + 16) != CH_W || get_u16(h + 18) != CH_H || get_u16(h + 20) != CH_D) return false;
+    if (v != REGION_VERSION && v != REGION_VERSION_WAS) {
+        failed("header");
+        return false;
+    }
+    if (get_u16(h + 6) != REGION_DIM) {
+        failed("header");
+        return false;
+    }
+    if (get_u16(h + 16) != CH_W || get_u16(h + 18) != CH_H || get_u16(h + 20) != CH_D) {
+        failed("header");
+        return false;
+    }
     *waste = get_u32(h + 24);
     *version = (int)v;
     return true;
@@ -372,7 +401,10 @@ static bool region_open_state(FILE* f, int version, region_t* r) {
     bool const oka = dir_read(f, 0, version, a, &sa);
     bool const okb = dir_read(f, 1, version, b, &sb);
 
-    if (!oka && !okb) return false;
+    if (!oka && !okb) {
+        failed("directory");
+        return false;
+    }
     // Serial numbers wrap; the newer one is the one the other is behind.
     bool const use_b = okb && (!oka || (int32_t)(sb - sa) > 0);
     memcpy(r->dir, use_b ? b : a, sizeof(r->dir));
@@ -430,7 +462,10 @@ static void take_section(uint8_t id, uint8_t const* data, size_t len, void* user
 // only when the file is missing, which outside this window it never is.
 static void region_recover_tmp(char const* path) {
     char tmp[200];
-    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) return;
+    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) {
+        failed("path");
+        return;
+    }
     FILE* t = fopen(tmp, "rb");
     if (t == NULL) return;
     // Only if it is big enough to hold a header and both directories;
@@ -453,14 +488,27 @@ static void region_recover_tmp(char const* path) {
     }
     cache_drop(path);
     cache_drop(tmp);
-    sm_rename(tmp, path);
+    if (!sm_rename(tmp, path)) {
+        failed("rename");
+        return;
+    }
+    // Reported even when it works. A compaction that died between removing
+    // the region and renaming the temp into its place leaves the temp as the
+    // only copy of 64 chunks; whether the player's data survived or not is
+    // the single most important thing the flight recorder can say, and
+    // "recovered" is the only word in the file that records it.
+    failed("tmp-recovered");
 }
 
 int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
     if (c == NULL) return -1;
     char path[192];
     int32_t const rx = region_of(c->cx), rz = region_of(c->cz);
-    if (!region_path(path, sizeof(path), dir, rx, rz)) return -1;
+    s_last_error = NULL;
+    if (!region_path(path, sizeof(path), dir, rx, rz)) {
+        failed("path");
+        return -1;
+    }
 
     FILE* f = cache_open(path, false);
     if (f == NULL) {
@@ -469,7 +517,20 @@ int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
         region_recover_tmp(path);
         f = cache_open(path, false);
     }
-    if (f == NULL) return 0;  // no region: not an error, just no chunk
+    if (f == NULL) {
+        // Two different things look the same to fopen, and they are
+        // opposite findings: the region is not there (normal -- a world is
+        // mostly regions the player has not reached), or it is there and
+        // the card would not open it. `stat` is exported by graceloader, so
+        // the recorder can name the second, and the second must not answer
+        // 0: 0 sends the caller to the generator, and a generated chunk is
+        // written back over the player's.
+        if (sm_exists(path)) {
+            failed("open");
+            return -1;
+        }
+        return 0;  // no region: not an error, just no chunk
+    }
 
     uint32_t waste = 0;
     region_t r;
@@ -497,13 +558,21 @@ int region_read_chunk(char const* dir, chunk_t* c, uint8_t const* remap) {
     static uint8_t buf[CHUNK_PAYLOAD_MAX];
     if (e.length > sizeof(buf) || fseek(f, (long)e.offset, SEEK_SET) != 0 ||
         fread(buf, 1, e.length, f) != e.length) {
+        // The directory points at bytes that are not in the file. This is
+        // the one failure that is not the card: the file is readable, the
+        // header is readable, and the chunk itself is gone.
+        failed("payload");
         cache_drop(path);
         return -1;
     }
 
     // A payload that will not decode is a lost chunk, not a lost world:
     // report "not there" and let it be generated again.
-    return chunk_decode_ex(buf, e.length, c, remap, take_section, c) ? 1 : 0;
+    if (!chunk_decode_ex(buf, e.length, c, remap, take_section, c)) {
+        failed("decode");
+        return 0;
+    }
+    return 1;
 }
 
 // --- Writing ----------------------------------------------------------
@@ -512,7 +581,11 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     if (c == NULL || c->id == NULL) return false;
     char path[192];
     int32_t const rx = region_of(c->cx), rz = region_of(c->cz);
-    if (!region_path(path, sizeof(path), dir, rx, rz)) return false;
+    s_last_error = NULL;
+    if (!region_path(path, sizeof(path), dir, rx, rz)) {
+        failed("path");
+        return false;
+    }
 
     // The chunk's block entities -- furnaces, and chests after them --
     // built first, then handed to the encoder as the section it has
@@ -532,7 +605,10 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
 
     static uint8_t buf[CHUNK_PAYLOAD_MAX];
     size_t const   n = chunk_encode(c, sn > 0 ? sections : NULL, sn, buf, sizeof(buf));
-    if (n == 0) return false;
+    if (n == 0) {
+        failed("encode");
+        return false;
+    }
 
     // Made if it is not there: this is the only path that creates one.
     long  existing = -1;
@@ -552,6 +628,7 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
                 // region that is very likely fine once the card
                 // settles. The chunk stays dirty and is retried.
                 cache_drop(path);
+                failed("open");
                 return false;
             }
             existing = ftell(f);
@@ -566,9 +643,24 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
         } else {
             // Genuinely the first region in this 2048 x 2048 square, so
             // its bucket may not exist either.
-            if (!region_bucket_dir(dir, rx, rz)) return false;
+            if (!region_bucket_dir(dir, rx, rz)) {
+                failed("bucket");
+                return false;
+            }
+            // NOT straight to "w+b". A file that is there and only failed
+            // to open is the same case as the branch above: opening it for
+            // write would truncate a region that is very likely fine once
+            // the card settles, and 64 chunks of a player's world would go
+            // with it. `stat` is what tells "not there" from "refused".
+            if (sm_exists(path)) {
+                failed("open");
+                return false;
+            }
             f = cache_open(path, true);
-            if (f == NULL) return false;
+            if (f == NULL) {
+                failed("open");
+                return false;
+            }
         }
     }
     region_t r;
@@ -577,6 +669,7 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
     if (existing <= 0) {
         if (!region_create(f, rx, rz, &r)) {
             cache_drop(path);
+            failed("create");
             return false;
         }
     } else if (!header_read(f, &waste, &version) || !region_open_state(f, version, &r)) {
@@ -595,7 +688,10 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
         if (!region_compact(dir, rx, rz)) return false;
         // Compaction replaces the file, so the handle it had is gone.
         f = cache_open(path, false);
-        if (f == NULL) return false;
+        if (f == NULL) {
+            failed("open");
+            return false;
+        }
         if (!header_read(f, &waste, &version) || !region_open_state(f, version, &r)) {
             cache_drop(path);
             return false;
@@ -647,6 +743,7 @@ bool region_write_chunk(char const* dir, chunk_t const* c) {
 fail:
     // A handle that has failed mid-write is not one to keep and reuse.
     cache_drop(path);
+    failed("write");
     return false;
 }
 
@@ -654,13 +751,23 @@ fail:
 
 bool region_should_compact(char const* dir, int32_t rx, int32_t rz) {
     char path[192];
-    if (!region_path(path, sizeof(path), dir, rx, rz)) return false;
+    s_last_error = NULL;
+    if (!region_path(path, sizeof(path), dir, rx, rz)) {
+        failed("path");
+        return false;
+    }
     // Through the cache like everything else: a second handle to a file
     // this module already holds open is a way to read a stale header.
     FILE* f = cache_open(path, false);
-    if (f == NULL) return false;
+    if (f == NULL) {
+        // A region that is not there has nothing to compact, and that is
+        // not an error. One that is there and would not open is.
+        if (sm_exists(path)) failed("open");
+        return false;
+    }
     if (fseek(f, 0, SEEK_SET) != 0) {
         cache_drop(path);
+        failed("read");
         return false;
     }
     uint32_t waste = 0;
@@ -691,22 +798,29 @@ static bool region_rewrite(char const* path, char const* tmp, int32_t rx, int32_
     cache_drop(path);
 
     FILE* in = fopen(path, "rb");
-    if (in == NULL) return false;
+    if (in == NULL) {
+        failed("open");
+        return false;
+    }
     uint32_t waste = 0;
     region_t r;
     int      version = 0;
     if (!header_read(in, &waste, &version) || !region_open_state(in, version, &r)) {
         fclose(in);
-        return false;
+        return false;  // header_read / region_open_state already said why
     }
 
     FILE* out = fopen(tmp, "w+b");
     if (out == NULL) {
+        failed("open");
         fclose(in);
         return false;
     }
     region_t nr;
-    if (!region_create(out, rx, rz, &nr)) goto fail;
+    if (!region_create(out, rx, rz, &nr)) {
+        failed("create");
+        goto fail;
+    }
 
     static uint8_t buf[CHUNK_PAYLOAD_MAX];
     long           at = (long)data_off(REGION_VERSION);
@@ -717,9 +831,18 @@ static bool region_rewrite(char const* path, char const* tmp, int32_t rx, int32_
         // (chunk_codec.h). It used to be reachable, and it dropped the
         // chunk quietly; a rewrite that cannot carry a chunk should say so
         // rather than produce a file with a hole in it.
-        if (e.length > sizeof(buf)) goto fail;
-        if (fseek(in, (long)e.offset, SEEK_SET) != 0) goto fail;
-        if (fread(buf, 1, e.length, in) != e.length) goto fail;
+        if (e.length > sizeof(buf)) {
+            failed("payload");
+            goto fail;
+        }
+        if (fseek(in, (long)e.offset, SEEK_SET) != 0) {
+            failed("read");
+            goto fail;
+        }
+        if (fread(buf, 1, e.length, in) != e.length) {
+            failed("read");
+            goto fail;
+        }
         at += (4 - (at & 3)) & 3;
         if (fseek(out, at, SEEK_SET) != 0) goto fail;
         if (fwrite(buf, 1, e.length, out) != e.length) goto fail;
@@ -728,10 +851,22 @@ static bool region_rewrite(char const* path, char const* tmp, int32_t rx, int32_
         nr.dir[i].flags  = e.flags;
         at += e.length;
     }
-    if (!dir_write(out, 0, nr.dir, 2)) goto fail;
-    if (!dir_write(out, 1, nr.dir, 1)) goto fail;
-    if (!header_write(out, rx, rz, 0)) goto fail;
-    if (fflush(out) != 0) goto fail;
+    if (!dir_write(out, 0, nr.dir, 2)) {
+        failed("write");
+        goto fail;
+    }
+    if (!dir_write(out, 1, nr.dir, 1)) {
+        failed("write");
+        goto fail;
+    }
+    if (!header_write(out, rx, rz, 0)) {
+        failed("write");
+        goto fail;
+    }
+    if (fflush(out) != 0) {
+        failed("write");
+        goto fail;
+    }
 
     fclose(in);
     fclose(out);
@@ -744,22 +879,39 @@ static bool region_rewrite(char const* path, char const* tmp, int32_t rx, int32_
     // open rather than being left to chance; retry first, because a
     // card that is merely busy will usually take it a moment later.
     cache_drop(path);
-    if (!sm_remove(path)) return false;
+    // From here the temp is the only copy of the region, so a failure is
+    // the one thing this function cannot afford: the world loses 64 chunks
+    // and nothing says which. Both calls are retried for the same reason
+    // the read path retries -- a card that is busy usually takes it a
+    // moment later.
+    if (!sm_remove(path)) {
+        failed("remove");
+        return false;
+    }
     for (int try = 0; try < 3; try++) {
         if (sm_rename(tmp, path)) return true;
     }
+    failed("rename");
     return false;
 
 fail:
     fclose(in);
     fclose(out);
     sm_remove(tmp);
+    if (s_last_error == NULL) failed("write");
     return false;
 }
 
 bool region_compact(char const* dir, int32_t rx, int32_t rz) {
     char path[192], tmp[200];
-    if (!region_path(path, sizeof(path), dir, rx, rz)) return false;
-    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) return false;
+    s_last_error = NULL;
+    if (!region_path(path, sizeof(path), dir, rx, rz)) {
+        failed("path");
+        return false;
+    }
+    if (snprintf(tmp, sizeof(tmp), "%s.tmp", path) >= (int)sizeof(tmp)) {
+        failed("path");
+        return false;
+    }
     return region_rewrite(path, tmp, rx, rz);
 }

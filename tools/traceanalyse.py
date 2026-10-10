@@ -12,6 +12,13 @@ reason: the format will grow.
 
 What it looks for, in the order it matters:
 
+  CHUNK ERRORS  a chunk the card would not give up or would not take
+              back. This is the only section that reports LOST DATA: a
+              chunk whose read failed is generated fresh and written back
+              over the player's, so the line naming the chunk is the only
+              record that a furnace, a chest or a planted field was ever
+              there.
+
   DROPS       a frame whose geometry lists filled. Anything here is a
               hole in the picture.
   EDITS WITH NO MESH   a block placed or broken whose chunk section was
@@ -69,6 +76,7 @@ def main():
 
 def report(raw_lines):
     header, ticks, edits, meshes, drops, io, compacts, cardfails = [], [], [], [], [], [], [], []
+    errors = []
     notes = []
     for raw in raw_lines:
         line = raw.strip()
@@ -85,6 +93,8 @@ def report(raw_lines):
             edits.append(f)
         elif kind == "M":
             meshes.append(f)
+        elif kind == "E":
+            errors.append(f)
         elif kind == "!":
             # A setting changed mid-session. The fps report splits on
             # these, because averaging across a change is what makes a
@@ -163,6 +173,30 @@ def report(raw_lines):
             got, cap = peak(key)
             if cap:
                 print(f"  {what:9} peak {got}/{cap} ({100*got//cap}%)")
+
+    # --- chunk read and write failures ------------------------------
+    if errors:
+        print("\n=== chunk read/write failures ===")
+        print(f"  *** {len(errors)} CHUNK(S) COULD NOT BE READ OR WRITTEN ***")
+        by_why = {}
+        for e in errors:
+            by_why[e.get("why", "unspecified")] = by_why.get(e.get("why", "unspecified"), 0) + 1
+        for why, n in sorted(by_why.items(), key=lambda p: (-p[1], p[0])):
+            print(f"      {why:<16} {n}")
+        for e in errors[:10]:
+            t = e.get("t", "?")
+            try:
+                t = f"{float(t):.1f}"
+            except ValueError:
+                pass
+            print(f"      t={t} op={e.get('op','?')} ch={e.get('ch','?')} "
+                  f"why={e.get('why','unspecified')}")
+        if len(errors) > 10:
+            print(f"      ... {len(errors) - 10} more")
+    else:
+        print("\n=== chunk read/write failures ===")
+        print("  none: every chunk the game asked for came back, and every"
+              " save landed")
 
     # --- the things that mean something went wrong ------------------
     print("\n=== is anything missing from the picture? ===")

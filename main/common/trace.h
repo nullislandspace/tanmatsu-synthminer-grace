@@ -19,7 +19,7 @@
 //  afterwards is "what does the trace say", not "can you make it happen
 //  again".
 //
-//  WHAT IS IN IT. Three kinds of line, each self-describing, so a file
+//  WHAT IS IN IT. The kinds of line, each self-describing, so a file
 //  from an older build still reads (tools/traceanalyse.py reads the
 //  keys, not the column order):
 //
@@ -29,6 +29,8 @@
 //    P/B a block placed or broken, with its coordinates and chunk
 //    M  a mesh arriving, with how long that section had been stale --
 //       which is the difference between "drawn late" and "never drawn"
+//    E  a chunk that could not be read or written, and why. One line
+//       per failure, with the chunk it was about.
 //
 //  COST. One buffered write a second of a few hundred bytes, next to a
 //  frame that takes 90 ms and a chunk streamer already writing regions
@@ -129,6 +131,23 @@ void trace_edit(char kind, int32_t x, int32_t y, int32_t z, char const* block, i
 // rates average together and the number belongs to no configuration
 // that was ever running. traceanalyse.py splits its fps report here.
 void trace_event(char const* fmt, ...) __attribute__((format(printf, 1, 2)));
+
+// A chunk that could not be read or written, and why. Written as
+//   E t=<when> op=load|save ch=<cx>,<cz> why=<reason>
+//
+// ONE LINE PER FAILURE, not a counter. The T line already carries
+// `cardfail`, and a counter says something is wrong without saying WHICH
+// chunk -- which is the part that matters, because a chunk whose read
+// failed is generated fresh, so whatever was in it (a furnace, a chest,
+// an animal, a field the player planted) is gone from the world, and this
+// line is the only record that it was ever there.
+//
+// `why` is a short single word, because the analyzer reads keys and a
+// reason with a space in it would read as two.
+//
+// Flushed on the line, like trace_event: an error is worth a sector, and
+// the crash that comes after it is the reason the line exists.
+void trace_chunk_error(char const* op, int32_t cx, int32_t cz, char const* why);
 
 // A rebuilt mesh arriving. Prints how long ago the matching edit was,
 // when there was one -- the lag between changing a block and being able

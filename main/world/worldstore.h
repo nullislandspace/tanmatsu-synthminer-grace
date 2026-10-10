@@ -305,6 +305,19 @@ bool worldstore_delete(char const* slug);
 int  world_chunk_load(chunk_t* c);       // 1 read, 0 not stored, -1 error
 bool world_chunk_save(chunk_t const* c);
 
+// Why the last load or save failed, as a short single word for the flight
+// recorder (common/trace.h). NULL when it did not fail, and cleared at the
+// top of every operation so a caller can tell a fresh failure from the
+// last one it already reported.
+//
+// The region module reports its own reasons (region.h); this adds the one
+// the store can have on its own -- a chunk job that ran with no world open.
+//
+// A pointer to a literal, not a buffer: the chunk worker captures it on its
+// own task and main prints it later, so a buffer here would be overwritten
+// by the next job before anybody read it.
+char const* worldstore_last_error(void);
+
 // Compact the region a chunk belongs to, if rewrites have left it more
 // than half dead bytes. Call after saving, on the worker -- it rewrites
 // a whole file (43 ms measured, F-26) and must never be on the frame

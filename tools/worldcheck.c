@@ -1029,6 +1029,10 @@ static void check_region_damage(void) {
     printf("  directory copy A destroyed: read returned %d\n", r);
     CHECK(r == 1, "losing one directory copy lost the chunk (the dual copy is not working)");
     CHECK(memcmp(g_ia, g_ib, CH_CELLS) == 0, "the chunk came back wrong after losing a directory copy");
+    // A read that worked must not leave a reason behind, or the flight
+    // recorder would report a healthy chunk as a failure (region.h).
+    CHECK(region_last_error() == NULL, "a successful read reported %s",
+          region_last_error() ? region_last_error() : "");
 
     // Now destroy the other copy too: the region is beyond saving and
     // must say so, rather than hand back rubbish.
@@ -1036,6 +1040,12 @@ static void check_region_damage(void) {
     int const r2 = region_read_chunk(TEST_DIR, &b, NULL);
     printf("  both directory copies destroyed: read returned %d\n", r2);
     CHECK(r2 == -1, "a region with no valid directory did not report an error (got %d)", r2);
+    // The recorder has to name WHICH part failed, not just that it did --
+    // "the directory is gone" and "the card would not open the file" are
+    // different repairs, and the trace line is where a person reads it.
+    CHECK(region_last_error() != NULL && strcmp(region_last_error(), "directory") == 0,
+          "the read did not say why it failed (got %s)",
+          region_last_error() ? region_last_error() : "");
 
     // A damaged payload must read as "no chunk", so it is regenerated,
     // not as broken terrain.
@@ -1054,6 +1064,9 @@ static void check_region_damage(void) {
     int const r3 = region_read_chunk(TEST_DIR, &b, NULL);
     printf("  payload corrupted: read returned %d\n", r3);
     CHECK(r3 == 0 || r3 == -1, "a corrupt payload decoded as if it were fine");
+    CHECK(region_last_error() != NULL && strcmp(region_last_error(), "decode") == 0,
+          "the corrupt payload was not reported as decode (got %s)",
+          region_last_error() ? region_last_error() : "");
     if (r3 == 0) {
         int nonzero = 0;
         for (int i = 0; i < CH_CELLS; i++) nonzero += (g_ib[i] != BLK_AIR);

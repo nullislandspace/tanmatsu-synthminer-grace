@@ -191,6 +191,16 @@ void trace_event(char const* fmt, ...) {
     flush();  // a setting changed: worth a sector, so a crash keeps it
 }
 
+void trace_chunk_error(char const* op, int32_t cx, int32_t cz, char const* why) {
+    if (s_f == NULL) return;
+    say("E t=%.1f op=%s ch=%d,%d why=%s", s_now, (op != NULL && *op != '\0') ? op : "?", (int)cx,
+        (int)cz, (why != NULL && *why != '\0') ? why : "unspecified");
+    // On the line, not at the next second. The point of an error line is
+    // the crash that follows it, and a failure that only reaches the file
+    // after the game is gone is a failure the recorder did not record.
+    flush();
+}
+
 void trace_edit(char kind, int32_t x, int32_t y, int32_t z, char const* block, int extra) {
     if (s_f == NULL) return;
     int32_t const cx = chunk_of(x), cz = chunk_of(z);

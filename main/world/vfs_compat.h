@@ -49,6 +49,17 @@ bool sm_rename(char const* from, char const* to);
 // afterwards.
 bool sm_mkdir_p(char const* path);
 
+// Whether a path is there.
+//
+// `stat` is one of the calls graceloader does export (see the top of this
+// header), so this is the same call on the badge and on the host. It
+// exists for one reason: an open that fails says nothing about WHY it
+// failed, and "the file is not there" and "the file is there and the card
+// would not open it" are opposite findings. The first is normal -- a world
+// is mostly regions the player has not reached -- and the second is an
+// error the flight recorder has to name (region.c, F-149).
+bool sm_exists(char const* path);
+
 // --- Listing ----------------------------------------------------------
 //
 // Enough to enumerate the world directory, and no more.
