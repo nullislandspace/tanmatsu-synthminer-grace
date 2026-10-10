@@ -123,3 +123,9 @@ item steak_and_potatoes
 item pizza
 block 49 sapling_oak
 block 50 sapling_birch
+block 51 lava
+block 52 diamond_ore
+block 53 shaft_column
+block 54 shaft_truss
+item diamond
+item mine_shaft

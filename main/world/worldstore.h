@@ -91,6 +91,15 @@ typedef struct {
     // never cuts a seam through an old one (D-78). A save from before
     // the Far Lands reads as the default of the build that opens it.
     int32_t  farlands_x;
+    // WHICH DIMENSION THE PLAYER IS IN (Part M, D-143). An additive tag,
+    // so no major version and no migration: a world from before the Deep
+    // Mine reads as 0, which is the overworld, which is what it was.
+    //
+    // It is the only thing `level.smw` gains for dimensions. There is one
+    // spawn point and it is the overworld's (D-145), so there is no spawn
+    // per dimension to store -- and the terrain itself is told apart by
+    // the directory it lives in, not by a field here.
+    int32_t  dimension;
 } world_meta_t;
 
 // Everything about the player that outlives a session. Add fields

@@ -13,6 +13,8 @@
 #include "items/item_entity.h"
 #include "items/items.h"
 #include "world/chunk_codec.h"
+#include "world/deepmine.h"
+#include "world/dimension.h"
 #include "world/worldgen.h"
 
 // --- The registry ------------------------------------------------------
@@ -87,6 +89,37 @@ mob_def_t const MOBS[MOB_KIND_COUNT] = {
                    .shear_min  = 1,
                    .shear_max  = 3,
                    .argb       = 0xFFEEEAE0u},
+
+    // THE TWO THAT FIGHT BACK (D-137), and nothing else. They are rows
+    // like any other -- what is different is the intent the caller may
+    // put them in, not the record.
+    //
+    // THEY DROP NOTHING, which is D-144 satisfied by doing nothing: no
+    // recipe in the graph has a mob in it, because bone already comes
+    // from the sausage maker (D-120) and string from sheep (D-126). A
+    // drop here would be optional loot off a body, not an ingredient,
+    // and which ones to add is still the user's open question -- so the
+    // honest row is an empty one, and an item added later can be taken
+    // back out without breaking anything.
+    [MOB_ZOMBIE] = {.name       = "zombie",
+                    .label      = SM_STR_MOB_ZOMBIE,
+                    .w          = 0.6f,
+                    .h          = 1.8f,
+                    .health_max = 20,
+                    .speed      = 0.06f,
+                    .drop_item  = ITEM_NONE,
+                    .hostile    = true,
+                    .argb       = 0xFF6E8A5Cu},
+
+    [MOB_SKELETON] = {.name       = "skeleton",
+                      .label      = SM_STR_MOB_SKELETON,
+                      .w          = 0.6f,
+                      .h          = 1.9f,
+                      .health_max = 16,
+                      .speed      = 0.055f,
+                      .drop_item  = ITEM_NONE,
+                      .hostile    = true,
+                      .argb       = 0xFFD8D4C8u},
 };
 
 int mob_damage_of(uint16_t item) {
@@ -1005,11 +1038,86 @@ static struct {
     {BIOME_PLAINS, MOB_DOG, 1, 1, 2},
 };
 
+// --- Packs (D-147) ---------------------------------------------------
+//
+// The Deep Mine's population, and the same shape as HERDS[] -- a roll
+// per chunk from the world's hash, never rand() -- with two differences
+// that are the whole of what a pack is.
+//
+// ONE ROLL PER CHUNK, not one per kind, because the numbers the user
+// gave are a share of chunks (12%) and a size (2-3), not two independent
+// kind rates. So `deepmine_pack()` answers whether a chunk holds one and
+// how big it is, and this table only decides what each member of that
+// pack is. Splitting the share across kinds would make the share a
+// function of the table rather than of the design.
+//
+// A PACK LIVES IN ONE CHUNK, because creatures are stored with the chunk
+// they stand in (D-123): a pack spread over two chunks is not a pack, it
+// is two records.
+//
+// AND NOTHING COMES BACK (D-146). A chunk that is rolled once and then
+// cleared stays cleared, so this is the only place a hostile mob is ever
+// made. That is what makes `s_refused` matter more here than in the
+// overworld: a pack the pool turned away is not delayed, it is gone for
+// good.
+static struct {
+    uint8_t kind;
+    uint8_t weight;  // this kind's share of a pack's members
+} const PACKS[] = {
+    {MOB_ZOMBIE, 60},
+    {MOB_SKELETON, 40},
+};
+
+static uint8_t pack_kind(uint32_t roll) {
+    int total = 0;
+    for (size_t i = 0; i < sizeof PACKS / sizeof PACKS[0]; i++) total += PACKS[i].weight;
+    uint32_t r = roll % (uint32_t)total;
+    for (size_t i = 0; i < sizeof PACKS / sizeof PACKS[0]; i++) {
+        if (r < (uint32_t)PACKS[i].weight) return PACKS[i].kind;
+        r -= (uint32_t)PACKS[i].weight;
+    }
+    return PACKS[0].kind;
+}
+
+// A pack on this chunk's floor. The floor is a column function, so the
+// cell is knowable before the chunk exists -- but the mob is only put
+// here while the chunk is resident, which is what `mob_populate_chunk`
+// already guarantees (it runs on the main task, once, on CF_FRESH).
+static void populate_pack(int32_t cx, int32_t cz, uint32_t seed) {
+    int n = 0;
+    if (!deepmine_pack(cx, cz, seed, &n)) return;
+
+    for (int i = 0; i < n; i++) {
+        uint32_t const q  = sm_hash3(cx, (int32_t)(i + 1), cz, seed ^ 0x5EED1234u);
+        int32_t const bx = cx * CH_W + 4 + (int32_t)(q % 8u);
+        int32_t const bz = cz * CH_D + 4 + (int32_t)((q >> 8) % 8u);
+        int const      y = deepmine_ground_y(bx, bz, seed);
+        if (y < 0 || y >= CH_H - 2) continue;
+
+        // Not on a lava patch, and not inside a post or a brace: a pack
+        // has to be somewhere the player can see and reach, and a mob
+        // standing in the shaft's trigger cell would be neither.
+        if (deepmine_lava(bx, bz, seed)) continue;
+        if (world_block(bx, y - 1, bz) == BLK_LAVA) continue;
+        if (world_block(bx, y, bz) != BLK_AIR) continue;
+
+        if (mob_spawn(pack_kind(q >> 16), (double)bx + 0.5, (double)y, (double)bz + 0.5, false) < 0) s_refused++;
+    }
+}
+
 uint32_t mob_refused(void) {
     return s_refused;
 }
 
 void mob_populate_chunk(int32_t cx, int32_t cz, uint32_t seed) {
+    // TWO TABLES, ONE ENTRY POINT. The overworld has no hostile mobs at
+    // all (D-137), and the Deep Mine has no herds -- so which table this
+    // reads is which world the player is in, and nothing else changes.
+    if (dimension_current() == DIM_DEEP_MINE) {
+        populate_pack(cx, cz, seed);
+        return;
+    }
+
     for (size_t h = 0; h < sizeof HERDS / sizeof HERDS[0]; h++) {
         uint32_t const r = sm_hash3(cx, (int32_t)h, cz, seed ^ 0x9A12BEEFu);
         if ((r % 100u) >= HERDS[h].chance_pct) continue;

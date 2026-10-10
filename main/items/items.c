@@ -62,6 +62,12 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     [ITEM_BEANS - BLK_COUNT]        = {"beans", SM_STR_ITEM_BEANS, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF9C6A38u, 1},
     [ITEM_RICE - BLK_COUNT]         = {"rice", SM_STR_ITEM_RICE, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFE8E4D0u, 1},
 
+    // THE DEEP MINE (Part M). A gem, and the shaft you build to reach
+    // it. Neither is food and neither is a tool: the diamond is what you
+    // carry back up, and the shaft is a shape you put down.
+    [ITEM_DIAMOND - BLK_COUNT]    = {"diamond", SM_STR_ITEM_DIAMOND, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF5A8E9Cu},
+    [ITEM_MINE_SHAFT - BLK_COUNT] = {"mine_shaft", SM_STR_ITEM_MINE_SHAFT, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF8E8278u},
+
     // Compost, and the worms that come out of the same box.
     [ITEM_COMPOST - BLK_COUNT] = {"compost", SM_STR_ITEM_COMPOST, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF54402Cu},
     [ITEM_WORM - BLK_COUNT]    = {"worm", SM_STR_ITEM_WORM, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC08078u},
@@ -251,6 +257,14 @@ static uint32_t const BLOCK_ARGB[BLK_COUNT] = {
     [BLK_BED_FOOT] = 0xFFBE3A36u,       [BLK_BED_HEAD] = 0xFFBE3A36u,
     [BLK_STOVE] = 0xFF6A6A70u,          [BLK_STOVE_CHEST] = 0xFF926A3Au,
     [BLK_SAPLING_OAK] = 0xFF4E7A34u,    [BLK_SAPLING_BIRCH] = 0xFF6E983Eu,
+    // THE DEEP MINE. Lava's colour is the one that has to read as danger
+    // at icon size, and the two frame blocks are the iron grey the
+    // recipe is made of.
+    [BLK_LAVA] = 0xFFD85A22u,          [BLK_DIAMOND_ORE] = 0xFF5A8E9Cu,
+    [BLK_SHAFT_COLUMN] = 0xFF8E8278u,  [BLK_SHAFT_TRUSS] = 0xFF7E7268u,
+    // THE DEEP MINE. Lava's colour is the one that has to read as danger
+    // at icon size, and the two frame blocks are the iron grey the
+    // recipe is made of.
 };
 
 // What each block is CALLED on screen, beside the colour above. A
@@ -310,6 +324,14 @@ static sm_str_t const BLOCK_LABEL[BLK_COUNT] = {
     // on both would make a birch wood an accident.
     [BLK_SAPLING_OAK] = SM_STR_ITEM_SAPLING_OAK,
     [BLK_SAPLING_BIRCH] = SM_STR_ITEM_SAPLING_BIRCH,
+    // THE DEEP MINE. The frame is named by what it is -- a post and a
+    // brace -- because a player standing in it sees two different
+    // pictures under the crosshair, and "Mine shaft" on both would make
+    // the shape unreadable.
+    [BLK_LAVA] = SM_STR_ITEM_LAVA,
+    [BLK_DIAMOND_ORE] = SM_STR_ITEM_DIAMOND_ORE,
+    [BLK_SHAFT_COLUMN] = SM_STR_ITEM_SHAFT_COLUMN,
+    [BLK_SHAFT_TRUSS] = SM_STR_ITEM_SHAFT_TRUSS,
     // Air and the barrier are never in anybody's hands and have none.
 };
 

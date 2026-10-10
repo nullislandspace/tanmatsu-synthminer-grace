@@ -343,6 +343,23 @@ item.tomato_crop = Tomato plant
 item.bean_crop = Bean plant
 item.rice_crop = Rice plant
 
+# --- The Deep Mine (Part M) ------------------------------------------------
+item.lava = Lava
+item.diamond_ore = Diamond ore
+item.shaft_column = Shaft post
+item.shaft_truss = Shaft brace
+item.diamond = Diamond
+item.mine_shaft = Mine shaft
+
+# Crossing over. The loading line and the line under the crosshair say
+# the same thing at the two ends of one event, and the refusal is the one
+# that has to be spelled out: a shaft that could not open is a change of
+# the player's that never reached the card, and the game kept it.
+loading.crossing = Crossing over
+hud.deep_mine = The Deep Mine
+hud.surface = Back on the surface
+hud.shaft_refused = The shaft would not open
+
 # --- The furnace ------------------------------------------------------------
 furnace.title = Furnace
 furnace.input = Input
@@ -434,6 +451,10 @@ mob.pig = Pig
 mob.cow = Cow
 mob.dog = Dog
 mob.sheep = Sheep
+# The Deep Mine's two (Part M, D-137). The rest are undecided, so this
+# is the whole hostile list for now.
+mob.zombie = Zombie
+mob.skeleton = Skeleton
 # Under the crosshair, when an animal has been fed and is looking for a
 # partner. %s is the animal's name
 mob.ready = %s - ready to breed

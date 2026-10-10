@@ -79,6 +79,9 @@
 #include "world/blockupdate.h"
 #include "world/crops.h"
 #include "world/light.h"
+#include "world/dimension.h"
+#include "world/dimension_switch.h"
+#include "world/mineshaft.h"
 #include "world/region.h"
 #include "testkit/screenshot.h"
 #include "world/datadir.h"
@@ -212,6 +215,20 @@ typedef enum {
 
 static void start_loading(double wx, double wz, app_state_t next, char const* what, load_gate_t gate);
 
+// THE CROSSING (Part M). The order -- save, drain, release, free the
+// meshes, record -- belongs to world/dimension_switch.h; what is here is
+// the part only the app can do: the arrival point and the nine chunks
+// around it.
+static bool cross_to(dimension_t to, double wx, double wz);
+static bool check_crossing(void);
+
+// Whether the shaft the player is standing in may be crossed again. It
+// has to be stepped out of first, because the cell the player arrives in
+// is a shaft too -- the trigger is stateless, so nothing would stop the
+// bounce (check_crossing).
+static bool s_cross_armed;
+static bool s_cross_said;
+
 // --- The time of day ------------------------------------------------------
 //
 // The world's clock (world_meta_t.time_of_day) moves one tick per
@@ -219,6 +236,14 @@ static void start_loading(double wx, double wz, app_state_t next, char const* wh
 // the light need comes from it (game/daytime.h), worked out once a
 // frame. The title stands at a fixed morning.
 #define TITLE_TIME (DAY_START + 2500)
+
+// How much a sealed cave gets from its directional light. There is no
+// sun down there and no hole in the ceiling for one to come through
+// (D-139), so the 0.45 the sky gives is far too much: it would shade
+// every face as if a sun were overhead. Enough to keep the sides of a
+// block from reading flat, and no more. Provisional, like the rest of
+// Part M's numbers.
+#define DEEP_DIR_LIGHT 0.18f
 
 static daytime_t s_day;
 
@@ -1112,6 +1137,17 @@ static bool enter_world(int slot, bool create, char const* name, uint32_t seed) 
     ESP_LOGI(TAG, "world \"%s\" (slot %d) %s, seed %u", s_meta.name, slot + 1, create ? "created" : "opened",
              (unsigned)s_meta.seed);
 
+    // WHICH DIMENSION TO OPEN, and before the first chunk is read: the
+    // directory IS the dimension (D-143), so a player who left the game
+    // standing in the Deep Mine has their terrain in the subdirectory, and
+    // a loader that asked for the flat one would find a world with nothing
+    // in it. A save from before the Deep Mine reads as 0, which is the
+    // overworld, which is what it was.
+    dimension_set_current((dimension_t)s_meta.dimension);
+    if (dimension_current() != DIM_OVERWORLD) {
+        ESP_LOGI(TAG, "in the %s, column %.1f, %.1f", dimension_name(dimension_current()), s_saved.x, s_saved.z);
+    }
+
     // The flight recorder, from here until the world is left. It is not
     // a setting and there is no way to turn it off: a bug is noticed
     // while playing, not while preparing to debug (common/trace.h).
@@ -1164,6 +1200,10 @@ static bool enter_world(int slot, bool create, char const* name, uint32_t seed) 
     s_player.prev_yaw   = s_player.yaw;
     s_player.prev_pitch = s_player.pitch;
     s_player_ready      = false;
+    // Armed only by stepping OUT of a shaft, so a world that was left
+    // standing in one does not cross on the first tick after it loads.
+    s_cross_armed = false;
+    s_cross_said  = false;
     tick_reset(&s_tick, showtime_now());
     // Frozen until the chunk under them is resident: nobody falls
     // through terrain that has not arrived yet (D-26).
@@ -1500,6 +1540,10 @@ static void save_world_state(void) {
     s_saved.inv_selected = s_player.inv.selected;
     int64_t const now    = (int64_t)time(NULL);
     if (now > 0) s_meta.last_played = now;
+    // Which dimension the next session opens in. The only field
+    // `level.smw` gains for Part M, and the only one it needs: there is
+    // one spawn point and it is the overworld's (D-145).
+    s_meta.dimension = (int32_t)dimension_current();
 }
 
 static void save_world_level(char const* why, int chunks, bool waited) {
@@ -1649,7 +1693,27 @@ static void player_died(void) {
     trace_note("X died at %.1f %.1f %.1f", s_player.body.x, s_player.body.y, s_player.body.z);
     double hx, hz;
     home_column(&hx, &hz);
-    player_spawn(&s_player, hx, hz, s_player.yaw);
+
+    // D-145: ONE spawn point, and it is the overworld's, because no bed
+    // can be set down there. So dying in the Deep Mine is a crossing as
+    // much as a respawn -- the same order as a shaft, because the store
+    // changes identity, and the same refusal. A death that crossed over by
+    // dropping a chunk the card had not taken would be data loss, so it
+    // wakes up where it fell instead and tries again after the player
+    // steps out of the frame.
+    bool const crossed = dimension_current() == DIM_OVERWORLD || cross_to(DIM_OVERWORLD, hx, hz);
+    if (!crossed) {
+        ESP_LOGW(TAG, "died in the %s and could not cross back; waking up where they fell",
+                 dimension_name(dimension_current()));
+        player_spawn(&s_player, s_player.body.x, s_player.body.z, s_player.yaw);
+    } else if (dimension_current() == DIM_OVERWORLD) {
+        // Already up here: the ordinary respawn, no crossing, no loading
+        // screen. Down there the position has to wait for the nine chunks
+        // around the home column, because there is nothing to stand on yet
+        // (settle_player, D-26).
+        player_spawn(&s_player, hx, hz, s_player.yaw);
+    }
+
     food_reset(&s_player.food);
     s_player.food.health = FOOD_HEALTH_MAX / 2;
     hud_say(T(SM_STR_FOOD_RESPAWN));
@@ -1704,6 +1768,97 @@ static void start_loading(double wx, double wz, app_state_t next, char const* wh
     s_app = APP_LOADING;
 }
 
+// THE CROSSING (Part M, D-141). Steps 1-4 and 6 are world/dimension_switch.h;
+// this is step 5, the part only the app can do: where the player lands, and
+// the nine chunks around it, loaded synchronously, with physics frozen until
+// they are there -- Part K's entry sequence, verbatim.
+//
+// `wx`, `wz` is the column to arrive in: the player's own for a shaft,
+// because the pairing is by column and 1:1 (D-142); the home column for a
+// death (D-145).
+//
+// False means nothing was changed, and the caller stays where it is.
+// Refusing is the right answer for the same reason Part P refuses on
+// eviction: a chunk the card never took is something the player made.
+static bool cross_to(dimension_t to, double wx, double wz) {
+    int32_t const cx = (int32_t)floor(wx), cz = (int32_t)floor(wz);
+    if (!dimension_switch(cx, cz, to)) return false;
+
+    // The arrival height is the same question in both dimensions: the
+    // first air above that column's ground. It has to be answerable before
+    // the chunk exists, because the store is empty at this moment -- which
+    // is the only reason a 1:1 pairing can be stateless at all.
+    int const ay = mineshaft_arrival_y(cx, cz, s_meta.seed, (int)to);
+
+    s_saved.x = (double)cx + 0.5;
+    s_saved.y = (double)ay;
+    s_saved.z = (double)cz + 0.5;
+    // Not "where they left": the position is settled once the nine chunks
+    // are here, by the same rule as entering a world.
+    s_saved.placed = false;
+    s_player_ready = false;
+
+    start_loading(s_saved.x, s_saved.z, APP_PLAY, T(SM_STR_LOADING_CROSSING), LOAD_GATE_3X3);
+    hud_say(T(to == DIM_DEEP_MINE ? SM_STR_HUD_DEEP_MINE : SM_STR_HUD_SURFACE));
+    sfx_play(SFX_CLICK);
+    return true;
+}
+
+// Whether the store can be re-keyed at all: nothing in the queue, and no
+// chunk half way through a load. This is the difference between a crossing
+// that has to wait and a crossing that cannot happen, and the player should
+// only be told about the second one.
+static bool store_quiet(void) {
+    if (!chunk_worker_idle()) return false;
+    for (int i = 0; i < CH_SLOT_COUNT; i++) {
+        chunk_t const* c = chunk_slot_at(i);
+        if (c == NULL || c->cstate == CS_FREE) continue;
+        if (c->cstate == CS_LOADING) return false;
+    }
+    return true;
+}
+
+// THE TRIGGER HAS TO BE RELEASED BEFORE IT CAN FIRE AGAIN.
+//
+// The pairing is stateless, so the cell the player arrives in is a shaft
+// too -- the same test, in the other dimension, says yes on the next tick,
+// and the player bounces back for ever. One flag is the whole guard, and it
+// reads like a door: it has to close before it can open again. The player
+// has to step out of the centre cell first.
+static bool check_crossing(void) {
+    if (s_app != APP_PLAY || s_cam_mode != CAM_PLAYER || !s_player_ready) return false;
+    // A replay plays back a session that was recorded in one dimension.
+    // The recorder does not store crossings yet (step 48), so a playback
+    // that made one would end up in the wrong world and disagree with the
+    // file from that tick on.
+    if (replay_playing()) return false;
+
+    int32_t const x = (int32_t)floor(s_player.body.x);
+    int32_t const y = (int32_t)floor(s_player.body.y);
+    int32_t const z = (int32_t)floor(s_player.body.z);
+
+    if (!mineshaft_is_trigger(x, y, z)) {
+        s_cross_armed = true;
+        s_cross_said  = false;
+        return false;
+    }
+    if (!s_cross_armed) return false;
+    // A queue is not a refusal: try again next tick, and say nothing.
+    if (!store_quiet()) return false;
+
+    dimension_t const to = dimension_current() == DIM_DEEP_MINE ? DIM_OVERWORLD : DIM_DEEP_MINE;
+    if (!cross_to(to, (double)x, (double)z)) {
+        // Once per visit, not once a tick.
+        if (!s_cross_said) {
+            s_cross_said = true;
+            hud_say(T(SM_STR_HUD_SHAFT_REFUSED));
+            sfx_play(SFX_DENY);
+        }
+        return false;
+    }
+    s_cross_armed = false;
+    return true;
+}
 
 // Generating the bench world is a WALK, not a flight: the cursor stops
 // at every point until the whole view distance around it is resident,
@@ -2118,6 +2273,13 @@ static void on_update(float dt, void* user) {
             // decision about the world and the save, and player.c knows
             // about neither.
             if (s_player.food.health <= 0) player_died();
+            // THE SHAFT, and the tick it may end. A crossing moves the
+            // frame to the loading screen, so nothing after this point
+            // belongs to the world the player is standing in any more:
+            // the store has just been re-keyed and the nine chunks
+            // around the arrival column are not there yet. Reading them
+            // this tick would read the wrong world.
+            if (check_crossing()) break;
             // A block the player opened. The registry says WHICH blocks
             // open something (BF2_USABLE); what each one opens is here.
             // Only if it is not already showing: OPENING a screen
@@ -2519,7 +2681,12 @@ static void on_render(pax_buf_t* fb, void* user) {
 
     // The time of day: the sky, the fog, the sun, and how bright each
     // light level is. Cheap -- a 256-entry table -- so every frame.
-    s_day = daytime_at(s_app == APP_PLAY ? s_meta.time_of_day : s_title_time);
+    // Down there the clock is not in the picture (D-139): the ceiling is
+    // the geometry where the sky would be, so the frame asks for the
+    // fixed pose a sealed cave has instead of a time of day.
+    s_day = dimension_has_sky(dimension_current())
+                ? daytime_at(s_app == APP_PLAY ? s_meta.time_of_day : s_title_time)
+                : daytime_deep_mine();
     daytime_light_lut(s_day.day, s_lut);
     mesh_set_light_lut(s_force_nolight ? NULL : s_lut);
 
@@ -2551,8 +2718,12 @@ static void on_render(pax_buf_t* fb, void* user) {
         // sides of blocks by day and by night alike. How BRIGHT it is
         // belongs to the light table, not to this.
         vec3_t const d = s_day.sun_dir.y > -0.05f ? s_day.sun_dir : v3_scale(s_day.sun_dir, -1.0f);
+        // Under a ceiling there is no sun to be far away along: the
+        // directional light is the cave's own even glow, and a much
+        // dimmer one, so faces still read as faces without the sky.
+        float const bright = dimension_has_sky(dimension_current()) ? 0.45f : DEEP_DIR_LIGHT;
         se_light_set(&(se_light_t){
-            .x = rx + d.x * 5000.0f, .y = ry + d.y * 5000.0f, .z = rz + d.z * 5000.0f, .brightness = 0.45f});
+            .x = rx + d.x * 5000.0f, .y = ry + d.y * 5000.0f, .z = rz + d.z * 5000.0f, .brightness = bright});
     }
 
     bool const       half   = s_half_ok && settings_half_res() && !s_force_fullres;
@@ -2583,7 +2754,7 @@ static void on_render(pax_buf_t* fb, void* user) {
     // The sky first -- sun or moon, clouds, stars -- so the world draws
     // over it wherever they overlap.
     // No clouds on the title: its letters stand at the height they fly at.
-    if (!eye_wet) {
+    if (!eye_wet && dimension_has_sky(dimension_current())) {
         voxel_sky_submit((float)showtime_now(), s_day.sun_dir, s_day.fog_argb, s_day.day, ox, oz,
                          settings_clouds() && !s_force_noclouds && s_app == APP_PLAY);
     }

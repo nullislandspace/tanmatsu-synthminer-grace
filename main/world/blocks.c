@@ -549,6 +549,52 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                            .seed_item  = BLK_SAPLING_BIRCH,
                            .grow_ticks = CROP_TICKS_DAY,
                            .sound      = SND_SOFT},
+
+    // THE DEEP MINE (Part M). Lava draws as a liquid -- its surface only,
+    // like water -- and it is the one block here that cannot be picked
+    // up: no drop, no tool, and no bucket that carries it. It lights its
+    // own cell, because a cave lit by a constant is flat and a pool that
+    // glows is the one thing in it that reads as dangerous.
+    [BLK_LAVA] = {.name     = "lava",
+                  .kind     = K_LIQUID,
+                  .mat      = M1(VM_LAVA),
+                  .hardness = HARDNESS_UNBREAKABLE,
+                  .light    = 13,
+                  .flags    = BF_OPAQUE | BF_REPLACEABLE | BF_LIQUID, .sound = SND_SPLASH},
+
+    // Diamond, and the reason anyone goes down. Tool level 2 like iron
+    // ore -- the same refusal, the same stone pickaxe -- and it drops the
+    // gem rather than itself, because a gem is carried and not smelted.
+    [BLK_DIAMOND_ORE] = {.name       = "diamond_ore", .drop_item = ITEM_DIAMOND, .drop_min = 1, .drop_max = 1,
+                          .kind       = K_CUBE,
+                          .mat        = M1(VM_DIAMOND_ORE),
+                          .hardness   = 240,
+                          .tool       = TOOL_PICK,
+                          .tool_level = 2,
+                          .flags      = BF_SOLID | BF_OPAQUE, .sound = SND_STONE,
+                          .flags2     = BF2_TOOL_REQUIRED},
+
+    // THE SHAFT'S FRAME. Iron, because that is what a shaft costs.
+    //
+    // Neither half drops anything, and that is not a decision about
+    // whether a shaft can be broken -- Part M leaves that open. It is the
+    // conservative setting: a frame that pays nothing back when taken
+    // apart can be changed later without breaking anything, and one that
+    // pays 16 ingots back per cell would be a machine for duplicating a
+    // shaft at a chunk border, where half of it is not resident.
+    [BLK_SHAFT_COLUMN] = {.name     = "shaft_column", .drop_item = ITEM_NONE,
+                          .kind     = K_CUBE,
+                          .mat      = M1(VM_SHAFT_COLUMN),
+                          .hardness = 120,
+                          .tool     = TOOL_PICK,
+                          .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_STONE},
+
+    [BLK_SHAFT_TRUSS] = {.name     = "shaft_truss", .drop_item = ITEM_NONE,
+                         .kind     = K_CUBE,
+                         .mat      = M1(VM_SHAFT_TRUSS),
+                         .hardness = 120,
+                         .tool     = TOOL_PICK,
+                         .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_STONE},
 };
 
 // Which kind of record each block keeps. A function rather than a

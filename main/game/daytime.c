@@ -3,6 +3,7 @@
 // =====================================================================
 
 #include "game/daytime.h"
+#include "world/dimension.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -12,6 +13,13 @@
 #define SUNSET_SKY  0xFFF2A878u
 #define SUNSET_FOG  0xFFE89468u
 #define NIGHT_FOG   0xFF101A34u
+// The Deep Mine's colours (Part M). There is no sky to draw here -- the
+// ceiling is geometry -- so the first is only what the backdrop falls back
+// to if anything asks for it. The second is what the far side of a cave
+// fades into, and it is the one that actually shows: a cave that fades to
+// sky blue is not a cave.
+#define DEEP_SKY_ARGB 0xFF2A2A2Eu
+#define DEEP_FOG_ARGB 0xFF333336u
 
 // How many light levels night takes off the sky: 9 leaves a sunlit field
 // at level 6 -- dim, much darker than a torch, and still readable on
@@ -27,6 +35,18 @@ static uint32_t mix(uint32_t a, uint32_t b, float f) {
         out |= (uint32_t)(ca + (cb - ca) * f + 0.5f) << s;
     }
     return out;
+}
+
+daytime_t daytime_deep_mine(void) {
+    // Straight up, because there is no horizon to point at. Faces that
+    // have no light source of their own still get a direction, and this
+    // one is the only direction a sealed cave has.
+    return (daytime_t){
+        .sun_dir  = v3_norm(v3(0.0f, 1.0f, 0.0f)),
+        .sky_argb = DEEP_SKY_ARGB,
+        .fog_argb = DEEP_FOG_ARGB,
+        .day      = 1.0f,
+    };
 }
 
 static float fraction(int64_t ticks) {

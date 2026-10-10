@@ -71,6 +71,12 @@ typedef enum {
     // killing: a sheep SHEARS. Everything else an animal gives, it
     // gives once (game/mob.c, MOBS[]).
     MOB_SHEEP,
+    // THE THINGS THAT FIGHT BACK, and the only ones the game has (D-137).
+    // They live in the Deep Mine and nowhere else (Part M): the overworld
+    // has no hostile mobs at all. Two rows because a row is a kind --
+    // which other ones exist is still undecided.
+    MOB_ZOMBIE,
+    MOB_SKELETON,
     MOB_KIND_COUNT
 } mob_kind_t;
 
@@ -117,6 +123,14 @@ typedef struct {
     // day something else carries a coat it is a row.
     uint16_t    shear_item;
     uint8_t     shear_min, shear_max;
+    // HOSTILE. One column rather than a second table, because a mob is
+    // not a different kind of mind (see the note above mob_intent_t): it
+    // is a row that can be in MOB_FOLLOW when nothing else can. What it
+    // changes is which table generation draws from -- HERDS[] for an
+    // animal, PACKS[] for these -- and which intent the caller is
+    // allowed to put it in.
+    bool        hostile;
+
     uint32_t    argb;  // the flat colour it draws as when textures are off
 } mob_def_t;
 

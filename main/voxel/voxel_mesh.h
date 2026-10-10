@@ -168,6 +168,14 @@ typedef enum {
     // like all the others -- which matters most when you are in a hurry
     // and the cows are out.
     VM_GATE,
+    // THE DEEP MINE (Part M): the pool, the vein, and the two blocks a
+    // shaft is made of. A shaft is one picture per half -- a post and a
+    // brace are not the same shape, and the mesher takes its material out
+    // of the block table rather than working out which cell it is on.
+    VM_LAVA,
+    VM_DIAMOND_ORE,
+    VM_SHAFT_COLUMN,
+    VM_SHAFT_TRUSS,
     VM_COUNT
 } vox_mat_t;
 

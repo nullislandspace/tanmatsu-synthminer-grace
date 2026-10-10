@@ -243,6 +243,16 @@ typedef enum {
     SM_STR_ITEM_TOMATO_CROP,            // item.tomato_crop
     SM_STR_ITEM_BEAN_CROP,              // item.bean_crop
     SM_STR_ITEM_RICE_CROP,              // item.rice_crop
+    SM_STR_ITEM_LAVA,                   // item.lava
+    SM_STR_ITEM_DIAMOND_ORE,            // item.diamond_ore
+    SM_STR_ITEM_SHAFT_COLUMN,           // item.shaft_column
+    SM_STR_ITEM_SHAFT_TRUSS,            // item.shaft_truss
+    SM_STR_ITEM_DIAMOND,                // item.diamond
+    SM_STR_ITEM_MINE_SHAFT,             // item.mine_shaft
+    SM_STR_LOADING_CROSSING,            // loading.crossing
+    SM_STR_HUD_DEEP_MINE,               // hud.deep_mine
+    SM_STR_HUD_SURFACE,                 // hud.surface
+    SM_STR_HUD_SHAFT_REFUSED,           // hud.shaft_refused
     SM_STR_FURNACE_TITLE,               // furnace.title
     SM_STR_FURNACE_INPUT,               // furnace.input
     SM_STR_FURNACE_FUEL,                // furnace.fuel
@@ -301,6 +311,8 @@ typedef enum {
     SM_STR_MOB_COW,                     // mob.cow
     SM_STR_MOB_DOG,                     // mob.dog
     SM_STR_MOB_SHEEP,                   // mob.sheep
+    SM_STR_MOB_ZOMBIE,                  // mob.zombie
+    SM_STR_MOB_SKELETON,                // mob.skeleton
     SM_STR_MOB_READY,                   // mob.ready
     SM_STR_MOB_YOUNG,                   // mob.young
     SM_STR_MOB_RESTING,                 // mob.resting

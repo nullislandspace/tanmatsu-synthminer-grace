@@ -1851,9 +1851,10 @@ types the code:
 
 ## Part M: the Deep Mine, and the mine shaft
 
-Added 2026-10-10 by the user. Design only -- nothing here is built, and the open
-questions at the end are left open deliberately rather than answered by whoever
-types the code.
+Added 2026-10-10 by the user, **built 2026-10-11** (F-150). The open questions at
+the end are still open deliberately: every number in this part is provisional and
+tuned after playtesting, and the code says so where it uses them rather than
+picking an answer for the user.
 
 **The change in one line:** the overworld has no hostile mobs. Danger lives in a
 second dimension, the **Deep Mine**, reached through a **mine shaft** you build.
@@ -2256,12 +2257,12 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 | 58 | **Water you can actually see through** | done, **default on** | 2026-09-29, the user, after being told partial heights were the expensive part: *"Currently we have fake transparency for water (like leaves). How much actual FPS impact would it be to have actual water transparency?"* The estimate said 5-20%, scaling with how much water fills the view. They asked for it behind a key so the two could be compared in one place, played it, and reported *"The new transparent water looked much better and framerates seems comparable."* Now a Graphics setting, **on by default and on for upgrades too** (D-103). `SE_TRI_BLEND` in the engine (2.5): a 50/50 RGB565 mix, and -- the part that matters -- blended triangles sorted after every opaque one and far-to-near among themselves, which cost **one bit of the existing depth key and no extra pass**, because a positive float never sets its sign bit and the top bit was always spare. D-86 is amended a second time: water is no longer only its surface's cut-out, it is a real mix, and `water_blend.png` is the same texture without its checkerboard. **The frame-rate claim is the user's, not the trace's**: their A/B in one spot is controlled and the trace was not, because nothing recorded which mode was running -- which is now fixed (`trace_event`, F-119). |
 | 59 | **Wood and flowers that come back** | done | 2026-09-30, the user, in one message: *"Logs (trees) and yellow flowers need to be renewable resources. So cutting trees should drop one or two seedlings that can be planted to grow into a new tree. And throwing compost onto the ground should grow a 3x3 grid of yellow flowers."* **Which closes the last hole in the economy.** Stone, ore, crops, wool, meat, milk and fish all come back; WOOD did not -- there is no recipe anywhere that makes a log, so a player who cleared the forest round their house had cleared it for good. Yellow flowers were the same and worse: a pork sausage needs one for its spice, so picking the meadow stopped the sausage maker. **Two permanent block ids** (49, 50) and **one new module** (`world/tree.{c,h}`). Felling leaves **one or two seedlings PER TREE, not per block** -- forty saplings off one oak would make the first tree the last one anybody had to plant -- rolled from the world's own hash so a replay reproduces a woodpile, and **of the species felled**, because a birch wood that grew back oak is not the wood anybody planted. **A SAPLING IS A CROP** and that is why it cost almost nothing: BF_CROP gives it stages in the state byte, the chunk's shared slow clock, the phase bits that stop a whole chunk ripening on one instant, the catch-up when a chunk returns after an hour away, and the compost that pushes any plant on a stage. None of that machinery had to learn the word sapling. The ONE difference is what happens at the last stage -- a wheat plant stops and waits to be cut, this turns into a tree -- and it is a **two-row table** in tree.c and not a block flag, because `flags2` has no bits left and because a flag would say only THAT a block is a sapling where every caller wants to know WHICH tree. One in-game day, which is wheat's; it plants on **grass or dirt and not a tilled field**, the only seed in the game that does, so it gets a refusal of its own rather than sending the player to look for a hoe. **The tree is the generator's own tree** (D-136): the canopy loop came out of `place_tree` into `worldgen_tree_shape`, emitted cell by cell to two writers that could not be less alike -- the generator stamps into ONE chunk on the core-1 worker and drops whatever falls outside, which is what makes a tree seamless at a border, while a sapling writes through `world_set` on the main task so the light flood, the mesher and the save all hear about it. One shape in the codebase instead of two that agree until somebody edits one. It takes the world seed, so a planted tree is the tree that spot would have grown. **A sapling with a ceiling over it waits** rather than growing half a tree, and the sweep asks again every pass and not only when a stage is owed -- without that, one planted in the wrong place would sit at its last stage for ever with nothing ever looking at it again. **Compost on bare grass raises a 3x3 of yellow flowers**, doing what it can: cells that are not grass or are not clear are skipped rather than refusing the lot, and it only refuses, and says so, when all nine are already done. Host-checked: which sapling comes off which trunk, 400 rolls of the one-or-two (210 singles, 190 pairs), planting refused on farmland and on stone, a seedling grown into a trunk-and-canopy that is GROWN and not PLACED so it fells like any other, the ceiling case both ways, and the flower bed on grass and on nothing else. Not renewable yet: **red flowers**, which the user did not ask for -- nothing is blocked, since the sausage maker takes either colour. |
 | 60 | **Grass that spreads, and grass that dies** | todo | 2026-10-01, the user asked whether placing a dirt block regrows the grass top and whether grass under a placed block goes away. **Both are no.** The only grass-to-dirt rule in the game runs once at GENERATION time and only for Far Lands columns (`farlands.c`, "id[y] == BLK_GRASS && id[y+1] != BLK_AIR"); nothing touches it in the live world. So a floor laid on a meadow keeps its green edges, and dirt is dirt for ever. **THE TWO HALVES SHIP TOGETHER, and that is the whole of why this is a step rather than a three-line fix.** Grass that dies under a block without grass that spreads back is a ratchet: every house, path and tilled field converts grass to dirt permanently and the world only ever gets browner, which is worse than the cosmetic bug it fixes. Death is a rule at the moment of placing (one test in `world_set`). Spreading needs a SLOW SWEEP, and the shape for it already exists -- `crops_tick()` visits one chunk slot a tick and walks a marked chunk column by column from the height summary (world/crops.h), which is exactly the budget a grass pass wants. The user: *"Let's leave the grass thing for another time, just make sure it's on our todo list."* |
-| **61+** | **The Deep Mine (Part M)** -- added 2026-10-10, nothing built | | |
-| 61 | **The second dimension**: per-dimension region directories, `level.smw`'s dimension and spawn fields, and the Deep Mine generator (sealed bedrock ceiling, one cave, stone, lava, richer iron, diamond clusters) | todo | Part M. Host-checkable, because the generator is pure: `worldcheck` can assert the ceiling is sealed across a fixed sample, that no column is open above it, and that the ore rates land where the design says. Needs the numbers in Part M's open list first. |
-| 62 | **Light and sky in the Deep Mine**: global illumination, no sun or moon, `voxel_sky`/`backdrop`/`horizon` suppressed, `daytime` frozen | todo | Needs the light plane's sky component to be a per-dimension constant rather than a flood. The device test is the one that matters: the same scene lit two ways, on the bench flight. |
-| 63 | **The mine shaft**: the recipe, the 3x3 frame with four corner columns and trusses at height 3, placement through `world_set`, the centre cell as the trigger, pairing by column | todo | Part M. Placement is host-checkable (the shape, the solid-ground test, the refusal when a needed chunk is not resident); the trigger is not, because `player.c` is not in the pure set. |
-| 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | todo | The order is in Part M. `check_eviction_releases` (F-132) is the check this depends on and already exists; it needs a variant that releases the whole store at once and demands the pools come back. |
-| 65 | **Zombies and skeletons**, in the Deep Mine only | todo | Step 13, narrowed. The mob pool is now the Deep Mine's only population. **Generated once with the terrain, no repopulation** (D-146), so this step is `mob_populate_chunk()` plus a rate table rather than a spawn rule, and a chunk the player clears stays cleared. Light cannot gate generation, so torches are for seeing. **Rate decided for now: 10-15% of chunks hold a pack, 2-3 in a pack** (D-147), a pack inside one chunk, rolled from the world's hash. That is 45-101 across a Far ring against a pool of 128, and `s_refused` must read 0 over a full ring -- the check that will say whether the numbers are right, since a pack refused by a full pool is gone for good. |
+| **61+** | **The Deep Mine (Part M)** -- added 2026-10-10, **built 2026-10-11 apart from step 65's combat half** | | |
+| 61 | **The second dimension**: per-dimension region directories, `level.smw`'s dimension and spawn fields, and the Deep Mine generator (sealed bedrock ceiling, one cave, stone, lava, richer iron, diamond clusters) | done | Part M, **built 2026-10-11** (F-150). `world/dimension.{c,h}` is the current dimension as ONE global, because the ring is keyed by `(cx, cz)` alone and cannot hold both worlds at once; `world/deepmine.{c,h}` is the generator. Measured over 144 chunks: floor y 6..26, ceiling sealed at 44, **2.4% iron against the overworld's 0.8% on the same sample**, 0.07% diamond where the overworld has none, 227 lava cells. `level.smw` gained one additive tag (`dimension`), so no migration and no major version (D-32), and the regions split by directory (D-143) with the overworld keeping the flat one -- a world already on the card still reads. |
+| 62 | **Light and sky in the Deep Mine**: global illumination, no sun or moon, `voxel_sky`/`backdrop`/`horizon` suppressed, `daytime` frozen | done, **device test pending** | Part M, built 2026-10-11 (F-150). Global illumination as a number is `DM_SKY_LIGHT` 12, and it is a **constant on open cells rather than a flood**: the column pass and the sky half of the border join are skipped, and block light still floods, because a torch is what makes a patch brighter than the rest of the cave -- lighting is for seeing, not for safety (D-139). `daytime_deep_mine()` is the frozen pose, straight up, because a sealed cave has no horizon to point at. The three render-side suppressions are one guard each on `dimension_has_sky()`. **The picture itself is still unverified on the device** -- this environment has no riscv32-esp-elf toolchain, so `make check` is green and the bench flight is the outstanding half. |
+| 63 | **The mine shaft**: the recipe, the 3x3 frame with four corner columns and trusses at height 3, placement through `world_set`, the centre cell as the trigger, pairing by column | done | Part M, **built 2026-10-11** (F-150). `world/mineshaft.{c,h}`: 12 posts and 4 braces, and 16 ingots in -- the recipe and the shape are the same number, which is why the shape is exactly this. Two writers, one shape, on the same argument as `worldgen_tree_shape`: the generator stamps into one chunk and drops what falls outside, a player's goes through `world_set`. **`item_block()` answers `BLK_AIR` for it**, so `player.c` needed a branch of its own -- a shaft places a shape, not a block -- and the cell it stands ON is the one the crosshair struck, not the empty cell in front of its face. The trigger is a shape test seen from the middle, so it needs no record and works in either dimension. **The station is still the user's open question**: the recipe row names the crafting table because the game's bench is the disassembly station. |
+| 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | done | Part M, **built 2026-10-11** (F-150). `world/dimension_switch.{c,h}` does steps 1-4 and 6 and **refuses rather than clears**, Part P's rule: a chunk the card never took is something the player made, and a switch that dropped it is data loss. Step 5 is in `main.c` and cannot be anywhere else, because the entry sequence is the app's -- `check_crossing()` waits for a quiet store, then hands the nine chunks to `start_loading()` with physics frozen. **Two things the design did not have**: the trigger has to re-arm, because the pairing is stateless and the cell you arrive in is a trigger too, so without one flag the player bounces back for ever; and a crossing during a replay is refused until step 48 records them. |
+| 65 | **Zombies and skeletons**, in the Deep Mine only | partly done -- **population only** | Built 2026-10-11 (F-150): two rows in `MOBS[]`, `PACKS[]` (60 zombie / 40 skeleton), one roll per chunk from the world's hash, a pack inside one chunk, and nothing that comes back (D-146). Measured over 10000 chunks: **1226 packs, 12.3% against the design's 12%**, 3066 members, 0.31 a chunk; a Far ring holds 71 of the pool's 128, so `s_refused` reads 0 -- the check that says whether the numbers are right. **Combat and pathing are not built**: `hostile` is a column of the row that nothing reads yet. Drops are empty on purpose (D-144). |
 
 ---
 
@@ -7816,6 +7817,79 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   **Status.** `make check` is green. The device run that prompted this (the 0x106 writes,
   F-147/F-148) is reported fixed by the user; the longer play session is still pending, and
   this is what will show whether it stayed fixed.
+
+- **F-150** 2026-10-11, built: **Part M is in the code, and the arrival height is
+  what forced the pairing to be pure.**
+
+  **What was built.** Steps 61-64 and the population half of 65. Four pure modules --
+  `world/dimension.{c,h}`, `world/deepmine.{c,h}`, `world/mineshaft.{c,h}`,
+  `world/dimension_switch.{c,h}` -- plus the app's half in `main.c` and `player.c`, the
+  light constant in `light.c`, the frozen pose in `daytime.c`, and `PACKS[]` in `mob.c`.
+  `make check` is green: hostpurity 68 files, four new `worldcheck` sections, and the
+  text budgets for the three new HUD lines (tightest fit 3 px, `sr`). Only `lang/en.txt`
+  needed the new keys, because every other language falls back to English.
+
+  **THE ARRIVAL HEIGHT HAS TO BE ANSWERABLE BEFORE THE CHUNK EXISTS, and that is the
+  whole reason a stateless pairing is possible.** At the moment of a crossing the store
+  is empty -- every chunk has just been released -- so the target column is not resident,
+  not on the card, and not readable. `deepmine_ground_y()` and `worldgen_height()` are
+  column functions, so they answer it anyway, and they answer it the same way in both
+  dimensions. **The consequence is worth saying out loud: a shaft the player built on
+  ground they had changed arrives at that column's GENERATED ground, not at the frame
+  they built.** `mineshaft_trigger_y()` exists and would give the better answer, but it
+  only works when the target is already resident, which at switch time it never is. That
+  is not a bug to fix; it is what 1:1 costs.
+
+  **THE TRIGGER HAS TO BE RELEASED BEFORE IT CAN FIRE AGAIN.** The pairing is by column,
+  so the cell you arrive in is a shaft too -- the same shape test, in the other
+  dimension, says yes on the next tick, and the player bounces back for ever. One flag is
+  the whole guard, and it reads like a door: it has to close before it can open again, so
+  the player has to step out of the centre cell first. Nothing in the design predicted
+  this, because nothing in the design had to stand in a shaft twice.
+
+  **The crossing refuses rather than clears**, for the same reason Part P refuses on
+  eviction: a chunk the card never took is something the player made, and a switch that
+  dropped it is data loss. Refusing is recoverable -- the player walks a little further,
+  or the card comes back -- and clearing is not. So a queue is not a refusal (try again
+  next tick, say nothing), and a real refusal says "The shaft would not open" once per
+  visit rather than once a tick.
+
+  **Death in the Deep Mine is a crossing, not a position change** (D-145), and it is the
+  second place the switch exists. Where the two rules collide, the data-loss rule wins:
+  if the crossing refuses, the player wakes where they fell rather than at the overworld
+  spawn, because a respawn that crossed a store boundary the card had not honoured would
+  lose the terrain under the player's own feet.
+
+  **A crossing during a replay is refused.** The recorder does not store crossings yet
+  (step 48), so a playback that made one would end up in the wrong world and disagree with
+  the file from that tick on. Refusing is the honest answer until the record exists.
+
+  **Global illumination as a number is 12, and it is a constant, not a flood.** The sky
+  nibble holds it in every cell light can occupy; the column pass and the sky half of the
+  border join are skipped, because both sides of a border already hold the same number.
+  Block light still floods, because a torch is what makes a patch brighter than the rest
+  of the cave -- which is what the user said lighting is for down there. One function
+  (`sky_constant()`) so the three places that need the answer cannot disagree.
+
+  **A check has to ask the generator where a shaft is.** Every column inside a candidate
+  grid square passes `mineshaft_is_candidate()`, but only one of them is stamped, so the
+  first version of `check_mineshaft()` was testing a shaft that does not exist. It now
+  calls `mineshaft_candidate_spot()`, and the resident area was widened to chunks -4..5 so
+  a shaft that straddles a border is guaranteed to be in the sample: 10 shafts, 1 on a
+  border, all 16 cells read back whole.
+
+  **The numbers, measured rather than asserted.** 144 chunks: floor y 6..26, ceiling
+  sealed at 44, 2.4% iron against the overworld's 0.8% on the same sample, 0.07% diamond
+  against none, 227 lava cells. 10000 chunks: 1226 packs, 12.3% against the design's 12%,
+  3066 members, 0.31 a chunk; a Far ring holds 71 of the pool, so `s_refused` reads 0. All
+  of these are provisional on the user's word and tuned after playtesting.
+
+  **Still not built, and still the user's to decide:** combat and pathing (step 13), the
+  station the shaft's recipe belongs to, the ceiling height and playable band, the depth
+  dependence of the pack share, repopulation, mob drops, a shaft that can be broken, the
+  Far Lands under 1:1, and the growth clock down there. **And the device test is
+  outstanding**: no toolchain here, so the light and the sky are green on the host and
+  unphotographed on the screen.
 
 ## Verification
 

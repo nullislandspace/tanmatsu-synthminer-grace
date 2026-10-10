@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "common/psram.h"
+#include "world/dimension.h"
 
 enum { SKY = 0, BLOCK = 1 };
 
@@ -143,7 +144,7 @@ static uint8_t block_at(lctx_t const* k, int32_t x, int y, int32_t z) {
 }
 
 static int get(lctx_t const* k, int32_t x, int y, int32_t z, int ch) {
-    if (y >= CH_H) return ch == SKY ? LIGHT_MAX : 0;
+    if (y >= CH_H) return ch == SKY ? dimension_sky_light(dimension_current()) : 0;
     if (y < 0) return 0;
     chunk_t const* c = chunk_at(k, x, z);
     if (c == NULL) return 0;
@@ -168,11 +169,29 @@ static void set(lctx_t const* k, int32_t x, int y, int32_t z, int ch, int v) {
 }
 
 uint8_t world_light(int32_t x, int32_t y, int32_t z) {
-    if (y >= CH_H) return (uint8_t)(LIGHT_MAX << 4);
+    if (y >= CH_H) return (uint8_t)(dimension_sky_light(dimension_current()) << 4);
     if (y < 0) return 0;
     chunk_t const* c = chunk_find(chunk_of(x), chunk_of(z));
     if (c == NULL || c->lt == NULL) return 0;
     return c->lt[CH_IDX(chunk_off(x), y, chunk_off(z))];
+}
+
+// THE SKY WITHOUT A SKY (Part M, D-139).
+//
+// In the Deep Mine the sky nibble is not a flood: it is a constant, the
+// same value in every cell light can occupy, because there is no sun to
+// come from anywhere and no hole in the ceiling for it to come through.
+// Block light still floods -- a torch is what makes a patch of the cave
+// brighter than the rest of it, which is what the user said lighting is
+// for down there: seeing, not safety.
+//
+// One function, so the three places that need the answer (a chunk's own
+// light, a block change, and the join across a chunk border) cannot
+// disagree about it. Cells a cube fills get 0, as anywhere: the constant
+// is what an OPEN cell holds, not what a solid one reports.
+static int sky_constant(uint8_t block) {
+    if (dimension_has_sky(dimension_current())) return -1;  // not a constant here
+    return light_filter(block) >= LIGHT_MAX ? 0 : dimension_sky_light(dimension_current());
 }
 
 // --- The floods ---------------------------------------------------------------
@@ -230,6 +249,22 @@ void light_block_changed(int32_t x, int32_t y, int32_t z, uint8_t was, uint8_t n
 
     lctx_t* const k = &s_main;
     int const     f = light_filter(now);
+
+    // In a dimension with no sky there is nothing to take away and
+    // nothing to flood back in: the cell's sky value is the constant,
+    // and the only thing a block change can do to it is set it or clear
+    // it. The block channel still floods, because a torch is a source.
+    int const cst = sky_constant(now);
+    if (cst >= 0) {
+        set(k, x, (int)y, z, SKY, cst);
+        if (emission(now) > 0) {
+            set(k, x, (int)y, z, BLOCK, emission(now));
+            push(&k->add, x, (int)y, z, emission(now));
+            flood_add(k, BLOCK);
+        }
+        return;
+    }
+
     for (int ch = SKY; ch <= BLOCK; ch++) {
         int const old = get(k, x, (int)y, z, ch);
         if (old > 0) {
@@ -277,18 +312,37 @@ void light_chunk_local(chunk_t* c) {
     int32_t const wx0 = c->cx * CH_W, wz0 = c->cz * CH_D;
 
     // Direct sunlight, straight down each column, and the torches.
+    //
+    // In the Deep Mine there is no sunlight to send down: the ceiling is
+    // sealed, so a column would come up dark from the first cell. The
+    // constant goes in instead, and the sky pass below is skipped.
+    int const cst = sky_constant(BLK_AIR);
+
     for (int z = 0; z < CH_D; z++) {
         for (int x = 0; x < CH_W; x++) {
-            int lv = LIGHT_MAX;
+            int lv = (cst >= 0) ? cst : LIGHT_MAX;
             for (int y = CH_H - 1; y >= 0; y--) {
                 size_t const  i = CH_IDX(x, y, z);
                 uint8_t const b = c->id[i];
                 int const     f = light_filter(b);
                 lv              = f >= LIGHT_MAX ? 0 : lv - f;
                 if (lv < 0) lv = 0;
-                c->lt[i] = (uint8_t)((lv << 4) | emission(b));
+                c->lt[i] = (uint8_t)(((cst >= 0 ? cst : lv) << 4) | emission(b));
             }
         }
+    }
+
+    if (cst >= 0) {
+        // No sky to seed, and nothing to trade across the border: the
+        // constant is the same on both sides of it, so a join would
+        // change nothing. Torches still flood.
+        for (int z = 0; z < CH_D; z++)
+            for (int x = 0; x < CH_W; x++)
+                for (int y = 0; y < CH_H; y++)
+                    if (light_block(c->lt[CH_IDX(x, y, z)]) > 1) push(&k->add, wx0 + x, y, wz0 + z, 0);
+        flood_add(k, BLOCK);
+        k->only = NULL;
+        return;
     }
 
     // SKY. Sideways spread only happens where a column's daylight reaches
@@ -333,6 +387,9 @@ void light_chunk_join(chunk_t* c) {
     // Each face the chunk shares with a resident neighbour, both ways:
     // whichever side of a pair could light the other more is a seed.
     for (int ch = SKY; ch <= BLOCK; ch++) {
+        // The sky half trades nothing where the sky is a constant: both
+        // sides of the border already hold the same number.
+        if (sky_constant(BLK_AIR) >= 0 && ch == SKY) continue;
         for (int side = 0; side < 4; side++) {
             for (int a = 0; a < CH_W; a++) {
                 int32_t const nx = side == 0 ? wx0 - 1 : side == 1 ? wx0 + CH_W : wx0 + a;

@@ -38,6 +38,7 @@
 #include "se_nbt.h"
 #include "world/region.h"
 #include "world/vfs_compat.h"
+#include "world/dimension.h"
 
 #define NAME_BUF 64
 
@@ -45,6 +46,19 @@ static char s_base[128];
 static char s_open_slug[SM_WORLD_SLUG_MAX];
 static int  s_migrated;   // region files moved into buckets on the last open
 static char s_region_dir[192];
+// The same directory's subdirectory, for the Deep Mine (D-143). Built at
+// open from dimension_region_sub(), so the two dimensions share one slug,
+// one seed and one level file, and differ only in where their regions are.
+static char s_deep_dir[224];
+
+// Which directory a chunk's region belongs to. The overworld keeps the
+// flat one: a world already on a card has its regions there, and reading
+// them through a new path would find an empty directory and report a
+// world with no terrain. Under 1:1 mapping the same r.<rx>.<rz> name means
+// the same column in both, so the directory IS the dimension.
+static char const* region_dir(dimension_t d) {
+    return d == DIM_OVERWORLD ? s_region_dir : s_deep_dir;
+}
 static bool s_open;
 // A world with no directory: generated on demand, never written. The
 // title screen's backdrop is one (it must not appear in the world list
@@ -565,6 +579,7 @@ static bool write_level(char const* slug, world_meta_t const* m, player_state_t 
     nbt_write_int32(&w, "spawn_z", m->spawn_z);
     nbt_write_int64(&w, "time_of_day", m->time_of_day);
     nbt_write_int32(&w, "farlands_x", m->farlands_x);
+    nbt_write_int32(&w, "dimension", m->dimension);
     write_player(&w, p);
     write_palette(&w);
     write_items(&w, items);
@@ -663,6 +678,7 @@ static bool read_level(char const* slug, world_meta_t* m, player_state_t* p, boo
             else if (strcmp(name, "spawn_y") == 0) m->spawn_y = v;
             else if (strcmp(name, "spawn_z") == 0) m->spawn_z = v;
             else if (strcmp(name, "farlands_x") == 0) m->farlands_x = v;
+            else if (strcmp(name, "dimension") == 0) m->dimension = v;
         } else if (type == NBT_INT64) {
             int64_t const v = nbt_read_int64(&r);
             if (strcmp(name, "created") == 0) m->created = v;
@@ -754,6 +770,7 @@ int worldstore_list(world_meta_t* out, int max) {
 static void open_paths(char const* slug) {
     snprintf(s_open_slug, sizeof(s_open_slug), "%s", slug);
     snprintf(s_region_dir, sizeof(s_region_dir), "%s/%s%s/region", s_base, group_of(slug), slug);
+    snprintf(s_deep_dir, sizeof(s_deep_dir), "%s/%s", s_region_dir, dimension_region_sub(DIM_DEEP_MINE));
     // Regions written before bucketing existed sit flat in that
     // directory; move them into their buckets once, here (region.h).
     // A world played on an older build therefore migrates the first
@@ -762,6 +779,13 @@ static void open_paths(char const* slug) {
     // (These files are host-pure and do not log; the count is for the
     // host checks, which do.)
     s_migrated = region_migrate(s_region_dir);
+    // The Deep Mine's directory is bucketed from the first write, so
+    // there is normally nothing here to move. It is still worth asking:
+    // a world that has never been down there costs one failed directory
+    // open, and one that has is migrated by the same rule as the
+    // overworld. -1 means "no such directory", which is not a failure.
+    int const deep = region_migrate(s_deep_dir);
+    if (deep > 0) s_migrated += deep;
     s_open          = true;
     s_unknown_cells = 0;
 
@@ -1149,7 +1173,7 @@ int world_chunk_load(chunk_t* c) {
     // "not on the card" and the generator makes it. That is the whole
     // implementation.
     if (s_scratch) return 0;
-    int const r = region_read_chunk(s_region_dir, c, s_remap_needed ? s_remap : NULL);
+    int const r = region_read_chunk(region_dir(dimension_current()), c, s_remap_needed ? s_remap : NULL);
     if (r == 1 && s_remap_needed) {
         // Count what was lost, so the caller can say so once rather than
         // have it discovered as holes in a build.
@@ -1172,14 +1196,14 @@ bool world_chunk_save(chunk_t const* c) {
     // the streamer will not evict a chunk whose save failed, so a
     // refusal here would pin every edited chunk in the ring forever.
     if (s_scratch) return true;
-    return region_write_chunk(s_region_dir, c);
+    return region_write_chunk(region_dir(dimension_current()), c);
 }
 
 bool world_region_maintain(int32_t cx, int32_t cz) {
     if (!s_open || s_scratch) return false;
     int32_t const rx = region_of(cx), rz = region_of(cz);
-    if (!region_should_compact(s_region_dir, rx, rz)) return false;
-    return region_compact(s_region_dir, rx, rz);
+    if (!region_should_compact(region_dir(dimension_current()), rx, rz)) return false;
+    return region_compact(region_dir(dimension_current()), rx, rz);
 }
 
 int worldstore_unknown_blocks(void) {

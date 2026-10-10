@@ -13,6 +13,13 @@
 // it is also the cap that makes a cut-off flow DRY UP rather than
 // hang there for ever (a cell wanting a level past the reach becomes
 // air). Water's are Minecraft's.
+// LAVA IS NOT IN THIS TABLE, on purpose (Part M). It is K_LIQUID so the
+// mesher draws only its surface and so `block_liquid()` is true for it,
+// but a fluid here would be a fluid that MOVES, and the Deep Mine's lava
+// is a hazard you walk around, not a flow. `fluid_def()` answers NULL,
+// which is the whole of why it never wakes: blockupdate.c only queues a
+// cell for a block this table knows. Adding lava to it later is a design
+// decision (a lava that flows would fill a cave), not a missing row.
 static fluid_def_t const FLUIDS[] = {
     {.block = BLK_WATER, .delay = 5, .reach = 7, .infinite = true},
     {.block = BLK_AIR},  // the end

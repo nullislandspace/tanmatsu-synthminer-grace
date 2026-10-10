@@ -37,6 +37,13 @@ static struct {
     [VM_PLANKS]        = {"planks.png", 0xFFA4804Eu},
     // A darker timber, so a gate is not a fence (F-140).
     [VM_GATE]          = {"gate.png", 0xFF7C5636u},
+    // THE DEEP MINE (Part M). The fallback colours are what shows when a
+    // texture will not load, and a zero here is black -- which is how the
+    // bed shipped with a black square in the inventory (F-128).
+    [VM_LAVA]          = {"lava.png", 0xFFD85A22u},
+    [VM_DIAMOND_ORE]   = {"diamond_ore.png", 0xFF5A8E9Cu},
+    [VM_SHAFT_COLUMN]  = {"shaft_column.png", 0xFF8E8278u},
+    [VM_SHAFT_TRUSS]   = {"shaft_truss.png", 0xFF7E7268u},
     [VM_LEAVES]        = {"leaves.png", 0xFF3A7026u},
     [VM_COAL]          = {"coal_ore.png", 0xFF606062u},
     [VM_GLASS]         = {"glass.png", 0xFFC8D8DEu},

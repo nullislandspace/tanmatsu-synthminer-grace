@@ -33,6 +33,10 @@
 #include "world/vfs_compat.h"
 #include "world/worldgen.h"
 #include "world/farlands.h"
+#include "world/deepmine.h"
+#include "world/dimension.h"
+#include "world/mineshaft.h"
+#include "world/dimension_switch.h"
 #include "world/datadir.h"
 #include <sys/stat.h>
 #include <time.h>
@@ -2145,6 +2149,22 @@ static void check_worldstore(void) {
     CHECK(p2.health == 13 && p2.hunger == 7, "player health/hunger did not survive");
     CHECK(p2.has_bed && p2.bed_x == -99998, "the bed spawn did not survive");
     CHECK(m2.time_of_day == 4321, "the world's time of day did not survive");
+
+    // THE DIMENSION (Part M). A new world reads as the overworld, and an
+    // old `level.smw` with no `dimension` tag still does -- which is the
+    // whole of why this is an additive tag and not a major version
+    // (D-30, D-143): a world on a card that has never been down there
+    // has nothing to migrate.
+    CHECK(m2.dimension == (int32_t)DIM_OVERWORLD, "a new world did not start in the overworld");
+    meta.dimension = (int32_t)DIM_DEEP_MINE;
+    CHECK(worldstore_save(&meta, &player, NULL), "worldstore_save failed for the dimension tag");
+    world_meta_t m4;
+    player_state_t p4;
+    worldstore_close();
+    CHECK(worldstore_open(meta.slug, &m4, &p4, NULL), "worldstore_open failed for the dimension tag");
+    CHECK(m4.dimension == (int32_t)DIM_DEEP_MINE, "the dimension did not survive a save/load");
+    CHECK(m4.seed == 12345u && strcmp(m4.slug, meta.slug) == 0, "the dimension tag moved the world");
+    CHECK(strcmp(dimension_region_sub(DIM_DEEP_MINE), "deep_mine") == 0, "the Deep Mine has no directory");
 
     // A second world with the same name must not collide.
     world_meta_t   m3;
@@ -4649,6 +4669,10 @@ static void check_population(void) {
            (double)wide / (total > 0 ? total : 1), seen[MOB_DOG],
            seen[MOB_DOG] > 0 ? (double)wide / seen[MOB_DOG] : 0.0);
     for (int k = MOB_PIG; k < MOB_KIND_COUNT; k++) {
+        // The hostile kinds are not part of this sample: they do not
+        // spawn in the overworld at all (D-137), and their own sample
+        // is check_deep_mine_population().
+        if (mob_def((uint8_t)k)->hostile) continue;
         CHECK(seen[k] > 0, "no %s in %d chunks of real terrain", mob_def((uint8_t)k)->name, wide);
     }
     // A dog is a FIND, not an errand: rarer than the livestock, and not
@@ -4657,6 +4681,449 @@ static void check_population(void) {
     CHECK(seen[MOB_DOG] * 200 > wide, "a dog turns up less than once in 200 chunks, which is never");
 
     mob_reset();
+    chunk_store_clear();
+}
+
+// The Deep Mine (Part M): a sealed cave, richer iron, occasional
+// diamond, occasional lava -- and a pack per chunk. All of it is pure,
+// so a fixed sample of generated chunks can assert the design's numbers
+// rather than the code guessing them.
+static void check_deep_mine(void) {
+    printf("deep mine: a sealed ceiling, richer iron, and the ore rates\n");
+
+    uint32_t const seed = 0xDEE00001u;
+
+    static uint8_t id[CH_CELLS];
+    static uint8_t st[CH_CELLS];
+    chunk_t c;
+    memset(&c, 0, sizeof(c));
+    c.id = id;
+    c.st = st;
+
+    long columns = 0, sealed = 0, open_above = 0;
+    long stone = 0, iron = 0, coal = 0, diamond = 0, lava = 0;
+    int  min_floor = CH_H, max_floor = 0, chunks = 0;
+
+    for (int32_t cz = 0; cz < 12; cz++) {
+        for (int32_t cx = 0; cx < 12; cx++) {
+            c.cx = cx;
+            c.cz = cz;
+            deepmine_chunk(&c, seed);
+            chunks++;
+
+            for (int lz = 0; lz < CH_D; lz++) {
+                for (int lx = 0; lx < CH_W; lx++) {
+                    columns++;
+                    int const fy = deepmine_ground_y(cx * CH_W + lx, cz * CH_D + lz, seed);
+                    CHECK(fy >= DM_FLOOR_MIN && fy <= DM_FLOOR_MAX, "floor column %d,%d is at y %d, outside the band",
+                          cx * CH_W + lx, cz * CH_D + lz, fy);
+                    if (fy < min_floor) min_floor = fy;
+                    if (fy > max_floor) max_floor = fy;
+
+                    for (int y = 0; y < CH_H; y++) {
+                        uint8_t const b = c.id[CH_IDX(lx, y, lz)];
+                        if (y >= DM_CEILING_Y) {
+                            if (b == BLK_BEDROCK) sealed++;
+                            else open_above++;
+                        } else if (b == BLK_STONE) {
+                            stone++;
+                        } else if (b == BLK_IRON_ORE) {
+                            iron++;
+                        } else if (b == BLK_COAL_ORE) {
+                            coal++;
+                        } else if (b == BLK_DIAMOND_ORE) {
+                            diamond++;
+                        } else if (b == BLK_LAVA) {
+                            lava++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    double const ore_total = (double)(stone + iron + coal + diamond);
+    printf("  %d chunks: floor y %d..%d, ceiling at %d, ore %.1f%% iron / %.1f%% coal / %.2f%% diamond, "
+           "%ld lava cells\n",
+           chunks, min_floor, max_floor, DM_CEILING_Y, 100.0 * (double)iron / ore_total,
+           100.0 * (double)coal / ore_total, 100.0 * (double)diamond / ore_total, lava);
+
+    // THE CEILING IS SEALED ON EVERY COLUMN. This is the difference
+    // between a cave and a shaft open to the sky, and it is the one
+    // thing here a player could notice from inside.
+    CHECK(open_above == 0, "%ld cell(s) above the ceiling are not bedrock", open_above);
+    CHECK(sealed == columns * (CH_H - DM_CEILING_Y), "the ceiling covers %ld of %ld cells", sealed,
+          columns * (CH_H - DM_CEILING_Y));
+    CHECK(max_floor < DM_CEILING_Y, "a column is solid all the way through: floor %d, ceiling %d", max_floor,
+          DM_CEILING_Y);
+
+    // RICHER IN IRON, and the occasional cluster of diamond. Measured
+    // against the overworld on the same sample, so the claim is a
+    // comparison rather than a number in a comment.
+    long o_stone = 0, o_iron = 0, o_coal = 0, o_diamond = 0;
+    for (int32_t cz = 0; cz < 12; cz++) {
+        for (int32_t cx = 0; cx < 12; cx++) {
+            c.cx = cx;
+            c.cz = cz;
+            worldgen_chunk(&c, seed, FARLANDS_NONE);
+            for (int i = 0; i < CH_CELLS; i++) {
+                if (c.id[i] == BLK_STONE) o_stone++;
+                else if (c.id[i] == BLK_IRON_ORE) o_iron++;
+                else if (c.id[i] == BLK_COAL_ORE) o_coal++;
+                else if (c.id[i] == BLK_DIAMOND_ORE) o_diamond++;
+            }
+        }
+    }
+    double const o_iron_pct = 100.0 * (double)o_iron / (double)(o_stone + o_iron + o_coal + o_diamond);
+    double const d_iron_pct = 100.0 * (double)iron / ore_total;
+    printf("  same sample in the overworld: %.1f%% iron, %.1f%% coal, %.2f%% diamond\n", o_iron_pct,
+           100.0 * (double)o_coal / (double)(o_stone + o_iron + o_coal + o_diamond),
+           100.0 * (double)o_diamond / (double)(o_stone + o_iron + o_coal + o_diamond));
+    CHECK(d_iron_pct > o_iron_pct, "the Deep Mine is not richer in iron: %.1f%% against the overworld's %.1f%%",
+          d_iron_pct, o_iron_pct);
+    CHECK(diamond > 0, "no diamond in %d chunks: the clusters never appear", chunks);
+    CHECK(lava > 0, "no lava in %d chunks: the patches never appear", chunks);
+
+    // THE PAIRING IS BY COLUMN (D-142), so the arrival height has to be
+    // knowable before the chunk exists. It is, because both dimensions
+    // answer the same question the same way.
+    for (int32_t z = -40; z <= 40; z += 7) {
+        for (int32_t x = -40; x <= 40; x += 7) {
+            CHECK(mineshaft_arrival_y(x, z, seed, (int)DIM_DEEP_MINE) == deepmine_ground_y(x, z, seed),
+                  "column %d,%d: the arrival y is not the Deep Mine's floor", x, z);
+            CHECK(mineshaft_arrival_y(x, z, seed, (int)DIM_OVERWORLD) == worldgen_height(x, z, seed),
+                  "column %d,%d: the arrival y is not the overworld's ground", x, z);
+        }
+    }
+
+    // NO SKY, and the light is a constant. The number is the design's
+    // (DM_SKY_LIGHT), and the check is that the two agree.
+    CHECK(!dimension_has_sky(DIM_DEEP_MINE), "the Deep Mine reports a sky");
+    CHECK(dimension_sky_light(DIM_DEEP_MINE) == DM_SKY_LIGHT, "global illumination is %d, not %d",
+          dimension_sky_light(DIM_DEEP_MINE), DM_SKY_LIGHT);
+    CHECK(dimension_sky_light(DIM_OVERWORLD) == (int)LIGHT_MAX, "the overworld lost its full sky light");
+    CHECK(strcmp(dimension_region_sub(DIM_OVERWORLD), "") == 0, "the overworld moved out of its flat directory");
+    CHECK(strcmp(dimension_region_sub(DIM_DEEP_MINE), "deep_mine") == 0,
+          "the Deep Mine's region directory is \"%s\", not the one worldstore.c builds", dimension_region_sub(DIM_DEEP_MINE));
+}
+
+// The pack share, on its own, because it is the number the pool is
+// measured against (D-147) and the one that fails silently.
+static void check_deep_mine_population(void) {
+    printf("deep mine population: the pack share, and the pool it has to fit in\n");
+
+    uint32_t const seed = 0xDEE00002u;
+
+    static uint8_t id[CH_CELLS];
+    static uint8_t st[CH_CELLS];
+    chunk_t c;
+    memset(&c, 0, sizeof(c));
+    c.id = id;
+    c.st = st;
+
+    // A FULL FAR-VIEW RING, the same worst case check_population uses:
+    // 15 x 15 chunks resident at once.
+    int packs = 0, members = 0, kinds[MOB_KIND_COUNT];
+    memset(kinds, 0, sizeof(kinds));
+    int resident = 0, wet = 0, in_shaft = 0;
+
+    // The dispatch is on the CURRENT dimension, so this is the check that
+    // says whether it works: down here the entry point must read PACKS,
+    // not HERDS.
+    dimension_set_current(DIM_DEEP_MINE);
+
+    for (int32_t cz = -7; cz <= 7; cz++) {
+        for (int32_t cx = -7; cx <= 7; cx++) {
+            chunk_t* r = chunk_claim(cx, cz);
+            if (r == NULL) continue;
+            deepmine_chunk(r, seed);
+            r->cstate = CS_READY;
+            chunk_resummarise(r);
+            resident++;
+            mob_populate_chunk(cx, cz, seed);
+        }
+    }
+
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_t const* m = mob_at(i);
+        if (!m->alive) continue;
+        kinds[m->kind]++;
+        int32_t const bx = (int32_t)floor(m->body.x), by = (int32_t)floor(m->body.y), bz = (int32_t)floor(m->body.z);
+        if (block_liquid(world_block(bx, by, bz)) || block_liquid(world_block(bx, by - 1, bz))) wet++;
+        if (world_block(bx, by, bz) == BLK_SHAFT_COLUMN || world_block(bx, by, bz) == BLK_SHAFT_TRUSS) in_shaft++;
+    }
+
+    for (int32_t cz = 0; cz < 100; cz++) {
+        for (int32_t cx = 0; cx < 100; cx++) {
+            int n = 0;
+            if (deepmine_pack(cx, cz, seed, &n)) {
+                packs++;
+                CHECK(n >= DM_PACK_MIN && n <= DM_PACK_MAX, "chunk %d,%d rolled a pack of %d", cx, cz, n);
+                members += n;
+            }
+        }
+    }
+
+    double const share = 100.0 * (double)packs / 10000.0;
+    printf("  10000 chunks: %d packs (%.1f%%, design says %d%%), %d members, %.2f a chunk\n", packs, share,
+           DM_PACK_CHANCE_PCT, members, (double)members / 10000.0);
+    printf("  far ring: %d chunks, %d mobs in the pool, %d zombie / %d skeleton\n", resident, mob_live(),
+           kinds[MOB_ZOMBIE], kinds[MOB_SKELETON]);
+
+    // The roll has to land where the design says, on a sample big enough
+    // for a percentage to mean anything.
+    CHECK(share > (double)DM_PACK_CHANCE_PCT - 4.0 && share < (double)DM_PACK_CHANCE_PCT + 4.0,
+          "the pack share is %.1f%%, not the %d%% the design says", share, DM_PACK_CHANCE_PCT);
+
+    // THE POOL MUST NOT FILL, and here a refusal is permanent: a chunk is
+    // rolled once and a pack the pool turned away is gone for good.
+    CHECK(mob_refused() == 0, "%u pack members were turned away: the pool is too small for a far-view ring",
+          mob_refused());
+    CHECK(mob_live() > 0, "a whole far ring of the Deep Mine produced no mobs at all");
+    CHECK(mob_live() < MOB_MAX, "a single ring filled the pool (%d of %d)", mob_live(), MOB_MAX);
+    CHECK(wet == 0, "%d pack members were generated on a lava patch", wet);
+    CHECK(in_shaft == 0, "%d pack members were generated inside the frame", in_shaft);
+
+    // BOTH KINDS TURN UP, over an area a player could walk in an evening.
+    CHECK(kinds[MOB_ZOMBIE] > 0 && kinds[MOB_SKELETON] > 0, "the pack is all one kind: %d zombie, %d skeleton",
+          kinds[MOB_ZOMBIE], kinds[MOB_SKELETON]);
+
+    // AND THE OVERWORLD STAYS HERD-ONLY (D-137): the same entry point,
+    // the overworld's dimension, must not produce a hostile mob.
+    mob_reset();
+    for (int32_t cz = -7; cz <= 7; cz++) {
+        for (int32_t cx = -7; cx <= 7; cx++) {
+            chunk_t* r = chunk_claim(cx, cz);
+            if (r == NULL) continue;
+            worldgen_chunk(r, seed, FARLANDS_NONE);
+            r->cstate = CS_READY;
+            chunk_resummarise(r);
+            mob_populate_chunk(cx, cz, seed);
+        }
+    }
+    int hostile = 0;
+    for (int i = 0; i < MOB_MAX; i++) {
+        if (mob_at(i)->alive && mob_def(mob_at(i)->kind)->hostile) hostile++;
+    }
+    CHECK(hostile == 0, "%d hostile mob(s) spawned in the overworld", hostile);
+
+    dimension_set_current(DIM_OVERWORLD);
+    mob_reset();
+    chunk_store_clear();
+}
+
+// The shaft: the shape, the placement rule, and the trigger. The trigger
+// is stateless -- there is no link record -- so the shape test has to
+// answer in either dimension, for a frame the player built and for one
+// the generator grew.
+static void check_mineshaft(void) {
+    printf("mine shaft: the shape, the placement rule, and the trigger\n");
+
+    uint32_t const seed = 0xDEE00003u;
+
+    // SIXTEEN CELLS, twelve posts and four braces, and no centre -- the
+    // centre is the open middle the player steps into, and the only cell
+    // of a shaft that is not a block.
+    int posts = 0, braces = 0, centre = 0;
+    for (size_t i = 0; i < 16; i++) {
+        shaft_cell_t const* s = &SHAFT_CELLS[i];
+        if (s->dx == 0 && s->dz == 0) centre++;
+        if (s->dy < 1 || s->dy > 3) continue;
+        if (s->block == BLK_SHAFT_COLUMN) posts++;
+        else if (s->block == BLK_SHAFT_TRUSS) braces++;
+    }
+    printf("  %d posts, %d braces, %d centre cell(s)\n", posts, braces, centre);
+    CHECK(posts == 12 && braces == 4, "the shape is %d posts and %d braces, not 12 and 4", posts, braces);
+    CHECK(centre == 0, "the shape includes the middle cell, which has to stay open");
+
+    // --- The generator's shaft, across a chunk border -----------------
+    //
+    // A shaft is a shape that straddles borders, so the stamp walks the
+    // 3x3 neighbourhood and writes only the cells landing here. Two
+    // chunks each write half of it, and that is what makes it seamless.
+    // Ten chunks each way, so the sample holds enough shafts that one of
+    // them is bound to sit on a border -- a shaft lands at a random spot
+    // inside its square, so a 3x3 sample would test the seam only about
+    // one time in five.
+    for (int32_t cz = -4; cz <= 5; cz++) {
+        for (int32_t cx = -4; cx <= 5; cx++) {
+            chunk_t* c = chunk_claim(cx, cz);
+            if (c == NULL) continue;
+            deepmine_chunk(c, seed);
+            c->cstate = CS_READY;
+            chunk_resummarise(c);
+        }
+    }
+
+    // The generator does not put a shaft on the lattice -- it puts it
+    // somewhere inside its grid square. So the check has to ask the
+    // generator where it is: every column in a candidate square passes
+    // mineshaft_is_candidate(), but only one of them is stamped, and a
+    // check that guesses from a cell would test a shaft that was never
+    // written.
+    int tested = 0, straddled = 0, perfect = 0;
+    for (int32_t gz = -4; gz <= 5; gz++) {
+        for (int32_t gx = -4; gx <= 5; gx++) {
+            int32_t wx, wz;
+            mineshaft_candidate_spot(gx, gz, seed, &wx, &wz);
+            if (!mineshaft_is_candidate(wx, wz, seed)) continue;
+            int const g = deepmine_ground_y(wx, wz, seed) - 1;
+            if (g < 0 || g + 3 >= DM_CEILING_Y || deepmine_lava(wx, wz, seed)) continue;
+
+            // Every cell of the shape has to be inside the resident 3x3,
+            // or there is nothing here to read back.
+            bool inside = true;
+            for (size_t i = 0; i < 16; i++) {
+                shaft_cell_t const* s = &SHAFT_CELLS[i];
+                if (chunk_of(wx + s->dx) < -4 || chunk_of(wx + s->dx) > 5) inside = false;
+                if (chunk_of(wz + s->dz) < -4 || chunk_of(wz + s->dz) > 5) inside = false;
+            }
+            if (!inside) continue;
+
+            int found = 0;
+            for (size_t i = 0; i < 16; i++) {
+                shaft_cell_t const* s = &SHAFT_CELLS[i];
+                if (world_block(wx + s->dx, g + s->dy, wz + s->dz) == s->block) found++;
+            }
+            tested++;
+            if (found == 16) perfect++;
+            if (chunk_of(wx - 1) != chunk_of(wx) || chunk_of(wx + 1) != chunk_of(wx) ||
+                chunk_of(wz - 1) != chunk_of(wz) || chunk_of(wz + 1) != chunk_of(wz)) straddled++;
+            CHECK(found == 16, "the shaft at %d,%d came out with %d of its 16 cells", wx, wz, found);
+            // The stamped shape and the trigger test are the same shape
+            // seen from two sides, so a shaft the generator grew has to
+            // read as a trigger -- in the Deep Mine, where nothing else
+            // would ever make one.
+            CHECK(mineshaft_is_trigger(wx, g + 1, wz), "the shaft at %d,%d is not a trigger at its floor", wx, wz);
+        }
+    }
+    printf("  %d generated shaft(s) in the sample, %d on a chunk border, %d read back whole\n",
+           tested, straddled, perfect);
+    CHECK(tested > 0, "no generated shaft in the sample");
+    CHECK(straddled > 0, "no generated shaft straddled a chunk border in the sample of %d", tested);
+    CHECK(perfect == tested, "%d of %d generated shafts came out incomplete", perfect, tested);
+
+    // --- The player's shaft -------------------------------------------
+    //
+    // A flat world, so the ground test is the only thing deciding. `y` is
+    // the cell the shaft stands ON; the player's cell is y + 1.
+    chunk_store_clear();
+    CHECK(flat_world(16) != NULL, "the shaft world would not become resident");
+
+    int32_t const px = 8, pz = 8;
+    CHECK(mineshaft_can_place(px, 15, pz), "a shaft on flat ground was refused");
+    CHECK(mineshaft_place(px, 15, pz), "a shaft that could be placed was not placed");
+    CHECK(mineshaft_is_trigger(px, 16, pz), "the centre of a shaft the player built is not a trigger");
+    CHECK(mineshaft_trigger_y(px, pz) == 16, "the trigger was found at y %d, not 16", mineshaft_trigger_y(px, pz));
+    CHECK(world_block(px, 16, pz) == BLK_AIR, "the centre cell was written as a block");
+
+    // A post with nothing under it is a post in the air.
+    set_block(px - 1, 15, pz - 1, BLK_AIR, 0);
+    CHECK(!mineshaft_can_place(px, 15, pz), "a shaft was allowed with a corner post in the air");
+    set_block(px - 1, 15, pz - 1, BLK_STONE, 0);
+
+    // A cell already occupied refuses the whole frame, and half a frame
+    // is not a shaft anybody could walk into.
+    set_block(px + 1, 17, pz, BLK_STONE, 0);
+    CHECK(!mineshaft_can_place(px, 15, pz), "a shaft was allowed into an occupied cell");
+    CHECK(!mineshaft_place(px, 15, pz), "a half frame was written anyway");
+    CHECK(world_block(px + 1, 17, pz) == BLK_STONE, "the occupied cell was overwritten");
+    set_block(px + 1, 17, pz, BLK_AIR, 0);
+
+    // A chunk it needs that is not here reads as the barrier (D-14), so
+    // the placement refuses outright rather than building half a frame.
+    CHECK(!mineshaft_can_place(48, 15, 48), "a shaft was allowed with a chunk it needs not resident");
+
+    // AND THE PAIRING: the same column, a different height, because each
+    // end stands on its own ground.
+    CHECK(mineshaft_arrival_y(px, pz, seed, (int)DIM_DEEP_MINE) == deepmine_ground_y(px, pz, seed),
+          "column %d,%d does not pair back to the Deep Mine's floor", px, pz);
+    CHECK(mineshaft_arrival_y(px, pz, seed, (int)DIM_OVERWORLD) == worldgen_height(px, pz, seed),
+          "column %d,%d does not pair back to the overworld's ground", px, pz);
+
+    chunk_store_clear();
+}
+
+// The switch (D-141): the largest one-time eviction the game will ever
+// do, and the one place the whole store changes identity at once. It has
+// to go through chunk_release(), or the creature and block-entity pools
+// never come back -- F-132's check, but for all 256 slots at once.
+static void check_dimension_switch(void) {
+    printf("switch: a crossing releases the whole store (D-141)\n");
+
+    CHECK(chunk_store_init(), "chunk_store_init failed");
+    CHECK(worldstore_init(STORE_BASE), "worldstore_init failed");
+
+    world_meta_t   meta;
+    player_state_t player;
+    CHECK(worldstore_create("switch test", 9091u, &meta, &player), "could not create the switch world");
+    CHECK(chunk_worker_start(meta.seed), "chunk_worker_start failed");
+
+    // A ring of real terrain, with creatures and records in it.
+    int resident = 0;
+    for (int32_t cz = -4; cz <= 4; cz++) {
+        for (int32_t cx = -4; cx <= 4; cx++) {
+            if (!chunk_worker_request_load(cx, cz)) continue;
+            resident++;
+        }
+    }
+    CHECK(resident > 0, "nothing streamed in");
+
+    int mobs = 0, recs = 0;
+    for (int32_t cz = -4; cz <= 4; cz++) {
+        for (int32_t cx = -4; cx <= 4; cx++) {
+            chunk_t* c = chunk_find(cx, cz);
+            if (c == NULL) continue;
+            if (mob_spawn(MOB_PIG, (double)(cx * CH_W) + 8.5, (double)world_ground(cx * CH_W + 8, cz * CH_D + 8),
+                          (double)(cz * CH_D) + 8.5, false) >= 0) mobs++;
+            if (blockent_add(cx * CH_W + 2, 20, cz * CH_D + 2, BE_CHEST) != NULL) recs++;
+        }
+    }
+    CHECK(mobs > 0 && recs > 0, "the switch world has %d creatures and %d records", mobs, recs);
+
+    // A chunk the player changed, so the save pass has something to do.
+    chunk_t* dirty = chunk_find(0, 0);
+    CHECK(dirty != NULL, "the switch world's centre chunk is not resident");
+    if (dirty != NULL) {
+        world_set(8, 20, 8, BLK_STONE, 0);
+        CHECK((dirty->flags & CF_EDITED) != 0, "world_set did not mark the chunk dirty");
+    }
+
+    CHECK(dimension_current() == DIM_OVERWORLD, "the switch started in the wrong dimension");
+    CHECK(dimension_switch(0, 0, DIM_DEEP_MINE), "the switch refused a quiet store");
+
+    CHECK(mob_live() == 0, "the switch left %d creature(s) in the pool", mob_live());
+    CHECK(blockent_count() == 0, "the switch left %d record(s) in the pool", blockent_count());
+
+    int left = 0;
+    for (int i = 0; i < CH_SLOT_COUNT; i++) {
+        chunk_t const* c = chunk_slot_at(i);
+        if (c != NULL && c->cstate != CS_FREE) left++;
+    }
+    CHECK(left == 0, "%d chunk(s) are still resident after the switch", left);
+    CHECK(dimension_current() == DIM_DEEP_MINE, "the store is the Deep Mine's but the game says %s",
+          dimension_name(dimension_current()));
+
+    // AND IT REFUSES RATHER THAN CLEARS. A chunk the worker is still
+    // filling cannot be saved -- its planes are the worker's until it
+    // hands them over -- so a switch with one in flight has to change
+    // nothing at all.
+    chunk_t* c = chunk_worker_request_load(0, 0) ? chunk_find(0, 0) : NULL;
+    CHECK(c != NULL, "the Deep Mine would not stream a chunk in after the switch");
+    if (c != NULL) {
+        c->cstate = CS_LOADING;
+        CHECK(!dimension_switch(0, 0, DIM_OVERWORLD), "a switch ran while a chunk was being filled");
+        CHECK(dimension_current() == DIM_DEEP_MINE, "the refused switch still re-keyed the store");
+        // chunk_find() hides a CS_LOADING chunk on purpose, so the slot is
+        // the only way to see whether the refused switch kept it.
+        CHECK(chunk_slot_claimed(0, 0) == c, "the refused switch released the chunk it was refused for");
+        c->cstate = CS_READY;
+        CHECK(mob_live() == 0, "the refused switch left %d creature(s) in the pool", mob_live());
+    }
+
+    (void)chunk_worker_stop();
+    dimension_set_current(DIM_OVERWORLD);
+    worldstore_close();
     chunk_store_clear();
 }
 
@@ -8564,6 +9031,14 @@ static struct {
     // The inventory screen's legend, centred on the whole display.
     {.key = "hud.inventory_hint", .h = 16.0f, .px = 800.0f - 32.0f},
 
+    // THE HUD'S BOTTOM LINE, where a message from the game lands
+    // (main.c's hud_say). Drawn at 16 px from x = 10.5, so the room is
+    // the display less the two margins. The crossing says three things
+    // here: where the player ended up, and why a shaft refused.
+    {.key = "hud.deep_mine", .h = 16.0f, .px = 800.0f - 24.0f},
+    {.key = "hud.surface", .h = 16.0f, .px = 800.0f - 24.0f},
+    {.key = "hud.shaft_refused", .h = 16.0f, .px = 800.0f - 24.0f},
+
     // The crafting book: the list's value column, and its footer.
     {.key = "craft.value_make", .h = 28.0f, .px = VALUE_ROOM(0.88f, 380.0f), .scope = ITEMS_BOOK},
     {.key = "craft.value_missing", .h = 28.0f, .px = VALUE_ROOM(0.88f, 380.0f), .scope = ITEMS_BOOK},
@@ -9502,6 +9977,10 @@ int main(void) {
     check_breeding();
     check_cave_mouths();
     check_population();
+    check_deep_mine();
+    check_deep_mine_population();
+    check_mineshaft();
+    check_dimension_switch();
     check_swimming();
     check_fishing();
     check_sheep();

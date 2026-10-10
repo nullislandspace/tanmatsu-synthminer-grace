@@ -24,6 +24,10 @@ PURE=(
     main/world/blocks.c     main/world/blocks.h
     main/world/chunk.c      main/world/chunk.h
     main/world/light.c      main/world/light.h
+    main/world/dimension.c    main/world/dimension.h
+    main/world/deepmine.c     main/world/deepmine.h
+    main/world/mineshaft.c      main/world/mineshaft.h
+    main/world/dimension_switch.c main/world/dimension_switch.h
     main/common/rng.c       main/common/rng.h
     main/world/worldgen.c   main/world/worldgen.h
     main/world/farlands.c   main/world/farlands.h

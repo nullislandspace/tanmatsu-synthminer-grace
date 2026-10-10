@@ -13,6 +13,8 @@
 #include "common/psram.h"
 #include "world/chunkmesh.h"
 #include "world/chunk_codec.h"
+#include "world/deepmine.h"
+#include "world/dimension.h"
 #include "world/worldgen.h"
 #include "world/worldstore.h"
 
@@ -235,9 +237,21 @@ static bool do_load(int32_t cx, int32_t cz, result_t* res) {
 #ifndef SM_HOST
     int64_t const t0 = esp_timer_get_time();
 #endif
-    worldgen_chunk(c, s_seed, s_farlands_x);
+    // WHICH GENERATOR. Both are pure functions of (seed, cx, cz) and
+    // both end by marking CF_GENERATED and refreshing the summaries, so
+    // everything after this point -- the light, the freshness flag, the
+    // save -- is the same machine. Only the shape of the world differs.
+    //
+    // The Deep Mine has no Far Lands (Part M's open question), so the
+    // second bucket of the timing counters stays empty down there.
+    bool const deep = dimension_current() == DIM_DEEP_MINE;
+    if (deep) {
+        deepmine_chunk(c, s_seed);
+    } else {
+        worldgen_chunk(c, s_seed, s_farlands_x);
+    }
 #ifndef SM_HOST
-    int const kind = farlands_chunk_is(cx, s_farlands_x) ? 1 : 0;
+    int const kind = (!deep && farlands_chunk_is(cx, s_farlands_x)) ? 1 : 0;
     s_gen_us[kind] += esp_timer_get_time() - t0;
     s_gen_n[kind]++;
 #endif

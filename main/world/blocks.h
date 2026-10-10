@@ -371,7 +371,24 @@ enum {
     // this one turns into a tree (world/tree.h).
     BLK_SAPLING_OAK     = 49,
     BLK_SAPLING_BIRCH   = 50,
-    // New blocks here: BLK_SOMETHING = 51, and a line in tools/ids.txt.
+    // THE DEEP MINE (Part M). Four ids, and none of them is "nether":
+    // the comparison to the Nether is about the shape of the place, not
+    // the material, so the Deep Mine is stone, lava and ore like the
+    // overworld is.
+    //
+    // Lava is a hazard, not a resource -- nothing can pick it up and no
+    // bucket carries it, which is why it has no drop and no fuel.
+    BLK_LAVA            = 51,
+    BLK_DIAMOND_ORE     = 52,
+    // THE SHAPE OF A MINE SHAFT, as two blocks rather than one. A shaft
+    // is 16 cells and 16 ingots, so the frame IS the recipe: four corner
+    // posts and four braces at height 3. Two ids because a post and a
+    // brace are two different pictures, and the mesher reads materials
+    // out of this table rather than guessing which cell of the shape it
+    // is looking at -- the same argument as farmland's two ids (D-106).
+    BLK_SHAFT_COLUMN    = 53,
+    BLK_SHAFT_TRUSS     = 54,
+    // New blocks here: BLK_SOMETHING = 55, and a line in tools/ids.txt.
     BLK_COUNT
 };
 

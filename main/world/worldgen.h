@@ -55,7 +55,24 @@ int worldgen_height(int32_t x, int32_t z, uint32_t seed);
 // them -- the whole point of worldcheck's "ores" section is that these
 // cannot drift without something noticing.
 #define VEIN_COAL_YMAX 40
+
 #define VEIN_IRON_YMAX 28
+
+// THE SHAPE OF AN ORE VEIN, shared by both dimensions. It was private to
+// worldgen.c until the Deep Mine wanted the same lump of stone with
+// different odds: one vein shape, two rate tables, so a vein in the Deep
+// Mine is the same kind of thing as a vein above it and cannot drift.
+// `ymax` is the highest it may appear, `chance` the share of coarse
+// cells that carry one, `r` its rough radius in blocks.
+bool worldgen_vein_at(int32_t x, int y, int32_t z, uint32_t seed, uint32_t salt, int ymax, float chance,
+                      float r);
+
+// THE COARSE GRID a vein is rolled on: one candidate per VEIN_GRID cube.
+// It is here for the same reason the rates are -- the Deep Mine rolls its
+// ore on the same grid, so a vein in either dimension is the same shape
+// and cannot drift into a different one.
+#define VEIN_GRID 8
+
 
 // --- Biomes -----------------------------------------------------------
 //

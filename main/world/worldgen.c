@@ -311,7 +311,6 @@ static bool cave_at(int32_t x, int y, int32_t z, int surface, uint32_t seed, boo
 // follow one. The user asked for Minecraft's clumps, and for the
 // reason that matters -- a vein you can see the edge of is a reason to
 // dig sideways.
-#define VEIN_GRID 8
 
 // How common each ore is, and how big a lump of it. Measured rather
 // than guessed: worldcheck's "ores" section counts both the share of
@@ -326,7 +325,7 @@ static bool cave_at(int32_t x, int y, int32_t z, int surface, uint32_t seed, boo
 // True if (x, y, z) sits inside a vein. `chance` is how many coarse
 // cells carry one, `r` its rough radius in blocks, `ymax` the highest
 // it may appear.
-static bool vein_at(int32_t x, int y, int32_t z, uint32_t seed, uint32_t salt, int ymax, float chance,
+bool worldgen_vein_at(int32_t x, int y, int32_t z, uint32_t seed, uint32_t salt, int ymax, float chance,
                     float r) {
     int32_t const cx = (x >= 0 ? x : x - VEIN_GRID + 1) / VEIN_GRID;
     int32_t const cz = (z >= 0 ? z : z - VEIN_GRID + 1) / VEIN_GRID;
@@ -427,9 +426,9 @@ static void fill_column(chunk_t* c, int lx, int lz, int32_t wx, int32_t wz, uint
         // and rarer than coal, and tested first so the two never fight
         // over a cell -- iron inside a coal vein looks like a bug.
         if (b == BLK_STONE && y > CH_BEDROCK) {
-            if (vein_at(wx, y, wz, seed, S_ORE2, VEIN_IRON_YMAX, VEIN_IRON_CHANCE, VEIN_IRON_R)) {
+            if (worldgen_vein_at(wx, y, wz, seed, S_ORE2, VEIN_IRON_YMAX, VEIN_IRON_CHANCE, VEIN_IRON_R)) {
                 b = BLK_IRON_ORE;
-            } else if (vein_at(wx, y, wz, seed, S_ORE, VEIN_COAL_YMAX, VEIN_COAL_CHANCE, VEIN_COAL_R)) {
+            } else if (worldgen_vein_at(wx, y, wz, seed, S_ORE, VEIN_COAL_YMAX, VEIN_COAL_CHANCE, VEIN_COAL_R)) {
                 b = BLK_COAL_ORE;
             }
         }

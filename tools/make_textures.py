@@ -2504,6 +2504,114 @@ def sm_item_worm():
     return img
 
 
+# --- The Deep Mine (Part M) -------------------------------------------
+
+def sm_lava():
+    """Lava's surface -- the only face a liquid ever draws (blocks.h,
+    K_LIQUID), so this is the whole picture of the block.
+
+    Deep orange with a darker crust wandering over it and brighter molten
+    gaps between the crust lines. NOT cut out like water: a liquid with
+    holes in it shows the cave floor through it, and a pool you are meant
+    to walk around has to read as solid ground you would rather not step
+    on. The engine has no blending, so lava is opaque -- what makes it
+    read as hot is the light its own cell carries (13), not the picture.
+    """
+    gen = sm_gen(51)
+    lum = gen.integers(-10, 11, (B, B)).astype(float)
+    for _ in range(5):                                # the crust
+        x, y = gen.integers(0, B, 2)
+        for k in range(6):
+            lum[y % B, (x + k) % B] -= 30
+            y += int(gen.integers(0, 2))
+    pick = gen.random((B, B))
+    lum[pick > 0.72] += 38                            # ... and the gaps
+    return sm_rgb(lum, (216, 90, 34))
+
+
+def sm_diamond_ore():
+    """Stone with pale blue crystals in it. The stone is sm_stone_lum,
+    the same base as iron ore, because the two sit in the same cave and
+    the only difference between them is what is in them -- a vein you
+    cannot tell apart from its wall is a vein you walk past."""
+    lum, gen = sm_stone_lum(52)
+    rgb = sm_rgb(lum, (122, 122, 124))
+    for cx, cy, r in ((4, 4, 2), (11, 6, 2), (6, 11, 2), (12, 12, 1)):
+        for y in range(cy - r, cy + r + 1):
+            for x in range(cx - r, cx + r + 1):
+                if (x - cx) ** 2 + (y - cy) ** 2 <= r * r and 0 <= x < B and 0 <= y < B:
+                    d = int(gen.integers(-14, 15))
+                    rgb[y, x] = np.clip(np.array([104 + d, 166 + d, 196 + d]), 0, 255)
+    return rgb
+
+
+SHAFT_IRON = (142, 130, 120)
+
+
+def sm_shaft_column():
+    """A post: the same iron as an ingot, browner and duller because it is
+    structural rather than carried. The seam down the top-left is what
+    makes a wall of these read as plates rather than as one grey mass,
+    and the weld down the middle is what makes one post read as a post."""
+    gen = sm_gen(53)
+    lum = gen.integers(-8, 9, (B, B)).astype(float)
+    seam(lum)
+    for y in range(B):
+        lum[y, 7] -= 18
+    for _ in range(4):
+        x, y = gen.integers(0, B, 2)
+        lum[y, x] += 24
+    return sm_rgb(lum, SHAFT_IRON)
+
+
+def sm_shaft_truss():
+    """A brace: the same iron, and a diagonal band across it with a bolt
+    at each end. A truss is the part you read as structure rather than as
+    a wall, so it has to look like something is being held -- the diagonal
+    is the only place in the shaft where the picture is not a grid."""
+    gen = sm_gen(54)
+    lum = gen.integers(-8, 9, (B, B)).astype(float)
+    for i in range(B):
+        for d in (0, 1):
+            lum[(i + d) % B, i] -= 26
+    for x, y in ((2, 2), (13, 13)):
+        lum[y, x] += 30
+    return sm_rgb(lum, SHAFT_IRON)
+
+
+def sm_item_diamond():
+    """A brilliant cut: a flat table at the top, widening to the girdle,
+    narrowing to a point below it. One shape rather than three lumps --
+    coal is three lumps because a lump is what coal is, and a gem is one
+    thing you can pick out of a wall."""
+    img = _icon()
+    rgb = (96, 168, 200)
+    for y in range(3, 13):
+        half = 5 if y < 7 else 12 - y
+        for x in range(8 - half, 8 + half + 1):
+            _dot(img, x, y, _shade(rgb, 0 if y < 7 else -12))
+    for x in range(4, 12):
+        _dot(img, x, 3, _shade(rgb, 26))
+    _dot(img, 6, 5, _shade(rgb, 34))
+    return img
+
+
+def sm_item_mine_shaft():
+    """The frame itself: two posts, the brace across the top, and the open
+    middle the player steps into. The icon is the shape the block makes
+    rather than a picture of an object, because a shaft IS a shape -- and
+    the open middle is the only part of it that is not a block."""
+    img = _icon()
+    rgb = SHAFT_IRON
+    for y in range(2, 14):
+        for x in (3, 4, 11, 12):
+            _dot(img, x, y, _shade(rgb, 0 if y < 8 else -14))
+    for x in range(3, 13):
+        _dot(img, x, 2, _shade(rgb, 24))
+        _dot(img, x, 3, rgb)
+    return img
+
+
 TEXTURES = {
     "grass_top.png": sm_grass_top,
     "grass_side.png": sm_grass_side,
@@ -2516,6 +2624,10 @@ TEXTURES = {
     "log_top.png": sm_log_top,
     "planks.png": sm_planks,
     "gate.png": sm_gate,
+    "lava.png": sm_lava,
+    "diamond_ore.png": sm_diamond_ore,
+    "shaft_column.png": sm_shaft_column,
+    "shaft_truss.png": sm_shaft_truss,
     "leaves.png": sm_leaves,
     "coal_ore.png": sm_coal_ore,
     "miner_face.png": sm_face,
@@ -2547,6 +2659,8 @@ TEXTURES = {
     "bench_top.png": sm_bench_top,
     "item_coal.png": sm_item_coal,
     "item_iron_ingot.png": sm_item_ingot,
+    "item_diamond.png": sm_item_diamond,
+    "item_mine_shaft.png": sm_item_mine_shaft,
     "item_pickaxe_iron.png": lambda: sm_item_pickaxe((222, 222, 228)),
     "item_axe_iron.png": lambda: sm_item_axe((222, 222, 228)),
     "item_shovel_iron.png": lambda: sm_item_shovel((222, 222, 228)),

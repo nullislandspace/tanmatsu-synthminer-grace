@@ -12,6 +12,7 @@
 #include "game/interact.h"
 #include "items/item_entity.h"
 #include "world/chunk.h"
+#include "world/mineshaft.h"
 
 // Just short of straight up or down. Exactly +-pi/2 makes the forward
 // vector's horizontal part zero, and then "which way am I walking" has
@@ -659,6 +660,26 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                         sfx_play_place(BLK_FENCE_GATE);
                     } else {
                         p->used_block = p->aim.block;
+                    }
+                } else if (held == ITEM_MINE_SHAFT) {
+                    // A SHAFT PLACES A SHAPE, not a block, so the ordinary
+                    // placement path cannot see it: item_block() answers
+                    // BLK_AIR for anything that is not a block, and a shaft
+                    // is sixteen blocks in the world and one item in the
+                    // hand. The cell it stands ON is the one the crosshair
+                    // struck -- the ground -- not the empty cell in front of
+                    // its face, because the frame grows upward from there.
+                    if (mineshaft_place(p->aim.x, p->aim.y, p->aim.z)) {
+                        trace_edit('P', p->aim.x, p->aim.y, p->aim.z, "mine shaft", 16);
+                        inv_consume_held(&p->inv);
+                        sfx_play_place(BLK_SHAFT_COLUMN);
+                    } else {
+                        // Sixteen cells, all of them, or none of them. Half
+                        // a frame is not a shaft anybody could walk into,
+                        // and the player has to be told which one happened.
+                        p->use_msg       = USE_NO_ROOM;
+                        p->use_msg_ticks = USE_MSG_TICKS;
+                        sfx_play(SFX_DENY);
                     }
                 } else {
                     uint8_t const block = item_block(held);

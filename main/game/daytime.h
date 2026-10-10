@@ -39,6 +39,19 @@ typedef struct {
 
 daytime_t daytime_at(int64_t ticks);
 
+// THE CLOCK THAT DOES NOT MOVE THE SKY (Part M, D-139). The Deep Mine has
+// no sun and no moon, so there is nothing for the clock to be a function
+// of -- but the renderer still reads `day` (the sky half of the light
+// table) and a direction out of a daytime_t, so it has to answer. Fixed
+// values, and the tick count still runs, because every persisted duration
+// in this game is a count of ticks (D-51): crops, fleece, a smelt and a
+// despawn all read the same clock whether or not there is a sunrise.
+//
+// `day` is 1.0 rather than something lower. The cave's light is a
+// constant, and dimming it by a time of day that does not exist would
+// make the whole place darker for no reason anybody could see.
+daytime_t daytime_deep_mine(void);
+
 // Fill the 256-entry light table (mesh_render.h) for daylight `day`.
 // Entry l is the brightness, 0..32, of a face lit by light byte l:
 //

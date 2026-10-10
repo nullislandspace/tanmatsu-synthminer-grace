@@ -365,6 +365,18 @@ static recipe_t const RECIPES[] = {
     {.out     = ITEM_PIZZA, .out_n = 1, .station = RS_STOVE,
      .n_in    = 4,
      .in      = {{ITEM_WHEAT, 2}, {ITEM_SAUSAGE_VEG, 1}, {ITEM_CHEESE, 1}, {ITEM_SHRIMP, 2}}},
+
+    // THE MINE SHAFT (Part M). Sixteen ingots for sixteen blocks -- the
+    // recipe and the shape are the same number, which is why the shape
+    // is exactly four posts three high and four braces.
+    //
+    // THE STATION IS PROVISIONAL. Part M says "the crafting bench", and
+    // the game's bench (BLK_BENCH) is the disassembly bench, so this row
+    // names the crafting table until the user decides what the bench is.
+    // Nothing here can guess that on its own.
+    {.out     = ITEM_MINE_SHAFT, .out_n = 1, .station = RS_TABLE,
+     .n_in    = 1,
+     .in      = {{ITEM_IRON_INGOT, 16}}},
 };
 
 #define RECIPE_N ((int)(sizeof(RECIPES) / sizeof(RECIPES[0])))

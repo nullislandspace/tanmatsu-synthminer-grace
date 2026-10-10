@@ -168,6 +168,21 @@ enum {
     // THE SUPERFOOD (the user): 10 hunger and 8 saturation, and it
     // wants a crop, a fish, a cow and a pig -- all four systems at once.
     ITEM_PIZZA,
+
+    // --- The Deep Mine (Part M) ---------------------------------------
+    //
+    // DIAMOND is the only thing down there worth bringing back up, and
+    // it is not a resource anything else can produce: it comes out of
+    // the ore, and that is the whole reason the Deep Mine is worth
+    // entering. It is not food, so it has no hunger column.
+    //
+    // THE MINE SHAFT is the one item in this table that is not a block
+    // and not a thing you use up one at a time. It is a 16-cell shape
+    // you place, and the recipe is exactly that number -- 16 ingots in,
+    // 16 blocks out -- which is why the shape is 3x3 with four posts
+    // three high and four braces, and not one cell more.
+    ITEM_DIAMOND,
+    ITEM_MINE_SHAFT,
     ITEM_COUNT
 };
 
