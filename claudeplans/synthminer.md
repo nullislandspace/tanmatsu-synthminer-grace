@@ -43,8 +43,8 @@ or crafting. Survival is the full version: health, hunger and tool durability.
 ## About this document
 
 This file is committed with the work. It contains the design (Parts L, W, K, N,
-P, T, H, G, X, F, C, A), the step-by-step plan with a status table (Part D), and
-the findings and decisions logs (Part E).
+P, T, H, G, X, F, C, A, M), the step-by-step plan with a status table (Part D),
+and the findings and decisions logs (Part E).
 
 Numbering starts at **F-01 / D-01** — this is a different repository from the
 showreel, whose logs run to F-39 / D-54. Standing rules carried over from it:
@@ -100,6 +100,9 @@ main/
 *   blockent.{c,h}        BLOCK ENTITIES: furnace, chest and trash slots (pure)
 *   worldgen.{c,h}        pure (seed, cx, cz) -> id/state planes         (pure)
 *   farlands.{c,h}        Beta 1.7.3's density generator, overflowed     (pure)
+    deepmine.{c,h}        the Deep Mine generator: sealed ceiling, one cave,     (pure)
+                          stone, lava, iron, diamond clusters -- Part M, not built
+    mineshaft.{c,h}       the shaft's shape and its placement plan                (pure)
 *   datadir.{c,h}         /sd/synthminer: adopting old data into it (D-80),
 *                         renaming the saves and retiring CraftMiner (D-91, D-92) (pure)
 *   chunk.{c,h}           chunk_t, the ring store, world_block/set/state
@@ -128,6 +131,8 @@ main/
 *   composter.{c,h}       a day a unit, and the worms fishing needs (pure)
 *   maker.{c,h}           the cheese maker and the sausage maker (pure)
 *   mob.{c,h}             THE CREATURE REGISTRY: pool, tick, save (pure)
+    portal.{c,h}          the switch between dimensions: flush, drain, re-key,
+                          load the 3x3 -- Part M, not built
 *   benchpath.h           the benchmark flight's seed and path (step 41) (pure)
   items/
 *   items.{c,h}           ITEM REGISTRY; ids below BLK_COUNT are blocks  (pure)
@@ -449,9 +454,18 @@ still there.
   never a timestamp to compare against. See D-51: this is the rule for crop
   growth, furnace burn, breeding cooldowns and hunger as much as for a dropped
   item, and getting it wrong is only visible weeks later.
-- **Hostile mobs keep spawning** in unlit places, up to a **cap per loaded
-  chunk**. Because entities are stored per chunk, that cap is a count of what is
-  already there — and it is what bounds the population, given nothing despawns.
+- **Hostile mobs are generated with the terrain**, in unlit places, up to a **cap
+  per loaded chunk** -- this was "keep spawning" until 2026-10-10 (D-146). Because
+  entities are stored per chunk, that cap is a count of what is already there, and
+  it is what bounds the population, given nothing despawns.
+  **Since 2026-10-10 this happens in the Deep Mine only** (Part M), and "unlit"
+  has to be redefined there: under global illumination there are no unlit places,
+  so the rule becomes about ground and distance rather than light -- and "unlit"
+  has to mean a level number, not a look, because the brightness floor is 9.3%
+  (F-141). **Since 2026-10-10 this is a generator rule, not a spawn rule**
+  (D-146): mobs are generated once with the terrain as animals are, nothing
+  repopulates, so a chunk you clear stays cleared and the cap is a count of what
+  generation put there. Light cannot gate generation, so torches are for seeing.
 
 ## Part P: on-disk format
 
@@ -1810,6 +1824,284 @@ types the code:
 
 ---
 
+## Part M: the Deep Mine, and the mine shaft
+
+Added 2026-10-10 by the user. Design only -- nothing here is built, and the open
+questions at the end are left open deliberately rather than answered by whoever
+types the code.
+
+**The change in one line:** the overworld has no hostile mobs. Danger lives in a
+second dimension, the **Deep Mine**, reached through a **mine shaft** you build.
+
+### Two dimensions, one world
+
+| | |
+|---|---|
+| What it is | A second dimension **inside the same world save**, not a second world. One seed, one `level.smw`, one player, one inventory. |
+| Coordinate mapping | **1:1 in x and z** -- not Minecraft's 1:8. The shaft you stand in and the shaft you arrive at are in the same column. |
+| Height | Free. Each end stands on its own dimension's ground, so the y differs; only the column is shared. |
+| Shared | The player, the inventory, health and hunger, the recipe book, the settings. |
+| Not shared | Terrain, entities, the light, the sky. |
+
+**The pairing is by column, so there is no link record** (D-142). That is the
+whole benefit of 1:1: a shaft at (x,z) in either dimension meets the shaft at
+(x,z) in the other, and nothing has to be stored, migrated, or checked for a
+dangling link. It stops being true the moment the ratio is anything but 1:1,
+which is the one number here that must not be changed later without re-reading
+this section.
+
+### What the Deep Mine is
+
+- **A covered ceiling of bedrock** and essentially one big cave: the playable
+  volume is open, with the stone above it sealed.
+- **Normal stone only.** No nether blocks, no nether wart, no glowstone, no
+  obsidian -- no "nether" anything. The comparison to the Nether is about the
+  **shape** (sealed ceiling, no sky, one cave), not the material.
+- **Occasional patches of lava.**
+- **Richer in iron** than the overworld, and **occasional clusters of diamond**.
+- **No sun and no moon.** Illumination is global: a constant, not a sky light
+  that floods and decays.
+- **Hostile mobs live here** -- zombies and skeletons for now, the rest
+  undecided (D-137).
+
+### The shaft
+
+| | |
+|---|---|
+| Recipe | **16 iron ingots**, at the crafting bench (D-140). |
+| Footprint | **3x3**, four columns at the four corners. |
+| Height | Trusses connect the columns **at height 3**, so the middle is open and the player can step into it. |
+| Trigger | Standing in the **centre cell** teleports to the same column in the other dimension. |
+
+Two things follow immediately:
+
+- **Placement writes the frame through `world_set`, not into the plane directly**
+  -- the same argument as D-136's sapling: the light flood, the mesher and the
+  save all have to hear about it, and it must refuse outright if a chunk it needs
+  is not resident, because an absent chunk reads as the barrier (D-14) and half a
+  frame at the edge of the ring would never come back.
+- **Both ends have to stand on solid ground.** In the overworld that is a
+  placement rule: refuse unless the centre cell has a floor and the four columns
+  have ground under them. In the Deep Mine it is a generator rule: the shaft is
+  generated with the terrain, on that column's floor. Which is exactly why the
+  height is free -- the two ends are not at the same y, and cannot be.
+
+### The switch
+
+A teleport is the only place in the game where the whole store changes identity
+at once, so it is a new kind of event rather than a bigger version of an existing
+one. The order is fixed (D-141):
+
+1. **Save every dirty chunk in the current dimension.** This is a new write point
+   for Part P's list, which until now was: eviction, the pause menu's Save, quit
+   to launcher, death/respawn.
+2. **Drain the worker** -- no jobs pending, no results pending -- before anything
+   is re-keyed. The ownership contract (Part K) has main apply every `cstate`
+   transition, and a result arriving for a chunk that belongs to the other
+   dimension has to be dropped, not applied.
+3. **Release every chunk through `chunk_release()`** -- the single path F-132
+   established. A switch is the largest one-time eviction the game will ever do,
+   and it must go through the same path that drops the entity records and the
+   block entities, or the pools never come back.
+4. **Free the mesh cache.** Meshes belong to a dimension; nothing in it is valid
+   after the switch. `chunk_store_trim_meshes()` (F-135) already gives back
+   geometry that is no longer drawn -- here, all of it is.
+5. **Load the 3x3 around the arrival point synchronously**, and start from there
+   -- Part K's entry sequence verbatim. Physics frozen, those nine chunks as the
+   gate, the rest streaming nearest-first. Determinism rule 4 is untouched,
+   because the tick is skipped until the 3x3 is `CS_READY`.
+6. **Record it** in the flight recorder (step 48): dimension, column, arrival y.
+   A replay has to record the switch as an event and not as a position, or a
+   replay of a session that crossed over would replay into the wrong dimension.
+
+### Light, sky, and the clock
+
+- The light plane's **sky component becomes a constant** in the Deep Mine. Block
+  light still floods -- torches matter more here, not less.
+- `voxel_sky`, `backdrop` and `horizon` have to be **suppressed**: there is no
+  sky to draw, and the ceiling is geometry.
+- `game/daytime.c` freezes in the Deep Mine -- no sun direction, no fog colour
+  change, no sunrise band -- while the tick count still runs, because every
+  persisted duration is a count of ticks (D-51).
+- **D-33's spawn rule needs redefining.** "Hostile mobs spawn in unlit places"
+  has no unlit places under global illumination. The rule becomes about ground
+  and distance, not light -- and since 2026-10-10 it is a generator rule rather
+  than a spawn rule at all (D-146), which is what the next section covers.
+
+### Who populates the Deep Mine (D-146)
+
+**Generated once with the terrain, and nothing comes back -- for now.** The user
+decided this on 2026-10-10, after asking whether mobs should respawn out of the
+blue at all. Lighting a place is for seeing; killing is what conquers territory.
+
+It is the option that uses machinery that already exists: herds are generated
+with the land (D-121), `mob_populate_chunk()` (`main/game/mob.c:1006`) runs when
+a chunk arrives for the first time, `CF_FRESH` says which chunks that includes,
+and creatures are saved with the chunk they stand in (D-123). Put together, **a
+chunk you clear stays cleared** -- the play experience the user described, with no
+new system. It also removes the spawn rule and the per-chunk cap as a live limit
+-- the cap stays as a bound on what generation may put in a chunk -- and the
+possibility of a population that depends on the order you walked in, which is what
+makes a replay and a host check possible.
+
+**The spawn rule becomes a generator rule, not a light rule.** D-33's "unlit
+places" cannot gate generation: worldgen never reads a neighbouring chunk (Part
+T's determinism rules) and light is derived and never saved (D-69), so a generator
+cannot know whether a cell is lit. What is left is a rate and a pack size rolled
+from the world's hash per chunk. **A torch no longer suppresses anything -- it is
+for seeing**, which is what the user said it is for here.
+
+If repopulation is ever added back, the only shape available to it is a slow sweep
+over chunks that already exist, and that shape already exists: `crops_tick()`
+visits one chunk slot a tick and walks a marked chunk from the height summary --
+the same shape step 60's grass sweep wants. A chunk empty for a while and unlit
+would get one mob back, and a torch would then hold territory permanently. That is
+the version to build if the game ever wants it; it is not being built now.
+
+Numbers, because the pool is the limit that bites silently (F-125, F-120):
+
+| | |
+|---|---|
+| Pool | `MOB_MAX` 128 (`main/game/mob.h:63`, raised from 48 by F-125) |
+| Resident chunks at Far | 225 |
+| Overworld animals today | 272 over 384 x 384 blocks, 96 chunks in 576 holding a herd (F-125's measurement) |
+| **Deep Mine, decided for now (D-147)** | **10-15% of chunks hold a pack, 2-3 in a pack** -- ~0.2-0.45 a chunk |
+| Pool at that rate, Far | 22-34 chunks holding a pack, so **45-101 mobs across the ring**: ~57% of 128 at the middle, **~79% at the top of the range** |
+
+**The share means something different here than it does in the overworld.** The
+overworld's 16.7% is a share of *eligible* chunks, because biome thinning throws
+most of them away first; in the Deep Mine every chunk is cave floor, so the roll
+applies to all of them. That is the whole of why the number has to be lower.
+
+**The top of the range is the number to watch.** At 15% with packs of 3 the ring
+holds about 101 against a pool of 128, which is close enough that a player walking
+through a dense stretch could hit it -- and a full pool does not warn, it goes
+quiet (F-125). **And with no repopulation a refused pack is not delayed, it is gone
+for good**, because a chunk is rolled once -- which is the strongest reason to keep
+the middle of the range comfortable at about 57% rather than sizing for the top.
+
+**None of these numbers is set in stone, on the user's word -- they are tuned later,
+after playtesting, and `MOB_MAX` is a knob rather than a ceiling.** What the rate has
+to respect is not the size of the pool but the way a full pool fails: silently, and
+here permanently, because a chunk is rolled once. Raising the pool is allowed; a rate
+that only works because the pool was raised is a different thing from a rate that
+works.
+
+**A pack lives in one chunk**, because creatures are stored with the chunk they
+stand in (D-123) -- a pack spread over two chunks is not a pack, it is two
+records. The roll is from the world's hash, not `rand()`, so a replay reproduces
+the same population and `worldcheck` can assert the share across a fixed sample.
+It needs one generator-local test: a pack wants a walkable cell on that chunk's
+floor, which is a test inside the chunk and so does not break the determinism
+rules.
+
+The pool is shared with the overworld's animals, but only one dimension is
+resident at a time -- the switch releases everything -- so in practice it is a
+per-dimension pool. **The overworld is the tight half**, not this one: 225
+resident chunks at 0.47 animals a chunk is about 106 against 128, while the Deep
+Mine at this rate is about 45-70. `s_refused` must read 0 over a full ring
+(`main/game/mob.h:261`); that check exists and is the one to extend, and it is
+the measurement that will say whether these numbers are right.
+
+**And the reach of a torch is 13 blocks** (F-141), with a brightness floor of
+9.3% at level 0, so "unlit" has to be a level number rather than a look. With no
+repopulation there is no spawn threshold to set, so the torch's 13 blocks are
+simply how far you can see, and global illumination is only a rendering number.
+If a sweep is ever added back, the safe zone would be `14 - threshold` blocks --
+and a threshold at or below the Deep Mine's global illumination would make a torch
+unable to suppress anything, which is why those two numbers would have to be
+decided together.
+
+### What killing a mob is for (D-144)
+
+**Nothing a mob drops may be the only source of anything.** The reason to fight is
+not to be killed while mining; a mob is a hazard, not a resource.
+
+The economy already complies without anything changing, which is the best sign a
+rule like this gets: the bone comes from the sausage maker (D-120) and string
+comes from sheep (D-126) -- the user's own earlier negative already took spiders
+out, so no recipe in the graph has a mob in it. Mob drops are therefore optional
+and reversible: an item that exists only as a drop can be taken back out later
+without breaking a recipe, because no recipe is allowed to depend on it.
+
+Two things follow. Drops can be as few as the game wants, and the ones worth
+having are the ones that read as loot off a body rather than as an ingredient.
+And if a mob is not a resource, then a cleared chunk staying cleared costs
+nothing -- which is the play side of the generate-once argument above.
+
+### Death, and where you wake up (D-145)
+
+**Respawn is the overworld's.** There is one spawn point, not one per dimension,
+and no bed can be placed in the Deep Mine, so spawn can never be set there.
+Dying down there sends the player back to the overworld.
+
+That is consistent with the bed's other half: a bed also sleeps the night away,
+and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
+
+- **Half of what Part M's cost list said `level.smw` gains is now gone.** It still
+  needs to know which dimension the player is in; it does not need a spawn point
+  per dimension.
+- **Death in the Deep Mine is a teleport, not a position change.** It crosses the
+  store boundary, so it has to run D-141's order -- save, drain the worker,
+  release every chunk, free the mesh cache, load the 3x3 -- rather than the
+  respawn path `player.c` has today. This is the second place the switch exists,
+  and the one nobody would have thought to check.
+- **What you lose is the walk, not the items.** The inventory is kept, and pairing
+  is by column, so getting back to the same place means walking back to your own
+  shaft's column in the overworld or building a second shaft. That is the real
+  cost of dying in the Deep Mine, and it is what makes the shaft something you
+  protect rather than something you use.
+
+### What it costs, and what to measure
+
+- The ring is keyed by `(cx, cz)` only, with no dimension. Two ways: **reuse one
+  store** with the flush above, or **two stores**. F-22 measured 28796 KiB free
+  once the engine boots and the single 8 MiB slab leaves 20604 KiB, so two slabs
+  would leave about 12 MiB -- possible, but the first is the one to try.
+- `level.smw` gains, through tags (D-30): which dimension the player is in.
+  **Not a spawn point per dimension** -- there is one spawn, and it is the
+  overworld's (D-145). Additive, so no migration and no major version.
+- **Region files split by dimension directory** rather than gaining a `dimension`
+  field in the header (D-143). Under 1:1 mapping the same `r.<rx>.<rz>` name
+  means the same column in both dimensions, so a header field would be the only
+  way to tell them apart -- a directory is cheaper, needs no format change, and
+  does not move the major version (D-32).
+- The mob pool now serves only the Deep Mine, which makes F-132's fix matter more
+  here than anywhere: a switch releases every chunk at once.
+- The benchmark world (step 41) needs a Deep Mine variant, and `shots` still
+  cannot compare two renderings of it (F-92).
+
+### Open, and to be decided when it is built
+
+- **Which station "the crafting bench" is.** The game's bench (`bench_ui`) is the
+  disassembly station; the recipe book's stations are the table, the furnace and
+  the bench. Either the shaft's recipe goes on the table, or the bench gains a
+  craft mode. The user said "crafting bench", and the word needs pinning.
+- **The bedrock ceiling's height and the playable band** inside `CH_H` 64. The
+  overworld's profile is sea level 24 with about 20 blocks of stone below it; the
+  Deep Mine needs its own numbers, and they have to fit one column.
+- **What "global illumination" is as a number**, and whether the sky component of
+  the light plane is a constant floor or a full replacement.
+- **The generator's mob rate and pack size** -- decided provisionally at **10-15%
+  of chunks holding a pack, 2-3 in a pack** (D-147), to be adjusted after
+  playtesting. What is not decided is whether the share should change with depth,
+  since the ore richness does.
+- **Whether repopulation is ever added back.** D-146 says not for now; if it is, a
+  slow sweep is the only shape available to it.
+- **Which items a zombie or a skeleton drops**, as long as none of them is the
+  only source of anything (D-144).
+- **What happens when the mapped column has no floor** in the Deep Mine -- refuse
+  the teleport, or carve a chamber.
+- **Whether a shaft can be broken**, and what the far end does when one end is
+  destroyed.
+- **The Far Lands under 1:1 mapping** -- a shaft at x = -2048 maps to a Far Lands
+  column in the other dimension, if the Deep Mine has Far Lands at all.
+- **Whether the growth clock runs in the Deep Mine**: crops, saplings and
+  composters all live on the chunk's slow clock, and there is no sun there.
+- **Which other hostile mobs**, once decided.
+
+---
+
 ## Part D: step-by-step plan with status tracking
 
 **Status values:** `todo` / `in progress` / `done` / `blocked (why)` /
@@ -1896,7 +2188,7 @@ types the code:
 | 10 | **Animals: pigs, cows, sheep and dogs; milk, cheese, sausages, wool, fences and a bed** | done | 2026-09-29, **built ahead of the stove on the user's instruction** and out of four questions they answered first (D-118 to D-121). **Five permanent block ids** (40-44): the cheese maker, the sausage maker, the fence and its gate open and shut; **seven items**: pork, beef, a milk bucket, cheese, two sausages and a bone. **The creatures are the new shape** (`game/mob.{c,h}`) and item_entity.h had promised it since step 4: a fixed pool of 48, a registry row per kind, no allocation, and every random number a hash of the tick and the creature's own id so a replay reproduces a whole farm. A pig differs from a dog in what it eats, what tames it and how fast it is -- and in nothing else. **They are saved with the chunk they stand in** (D-123), in the entities section the format has had a number for since step 1.3 and never written a byte into; safe because an unloaded chunk is solid (D-14), so nothing can wander off the edge of the resident world and be lost. **Herds are generated with the land** (D-121) and needed one new chunk flag -- `CF_GENERATED` could not say "made just now", because both the card and the generator set it. Measured: 96 chunks in 576 hold a herd, 272 animals over 384 x 384 blocks. **A cow with a bucket gives milk**, which D-100 had already paid for -- though milk is not a fluid in the world, so "is this a bucket" stopped being a test on the contents before it dipped a milk pail in a lake. **The fence is the part that makes them animals you keep** (D-122): a block and a half tall, which is the first height that is neither walkable (step-up is one) nor jumpable (the player reaches 1.33). That cost one rule in the collider and a new mesh kind; a gate is two block ids for the same reason farmland is, and lies across the way the player was facing when it went down. A host check walks a body into one for 40 ticks and demands it stay outside, then opens the gate and demands it get through. **The two machines are the furnace's trick a third time** (`game/maker.{c,h}`): one file, a row each, a day for the cheese and a playing minute for the sausage, never a tick of work, and what each can make is the RECIPE TABLE under a station of its own. The bucket comes back when the milk goes IN, not when the cheese comes out -- returning it at the end would lock a pail up for a day, which is the one thing the user said not to do. **The bone** (D-120) is one in six off a pork sausage, from the world's hash, in a second output slot for the same reason the composter has one. **And a voice each** (D-124), synthesised like every other sound here. 37 new strings x 32 languages. **Then the user asked for the texture cache to be made safe** (F-120, amended): the by-name half is now derived from the item table, so a new item moves the requirement by itself, worldcheck counts what the game really asks for, and the cache says how full it ended up -- which caught an open gate asking for an icon that does not exist and never could (F-121). **Then the user played it, and the round that followed was most of the work** (F-122 to F-124, D-125 to D-127): cows walked out of a pen over a fence (the step-up is a whole block here and a fence was only a block and a half, so anything to stand on was a stile -- and a shut GATE was one block tall to the collider while looking like part of the fence); animals passed through each other and the player, which is what `physics.h` says on its first line and cost nothing until there was more than one body; and feeding pigs did nothing, which was three problems at once -- two fed animals had to find each other by accident, a fed animal looked exactly like an unfed one, and a pig is 0.9 blocks tall against a cow's 1.4 so the crosshair went over its back at two paces. **Then the user added the rest of a farm**: the breeds (an Oxford Sandy and Black and an Ayrshire, which is what made the animals textured at all, D-125), **sheep** with shears, wool, mutton and two dishes (D-126) -- which finally answers where STRING comes from, open since the fishing rod was designed -- a **bed** that sets the spawn and sleeps the night away, and voices that get quieter with distance (D-127). **And a last round of polish on the user's eye** (F-127): the bone and the bed had a placeholder icon each and no held model at all -- a bone is not a tool, a block or a bucket, so it fell through to the coloured cube anything unrecognised gets, and a bed IS a block, so it got the textured cube every block gets. Both have icons that read at 16 px and models in the fist now. Not yet: eating any of it, which is now step 11. |
 | 11 | **Food, hunger, the kitchen stove, and the fall** | done | 2026-09-29, built from Part A and D-105/D-110, and it is mostly tables: **two permanent block ids** (47 and 48), **eleven items**, **thirteen stove recipes** and two new pure modules. The user's verdict on the alternative was blunt -- cooking on a crafting table or in a furnace *"makes absolutely no sense"* -- so food is made on a **stove that reads its ingredients out of the chest beside it**, and **the chest arrives with it**: the recipe includes its eight planks, the item puts down **two blocks**, chest on the left as the player sees it while placing, and breaking either takes both while only the stove half pays out. That kills "which chest?" by making it unaskable. **The pair needs no stored coordinates** (D-133): each half's state byte carries the direction of the other, which is the bed's trick with the sign taken out, so a pair that straddles a chunk border needs no repair pass -- a half whose partner is not resident simply finds something else in the cell. **The stove is the furnace's lazy clock with a recipe selector in place of the input slot** (`game/stove.{c,h}`): it never ticks, all of its work is `now - stamp`, and what it can cook is the RECIPE TABLE under RS_STOVE -- nothing in it knows what a pizza is. The selector stores the DISH'S OUTPUT ITEM by name, never a recipe index, or inserting a row in recipes.c would silently repoint every stove ever saved. Ingredients come out of the chest **when a dish finishes**, not when it starts, so a stove is never a thing that eats out of your chest and gives nothing back. **It says which of five ways it is idle** -- no dish, no chest, no fuel, a full pan, or short of two shrimp, named -- because the user asked for "an appropriate info message" and a machine that does nothing and says nothing reads as broken. **Neither half has a tool level** (D-134): a pair breaks as one thing and its two halves want different tools, so a level would mean breaking your kitchen from the wrong end destroys it. **Hunger is Minecraft's model**, which D-08 committed to on the first day (`game/food.{c,h}`): health, hunger, an invisible SATURATION reserve spent first, and EXHAUSTION that every step, jump and swing adds a little of. Measured on the host: **one drumstick every 93 seconds of walking**, healing at six exhaustion a heart-half, and an empty larder kills in 80 seconds. Eating is a TAP and not a held key -- this is a handheld whose Use key already means place, open and milk -- a full player refuses and says so, and **drinking the milk gives the pail straight back**, through a one-row table rather than a case, because a bottle will want the same answer. **Fall damage** is three blocks free and a point a block after, ROUNDED UP: a body rests a hair above what it landed on (PHYS_SKIN), so truncating made every whole-block drop one block shorter than it was. The tracker keeps a HEIGHT and not a velocity, so **a ledge half way down is two short falls** and water is a landing. It is pure, so the host check drives the shipped rule against a real body falling through a real world rather than against a copy of the arithmetic. **Death became reachable** and is the design's own answer (D-135): half health at the bed or the spawn, the inventory kept -- and hunger back to full, because waking up starving is a death loop rather than a penalty. **The checks found four things before a badge did.** The stove's crafting recipe is the book's first with three ingredients, which tightened the footer's share and failed thirteen languages over item names that were already there -- so the check now BUILDS THE REAL LINE instead of pairing the longest label in the game with the tightest division, two things that never meet (the same shape as F-129). `longest_item_label()` is scoped to what each screen can show. The stove picker's own footer was 675 px of a 626 px panel in Serbian, so the ingredients and the food value went onto two lines. And four translations were too wide for the item column. 38 new strings x 32 languages. Not yet: nothing eats you back -- that is step 13. |
 | 12 | **Fishing** | done | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, **one per cast and not per catch**, which is why the composter in step 9 has two output slots and why its 0-2 worms a day is the dial that sets how much fishing anyone does. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. The rod is **three sticks for now**, with the final recipe still the user's to give -- and the thing they have decided is that **string will not come from spiders**, which means this step never depended on step 13 in the first place. **No rod durability** either, their call and the right one: fishing is already paid for in worms, and charging twice for the same activity is how a system stops being worth using. **Built 2026-09-29 while the user play-tested step 10.** Four items (the rod and three fish) and one pure module, `game/fishing.{c,h}`: a state machine with no world in it at all -- the caller hands it the cell its ray found water in and whether a worm is carried, and it answers what happened. **Two taps, not one** (D-128): the line goes out, the float sits there, and a bite opens a window a second and a half wide that a second press has to hit. A cast that landed a fish with no second press would be a button that dispenses food, and the waiting is the only thing fishing has ever been. **A missed bite is not a lost worm** -- the worm buys the CAST, so the line stays out and another fish comes along; reeling in early forfeits it, which is the player's own choice. The wait is 4 to 14 seconds, the fish are weighted 5 sardine / 3 shrimp / 2 salmon (the one guess here, and shrimp beat salmon on purpose because the pizza wants two of them), and all three numbers come from the hash of where the float landed and when -- so a replay fishes the same river the same way, which the check proves by casting twice and demanding the same fish. The float is drawn on the water and **dips while something is biting**, which is the only warning the strike window gives; Fred holds a rod rather than a grey cube, because fishing is minutes of looking at it. **The rod is three sticks and two string** -- the user gave the final recipe the same day (2026-09-29), closing the last open question of the food chain. It means a rod costs a flock: string is wool, wool wants shears, shears want iron, so fishing is not something you do on your first morning. |
-| 13 | **Mobs: zombies, skeletons, spiders; spawning, pathing, combat; beds and spawn; death keeps the inventory** | todo | Now after fishing (D-109). Unchanged otherwise, and still the biggest single block left: it is the first thing in the game that needs an entity with a mind rather than a record with a timer. |
+| 13 | **Mobs: zombies and skeletons (only, for now); spawning, pathing, combat; beds and spawn; death keeps the inventory** | todo | Now after fishing (D-109), and **narrowed on 2026-10-10**: hostile mobs do not spawn in the overworld at all -- they live in the Deep Mine (Part M), and spiders are out until the rest are decided. Still the biggest single block left, and it is the first thing in the game that needs an entity with a mind rather than a record with a timer -- but it now has a prerequisite, because it cannot be played until the dimension and the shaft exist (steps 61-65). String is unaffected: it comes from sheep (D-126) and never did come from spiders. **Three more narrowings from the same day:** mobs drop nothing the game can obtain another way (D-144), the bed stays in the overworld (D-145), and mobs do not repopulate (D-146), so this step is population at generation time rather than a spawn rule. The bed and spawn half is only ever played up there, and dying in the Deep Mine respawns you there, which is a dimension switch, not a position change. |
 | 14 | **Audio: sound effects, and music that is mostly silence** (D-82, D-83, D-84, D-85) | done | 2026-09-23: the mixer starts at boot. 21 effects as table rows (`audio/sfx.c`), and which one a block makes is its own registry row (`block_def_t.sound`), so a new block brings its sounds with it. Music is eleven public-domain MIDI files played by a ported sequencer and a six-shape synth: 72 KB for half an hour, against megabytes for the same music as MP3. `worldcheck`'s `check_midi` proves every shipped file parses, ends, rewinds identically and survives truncation at any length (F-72). The raw voice sum clipped, so the synth carries a master gain and a cubic soft limiter (F-73). **Three volume sliders** in Settings -> Audio (D-85): the badge's own, then how loudly the music and the effects are each mixed in. The effects turned out to be inaudible whenever the music was off -- the amplifier was asleep and eating them (F-75) -- which is why the engine is 2.2. Two checks came out of the round and stay behind: `tools/symcheck.sh`, after an unexported `strcasecmp` made the app link clean and then refuse to start with no message at all (F-74), and `check_label_widths()`, after the sliders' labels turned out to be the least of it -- three settings screens had been overlapping their own text in a dozen languages since the day the language count went to 32 (F-76). |
 | 15 | Block and sky lighting | done | 2026-09-22, asked for by the user (torches that light the area, computed when a block changes). Pulled forward from the end of the plan: a light plane per chunk (sky and block light, 0..15 each, D-69), flooded when a chunk arrives -- its own light on core 1, the border exchange on the main task (F-58) -- and updated with the two-queue flood on every block change. The mesher keys faces on light; a per-frame table turns light into brightness for the time of day, through the engine's new `SE_TRI_LIGHT`. Host-tested: fall-off, removal, a shaft opened and capped, across a chunk border and into a chunk arriving late. On the badge: a placed torch lights the ground at night. |
 | 16 | **Day and night; sun, moon, clouds, stars** | done | 2026-09-22, asked for by the user. `game/daytime.{c,h}`: a 20-minute day from the world's tick count -- sun direction, sky and fog colours with an orange band at sunrise and sunset, a daylight fraction, the light table. The showreel's blocky sun, moon and clouds (`voxel/voxel_sky.c`, clouds laid out in world coordinates) and its starfield. Night takes 9 light levels off the sky, not Minecraft's 11 (F-57). Clouds are a Graphics toggle; the title has none (they flew through its letters). |
@@ -1939,6 +2231,12 @@ types the code:
 | 58 | **Water you can actually see through** | done, **default on** | 2026-09-29, the user, after being told partial heights were the expensive part: *"Currently we have fake transparency for water (like leaves). How much actual FPS impact would it be to have actual water transparency?"* The estimate said 5-20%, scaling with how much water fills the view. They asked for it behind a key so the two could be compared in one place, played it, and reported *"The new transparent water looked much better and framerates seems comparable."* Now a Graphics setting, **on by default and on for upgrades too** (D-103). `SE_TRI_BLEND` in the engine (2.5): a 50/50 RGB565 mix, and -- the part that matters -- blended triangles sorted after every opaque one and far-to-near among themselves, which cost **one bit of the existing depth key and no extra pass**, because a positive float never sets its sign bit and the top bit was always spare. D-86 is amended a second time: water is no longer only its surface's cut-out, it is a real mix, and `water_blend.png` is the same texture without its checkerboard. **The frame-rate claim is the user's, not the trace's**: their A/B in one spot is controlled and the trace was not, because nothing recorded which mode was running -- which is now fixed (`trace_event`, F-119). |
 | 59 | **Wood and flowers that come back** | done | 2026-09-30, the user, in one message: *"Logs (trees) and yellow flowers need to be renewable resources. So cutting trees should drop one or two seedlings that can be planted to grow into a new tree. And throwing compost onto the ground should grow a 3x3 grid of yellow flowers."* **Which closes the last hole in the economy.** Stone, ore, crops, wool, meat, milk and fish all come back; WOOD did not -- there is no recipe anywhere that makes a log, so a player who cleared the forest round their house had cleared it for good. Yellow flowers were the same and worse: a pork sausage needs one for its spice, so picking the meadow stopped the sausage maker. **Two permanent block ids** (49, 50) and **one new module** (`world/tree.{c,h}`). Felling leaves **one or two seedlings PER TREE, not per block** -- forty saplings off one oak would make the first tree the last one anybody had to plant -- rolled from the world's own hash so a replay reproduces a woodpile, and **of the species felled**, because a birch wood that grew back oak is not the wood anybody planted. **A SAPLING IS A CROP** and that is why it cost almost nothing: BF_CROP gives it stages in the state byte, the chunk's shared slow clock, the phase bits that stop a whole chunk ripening on one instant, the catch-up when a chunk returns after an hour away, and the compost that pushes any plant on a stage. None of that machinery had to learn the word sapling. The ONE difference is what happens at the last stage -- a wheat plant stops and waits to be cut, this turns into a tree -- and it is a **two-row table** in tree.c and not a block flag, because `flags2` has no bits left and because a flag would say only THAT a block is a sapling where every caller wants to know WHICH tree. One in-game day, which is wheat's; it plants on **grass or dirt and not a tilled field**, the only seed in the game that does, so it gets a refusal of its own rather than sending the player to look for a hoe. **The tree is the generator's own tree** (D-136): the canopy loop came out of `place_tree` into `worldgen_tree_shape`, emitted cell by cell to two writers that could not be less alike -- the generator stamps into ONE chunk on the core-1 worker and drops whatever falls outside, which is what makes a tree seamless at a border, while a sapling writes through `world_set` on the main task so the light flood, the mesher and the save all hear about it. One shape in the codebase instead of two that agree until somebody edits one. It takes the world seed, so a planted tree is the tree that spot would have grown. **A sapling with a ceiling over it waits** rather than growing half a tree, and the sweep asks again every pass and not only when a stage is owed -- without that, one planted in the wrong place would sit at its last stage for ever with nothing ever looking at it again. **Compost on bare grass raises a 3x3 of yellow flowers**, doing what it can: cells that are not grass or are not clear are skipped rather than refusing the lot, and it only refuses, and says so, when all nine are already done. Host-checked: which sapling comes off which trunk, 400 rolls of the one-or-two (210 singles, 190 pairs), planting refused on farmland and on stone, a seedling grown into a trunk-and-canopy that is GROWN and not PLACED so it fells like any other, the ceiling case both ways, and the flower bed on grass and on nothing else. Not renewable yet: **red flowers**, which the user did not ask for -- nothing is blocked, since the sausage maker takes either colour. |
 | 60 | **Grass that spreads, and grass that dies** | todo | 2026-10-01, the user asked whether placing a dirt block regrows the grass top and whether grass under a placed block goes away. **Both are no.** The only grass-to-dirt rule in the game runs once at GENERATION time and only for Far Lands columns (`farlands.c`, "id[y] == BLK_GRASS && id[y+1] != BLK_AIR"); nothing touches it in the live world. So a floor laid on a meadow keeps its green edges, and dirt is dirt for ever. **THE TWO HALVES SHIP TOGETHER, and that is the whole of why this is a step rather than a three-line fix.** Grass that dies under a block without grass that spreads back is a ratchet: every house, path and tilled field converts grass to dirt permanently and the world only ever gets browner, which is worse than the cosmetic bug it fixes. Death is a rule at the moment of placing (one test in `world_set`). Spreading needs a SLOW SWEEP, and the shape for it already exists -- `crops_tick()` visits one chunk slot a tick and walks a marked chunk column by column from the height summary (world/crops.h), which is exactly the budget a grass pass wants. The user: *"Let's leave the grass thing for another time, just make sure it's on our todo list."* |
+| **61+** | **The Deep Mine (Part M)** -- added 2026-10-10, nothing built | | |
+| 61 | **The second dimension**: per-dimension region directories, `level.smw`'s dimension and spawn fields, and the Deep Mine generator (sealed bedrock ceiling, one cave, stone, lava, richer iron, diamond clusters) | todo | Part M. Host-checkable, because the generator is pure: `worldcheck` can assert the ceiling is sealed across a fixed sample, that no column is open above it, and that the ore rates land where the design says. Needs the numbers in Part M's open list first. |
+| 62 | **Light and sky in the Deep Mine**: global illumination, no sun or moon, `voxel_sky`/`backdrop`/`horizon` suppressed, `daytime` frozen | todo | Needs the light plane's sky component to be a per-dimension constant rather than a flood. The device test is the one that matters: the same scene lit two ways, on the bench flight. |
+| 63 | **The mine shaft**: the recipe, the 3x3 frame with four corner columns and trusses at height 3, placement through `world_set`, the centre cell as the trigger, pairing by column | todo | Part M. Placement is host-checkable (the shape, the solid-ground test, the refusal when a needed chunk is not resident); the trigger is not, because `player.c` is not in the pure set. |
+| 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | todo | The order is in Part M. `check_eviction_releases` (F-132) is the check this depends on and already exists; it needs a variant that releases the whole store at once and demands the pools come back. |
+| 65 | **Zombies and skeletons**, in the Deep Mine only | todo | Step 13, narrowed. The mob pool is now the Deep Mine's only population. **Generated once with the terrain, no repopulation** (D-146), so this step is `mob_populate_chunk()` plus a rate table rather than a spawn rule, and a chunk the player clears stays cleared. Light cannot gate generation, so torches are for seeing. **Rate decided for now: 10-15% of chunks hold a pack, 2-3 in a pack** (D-147), a pack inside one chunk, rolled from the world's hash. That is 45-101 across a Far ring against a pool of 128, and `s_refused` must read 0 over a full ring -- the check that will say whether the numbers are right, since a pack refused by a full pool is gone for good. |
 
 ---
 
@@ -6841,6 +7139,217 @@ types the code:
   nothing"*. It asks `voxel_face_mat(BLK_FENCE_GATE, VF_SIDE)` now, and asserts the
   gate and the fence are NOT the same material, which is the property the user
   actually wanted.
+
+- **F-141** 2026-10-10, measured from the code rather than guessed: **a torch
+  reaches 13 blocks, and nothing in this game is black.**
+
+  `BLK_TORCH` emits 14 (`main/world/blocks.c:120`). The flood costs
+  `1 + light_filter(block)` per step (`main/world/light.c:194`) -- 0 for air,
+  plants and torches, 1 for leaves, 2 for water, and a solid cube or an unloaded
+  chunk blocks it outright -- and it stops at level 1 (`main/world/light.c:184`),
+  so the last lit cell is 13 steps from the source. **14 levels including the
+  source, 13 blocks of Manhattan reach** -- Manhattan, so a torch round a corner
+  does not reach you.
+
+  **The floor is the part that changes the design.** Brightness is
+  `0.06 + 0.94 * 0.8^(15-l)` (`main/game/daytime.c:61`), so level 0 is 9.3%. A
+  pitch-black cave is deliberately not black, because on this screen a black cell
+  reads as a hole. So "unlit" cannot mean "looks dark" -- it has to be a level
+  number, and that number is a decision nobody has made.
+
+  Effective light is `max(sky - darkening, block)`, with `NIGHT_DARKENING` 9
+  (F-57), and the mesh key rounds light -- sky to every 4th level, torch to every
+  2nd (F-65) -- so a spawn rule has to read `world_light()`, not the mesh key.
+  Light is derived and never saved (D-69), which is also why generation cannot be
+  gated on it.
+
+  **What it means for the Deep Mine:** a torch's safe zone is `14 - threshold`
+  blocks, and if the global illumination is at or above the threshold, **a torch
+  can never suppress a spawn there**. The two numbers have to be decided together.
+
+### Part M (2026-10-10): the Deep Mine
+
+- **D-137** 2026-10-10, **the user**: **the overworld has no hostile mobs.**
+
+  Danger moves to a second dimension, the **Deep Mine**, reached through a
+  craftable **mine shaft**. Zombies and skeletons only for now -- the rest is
+  undecided, so the registry has to be able to take more kinds without anything
+  else changing.
+
+  This narrows step 13 rather than shrinking it. It also gives it a prerequisite
+  it did not have: mobs cannot be played until the dimension and the shaft exist,
+  so step 13 now sits behind steps 61-65. And it costs nothing on the economy --
+  string was already a flock (D-126) rather than a spider, on the user's own
+  earlier negative.
+
+- **D-138** 2026-10-10, **the user**: **the Deep Mine is a dimension of the same
+  world, and the mapping is 1:1.**
+
+  Not a second world: one save, one seed, one player, one inventory. x and z are
+  shared exactly, and only the height differs, because each end has to stand on
+  its own dimension's ground.
+
+  1:1 is the decision that makes the rest of this cheap. It is what removes the
+  link record (D-142), and it is why the same region name means the same column
+  in both dimensions. It is also the one number that cannot be quietly changed
+  later: at any other ratio the pairing stops being derivable and something has
+  to store it.
+
+- **D-139** 2026-10-10, **the user**: **stone, not nether.**
+
+  The comparison to the Nether is about the **shape** -- covered bedrock ceiling,
+  essentially one big cave, no sun or moon, global illumination only -- and not
+  about the material. Normal stone, occasional patches of lava, richer iron,
+  occasional clusters of diamond. None of Minecraft's nether blocks come with it.
+
+  "Global illumination only" has a consequence that was not in the request and is
+  worth recording: D-33's spawn rule is about **unlit places**, and under global
+  illumination there are no unlit places. The rule has to become about ground and
+  distance instead, and that is a decision to make, not a default to fall into.
+
+- **D-140** 2026-10-10, **the user**: **the shaft is 16 iron ingots at the
+  crafting bench, a 3x3 with four corner columns, trusses at height 3, and the
+  centre is the trigger.**
+
+  Height 3 is what makes it a doorway rather than a monument: the trusses are
+  above the player, so the middle is walkable and entering it is a step, not an
+  interaction. That is the right shape for a portal in a game with no pointer --
+  you do not click a portal, you walk into it.
+
+  Two things follow mechanically. Placement has to write the frame through
+  `world_set` rather than into the plane directly, for the same reason D-136's
+  sapling does: the light flood, the mesher and the save all have to hear about
+  it. And both ends need solid ground, which is a placement rule in the overworld
+  and a generator rule in the Deep Mine -- the height is free precisely because
+  the two ends cannot be at the same y.
+
+  Still open, and it needs the user's word: **which station "the crafting bench"
+  is**, since this game's bench is the disassembly station and the recipe book's
+  stations are the table, the furnace and the bench.
+
+- **D-141** 2026-10-10, **the user**: **a teleport is a full flush and reload, not
+  a position change.**
+
+  Save everything, unload it, then load into the other world. This is the only
+  place in the game where the whole store changes identity at once, and it is a
+  new write point for Part P's list, which until now was eviction, the pause
+  menu's Save, quit to launcher, and death/respawn.
+
+  The order matters more than the idea: save, drain the worker, release every
+  chunk through `chunk_release()`, free the mesh cache, then the 3x3
+  synchronously. `chunk_release()` is the single path F-132 established, and a
+  switch is the largest one-time eviction the game will ever do -- if it skipped
+  that path, the mob and block-entity pools would never come back, which is the
+  same bug as F-132 but at the whole-store scale.
+
+- **D-142** 2026-10-10, from Part M -- **following the user's rules rather than
+  decided by them**: **the pairing is by column, so there is no link record.**
+
+  A shaft at (x,z) in either dimension meets the shaft at (x,z) in the other.
+  Nothing is stored, nothing can dangle, and a world cannot be corrupted by
+  destroying one end. It is worth writing down as a decision because it is the
+  thing that would be quietly lost if the mapping ever changed.
+
+- **D-143** 2026-10-10, from Part M -- **following the user's rules rather than
+  decided by them**: **region files split by dimension directory, not by a header
+  field.**
+
+  Under 1:1 mapping `r.<rx>.<rz>.smr` means the same column in both dimensions,
+  so a `dimension` field in the header would be the only way to tell them apart.
+  A directory costs nothing, changes no format, and does not move the major
+  version (D-32) -- which is the whole point of D-30 and D-32 being separate
+  mechanisms.
+
+- **D-144** 2026-10-10, **the user**: **mobs drop nothing that cannot be obtained
+  another way, and killing them is about not being killed.**
+
+  The reason to fight in the Deep Mine is survival while mining, not loot. That
+  turns mob drops from an economy requirement into an optional decoration, and it
+  is the first rule in this design that constrains the recipe graph rather than
+  adding to it: no recipe may depend on a mob, so a drop can be added or taken
+  back out later without anything downstream breaking.
+
+  **Nothing built has to change, which is how you know the rule is sound.** The
+  bone already comes from the sausage maker (D-120) and string from sheep
+  (D-126) -- the user's own earlier negative took spiders out, so no existing
+  recipe has a mob in it. If a zombie ever drops a bone, it is a second path to
+  something that already has one, not the path.
+
+- **D-145** 2026-10-10, **the user**: **respawn is the overworld's, and no bed can
+  be placed in the Deep Mine.**
+
+  One spawn point, not one per dimension. This closes Part M's open question about
+  beds and death, and it removes half of what that section said `level.smw` has to
+  gain: the dimension tag stays, the per-dimension spawn point is gone.
+
+  It is consistent with what a bed is here. A bed sets the spawn and sleeps the
+  night away, and the Deep Mine has no night -- so a bed down there would have one
+  of its two functions and nowhere to be put.
+
+  **The consequence nobody asked about: dying in the Deep Mine is a teleport.** It
+  moves the player from one dimension's store to the other's, so it has to run
+  D-141's order, not `player.c`'s respawn path. Death is the second place the
+  switch exists, and the one that would have been missed.
+
+  What the player loses is the walk, not the items: the inventory is kept, and
+  pairing is by column, so getting back to where you were means walking back to
+  your own shaft's column or building a second shaft.
+
+- **D-146** 2026-10-10, **the user**: **hostile mobs do not repopulate -- they are
+  generated once with the terrain, for now.**
+
+  The player lights a place so he can see, and kills what is already there; that is
+  what conquers territory. It is the cheapest option in this design because the
+  machinery already exists for animals: herds are generated with the land (D-121),
+  `mob_populate_chunk()` (`main/game/mob.c:1006`) runs when a chunk arrives for the
+  first time, `CF_FRESH` says which chunks that includes, and creatures are saved
+  with the chunk they stand in (D-123) -- so **a cleared chunk stays cleared with
+  nothing new written**.
+
+  What it removes: the spawn rule, the per-chunk cap as a live limit, and any
+  population that depends on the order the player walked in, which is what makes a
+  replay and a host check possible. What it cannot do is gate generation on light
+  -- worldgen never reads a neighbouring chunk, and light is derived and never
+  saved (D-69) -- so what is left is a rate and a pack size rolled from the world's
+  hash, and **a torch is for seeing rather than for safety**.
+
+  **The part worth keeping: a later decision can only add repopulation back as a
+  sweep.** It cannot be a generator rule, so it would have to be a slow pass over
+  chunks that already exist, on the `crops_tick()` shape step 60's grass sweep
+  wants. That is why the shape is written down here even though nothing is being
+  built. The rate itself was open when this was decided and the user set it the
+  same day (D-147).
+
+- **D-147** 2026-10-10, **the user**: **the Deep Mine's population rate is 10-15%
+  of chunks holding a pack of 2-3 -- provisional, to be adjusted after
+  playtesting.**
+
+  These were the numbers Part M had as suggestions; the user took them as a
+  starting point rather than as a design constant, which is the right way to hold a
+  rate that only playtesting can settle.
+
+  **What the numbers say in practice:** ~0.2-0.45 mobs a chunk, so 45-101 across a
+  Far ring against a pool of 128 -- about 57% at the middle, 79% at the top. The
+  overworld's animals are the tighter half of that pool, not the Deep Mine: 225
+  resident chunks at 0.47 animals a chunk is about 106. **And because a chunk is
+  rolled once, a pack refused by a full pool is gone for good rather than delayed**
+  -- which is why the middle of the range is the number to size for, not the top.
+
+  Two things the rate has to respect, which is why it is a generator rule rather
+  than a knob. **The share is a share of all chunks here**, because there is no
+  biome thinning in a dimension that is all cave floor, while the overworld's
+  16.7% is a share of eligible chunks. And **a pack lives in one chunk**, because
+  creatures are stored with the chunk they stand in (D-123) -- a pack spread over
+  two chunks is two records, not a pack. The roll comes from the world's hash, so a
+  replay reproduces the same population and `worldcheck` can assert the share
+  across a fixed sample.
+
+  **Tuned later, on the user's word, and the pool limit is not set in stone either**
+  -- `MOB_MAX` is a knob, so the rate is not constrained by 128 in principle. What
+  is constrained is the failure mode: a full pool goes quietly, and with no
+  repopulation a refused pack never comes back.
+
+  Still open: whether the share changes with depth, since the ore richness does.
 
 ## Verification
 
