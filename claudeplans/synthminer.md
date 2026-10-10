@@ -7674,6 +7674,94 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   **New check:** a save that stops before the rename -- the temp is put back and the slot
   stays taken, and a completed save leaves no temp behind.
 
+- **F-147** 2026-10-10, read out of the IDF source and confirmed by the run: **the card
+  was healthy, and the retrying disk layer was retrying something no retry can fix.**
+
+  **0x106 is `ESP_ERR_NOT_SUPPORTED`, not `ESP_ERR_TIMEOUT`.** `esp_err.h:30-31`: 0x106
+  NOT_SUPPORTED, 0x107 TIMEOUT. F-116 and the comment at `main/world/chunk_worker.c:257`
+  both called it a timeout, and the escalating backoff in graceloader's
+  `main/sdcard_retry.c` is built for a card that needs time -- 372 ms of waiting across
+  five tries. The card is not the thing failing here: it answers CMD13 with 0x900, exactly
+  as F-116 measured, and **every attempt in the run failed identically**, which is what a
+  deterministic refusal looks like rather than a glitch.
+
+  **Where the error comes from.** In `sd_trans_sdmmc.c` every failure in the write path
+  prints its own `ESP_LOGE` -- invalid size, buffer cannot be used for DMA -- and none of
+  those lines are in the log. The only one that returns without printing anything at
+  default level is `esp_cache_msync()` (`esp_mm/esp_cache_msync.c:113-117`):
+  `cache_hal_vaddr_to_cache_level_id()` fails, it logs at VERBOSE, and it returns
+  `ESP_ERR_NOT_SUPPORTED`. **So the buffer behind the failing write was outside every
+  cacheable range.**
+
+  | vaddr range | cache |
+  |---|---|
+  | 0x4ff00000 - 0x4ffc0000 | internal RAM, L1 |
+  | 0x40000000 - 0x4C000000 | flash + PSRAM, L2 |
+  | 0x50108000 - 0x50110000 | LPRAM / RTC fast -- **not cacheable** |
+  | 0x30100000 - 0x30102000 | SPM -- **not cacheable** |
+
+  (`hal/esp32p4/include/hal/cache_ll.h:1075`, `soc/esp32p4/include/soc/ext_mem_defs.h`.)
+  **Both non-cacheable ranges are in the heap.** LPRAM because
+  `CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=y` -- still on, `include/sdkconfig.h:829`
+  -- and SPM unconditionally in `heap/port/esp32p4/memory_layout.c`. `malloc` can return
+  either, and **the app opens its files with plain `fopen`**, so its stdio buffers come
+  from `malloc`; `fastopen()` gives a `MALLOC_CAP_DMA|MALLOC_CAP_INTERNAL` buffer to the
+  `/sd` and `/int` FILEs, but the app never goes through it (`main/world/region.c:170`,
+  `main/world/worldstore.c:527`, `main/common/trace.c:123`). **This is the same failure
+  mode `idf6_sd_fuckup.md` section 11.1 already recorded, and the config that fixed it
+  there was never turned off here.**
+
+  **What the run shows.** Three writes, five sectors each, at 586679 / 586775 / 586871 --
+  96 sectors apart, inside a 1.5 s window, every attempt failing. The driver's alignment
+  guard did not complain, so the buffer was cache-line aligned (P4 L1 DCache line = 64 B)
+  and still not cacheable: the alignment check is the only guard in that path that prints,
+  and the cacheability check is the one that does not.
+
+  **What changed, in graceloader.** `main/sdcard_retry.c` now refuses to retry
+  `ESP_ERR_NOT_SUPPORTED` -- the buffer's address does not move between tries, so the
+  answer is decided before the first one and the backoff is pure cost -- and prints the
+  buffer's address and which region it sits in, which is the fact the log was missing.
+  `sdkconfigs/tanmatsu` takes LPRAM out of the heap. The retry stays for the failures it
+  was written for.
+
+  **What is still open.** The app cannot change the loader's config, so a world written
+  through a `malloc`'d stdio buffer is still at the mercy of where `malloc` lands. The
+  app-side version of `fastopen` -- `setvbuf` with a buffer the app controls, in a
+  cacheable and cache-line-aligned region -- would make it independent, at the cost of one
+  buffer per open file. Settled in F-148, which does it at the disk layer instead, where it
+  covers every buffer the app can hand down.
+
+- **F-148** 2026-10-10, the fix, in graceloader: **the disk layer now runs the transaction on
+  a buffer the data phase can actually use.**
+
+  **The config change landed, and it is not enough on its own.** The rebuild of
+  `sdkconfig_tanmatsu` has `CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP` off (`:2806`, and gone from
+  `build/tanmatsu/config/sdkconfig.h`), so LPRAM is out of the heap. **SPM at 0x30100000 is still in
+  it** -- `heap/port/esp32p4/memory_layout.c:115` puts that region in the heap unconditionally, and its
+  medium-priority caps include `MALLOC_CAP_DEFAULT` through `ESP32P4_MEM_COMMON_CAPS` (`:45`), so
+  `malloc` can still land there once the higher-priority types have no block for the request.
+
+  **And the app cannot control where its buffers land.** Its statics live inside the kbelf segment
+  allocation (`components/kbelf/src/kbelfx.c:72`, `aligned_alloc`), its stdio buffers come from
+  `malloc`, and `f_write` hands the caller's buffer straight to `disk_write` for a sector-aligned run --
+  which is the 5-sector write in the log. Choosing the right caps inside the app cannot settle that.
+
+  **What is checked.** The two conditions the driver enforces, `esp_driver_sdmmc/src/sd_host_sdmmc.c:455`
+  and `esp_mm/esp_cache_msync.c:113`, are both properties of the address, so they are decided before the
+  first attempt: the buffer must be in a cacheable range, and aligned to the cache line of the level that
+  covers it (64 B on both levels here). `main/sdcard_retry.c` now tests both, and when the caller's
+  buffer fails, the data goes through a buffer this layer allocated -- cache-line aligned, internal RAM
+  with PSRAM as the fallback, 8 KiB, allocated on first need, larger requests bounced in pieces of 16
+  sectors. **A memcpy only for the transactions that needed it.**
+
+  **`buffer_region()` had to be split.** `esp_ptr_internal()` counts SPM and RTC fast memory as internal
+  (`esp_hw_support/include/esp_memory_utils.h:289-301`), so it would have called the buffer in the log
+  "internal RAM". It now names SPM and LPRAM separately.
+
+  **What to watch.** `sdcard_retry_stats()` gained `bounced`. A run that never bounces is a run where
+  `malloc` behaved; a `bounced` that climbs means the app is being handed non-cacheable memory -- which
+  is now survivable rather than fatal.
+
 ## Verification
 
 - **Host:** `make check` = `worldcheck` + `scenecheck` + `meshcheck` +

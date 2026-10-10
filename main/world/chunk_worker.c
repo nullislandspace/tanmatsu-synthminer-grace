@@ -254,7 +254,10 @@ static bool do_mesh(int32_t cx, int32_t cz, int lod, int sect, mesh_t* out) {
 // and a write that lands on a block needing an erase starts an internal
 // cycle that can hold the bus busy for hundreds of milliseconds. If the
 // host's timeout is shorter than that, the transaction fails --
-// `sdmmc_write_blocks failed (0x106)`, which is ESP_ERR_TIMEOUT.
+// `sdmmc_write_blocks failed (0x107)`, which is ESP_ERR_TIMEOUT. (0x106,
+// which this file used to call a timeout, is ESP_ERR_NOT_SUPPORTED -- see
+// F-147. A slow save is the card being busy; a 0x106 is the buffer being
+// refused, and pausing does nothing about that.)
 //
 // And we feed it the worst possible pattern: a burst of many small
 // writes scattered across different region files, each with its own
