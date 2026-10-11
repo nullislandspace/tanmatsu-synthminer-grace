@@ -1815,9 +1815,13 @@ static bool cross_to(dimension_t to, double wx, double wz) {
     s_saved.x = (double)cx + 0.5;
     s_saved.y = (double)ay;
     s_saved.z = (double)cz + 0.5;
-    // Not "where they left": the position is settled once the nine chunks
-    // are here, by the same rule as entering a world.
-    s_saved.placed = false;
+    // THE CENTRE OF THE SHAFT, and it is a real position. `ay` is the cell
+    // the player stands in -- the trigger cell, the middle of the frame --
+    // so settling has to use it rather than re-derive a height from the
+    // column. `world_ground()` looks for the highest solid block, and down
+    // there the highest solid block is the sealed ceiling: a crossing that
+    // settled through `player_spawn()` put the player on top of the world.
+    s_saved.placed = true;
     s_player_ready = false;
 
     // The far end of this column is not there yet, and it cannot be built

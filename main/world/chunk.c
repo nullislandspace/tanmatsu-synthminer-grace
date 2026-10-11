@@ -10,6 +10,7 @@
 #include "common/psram.h"
 #include "world/blockupdate.h"
 #include "world/crops.h"
+#include "world/dimension.h"
 #include "world/light.h"
 
 static chunk_t  s_slots[CH_SLOT_COUNT];
@@ -424,6 +425,28 @@ int world_ground(int32_t x, int32_t z) {
     chunk_t const* c = chunk_find(chunk_of(x), chunk_of(z));
     if (c == NULL) return 0;
     uint8_t const* col = &c->id[CH_IDX(chunk_off(x), 0, chunk_off(z))];
+
+    // THE DEEP MINE SEARCHES DOWN FROM ITS ROOF, NOT FROM THE TOP OF THE
+    // COLUMN. In the overworld the highest solid block is the ground, because
+    // the sky is above it. Down there the highest solid block is the sealed
+    // bedrock roof, so the same search returns the top of the world -- CH_H,
+    // and a body placed on top of the cave rather than in it. Reading the
+    // column from below is no better: the floor is solid from y = 0 up, so the
+    // lowest solid is the bottom of the world. The ground in a cave is the
+    // first solid under the open band, which for an untouched column is exactly
+    // what `deepmine_ground_y()` answers -- and for a column the player has dug
+    // or built on, it is what they are actually standing on.
+    if (dimension_current() == DIM_DEEP_MINE) {
+        // The roof is bedrock, and nothing a player can place is, so the first
+        // solid that is not bedrock is the top of the floor -- or the top of
+        // whatever the player has dug down to or built up to.
+        for (int y = CH_H - 1; y >= 0; y--) {
+            if (col[y] == BLK_BEDROCK) continue;
+            if (block_solid(col[y])) return y + 1;
+        }
+        return 0;
+    }
+
     for (int y = CH_H - 1; y >= 0; y--) {
         if (block_solid(col[y])) return y + 1;
     }

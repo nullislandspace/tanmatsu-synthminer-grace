@@ -5125,6 +5125,49 @@ static void check_mineshaft(void) {
     CHECK(straddled > 0, "no generated shaft straddled a chunk border in the sample of %d", tested);
     CHECK(perfect == tested, "%d of %d generated shafts came out incomplete", perfect, tested);
 
+    // AND THE GROUND UNDER A COLUMN, asked through the same function the game
+    // uses to settle a body. In the overworld the highest solid block is the
+    // ground, because the sky is above it; in a sealed cave it is the bedrock
+    // roof, so the same search answers the top of the world -- and a player
+    // transported to a column would be put on top of the cave rather than in
+    // it. The ring is resident, so this is the real function rather than a copy
+    // of the rule. Columns holding a frame are skipped: a truss at height 3 is
+    // solid, and a frame is not the ground anything stands on.
+    dimension_set_current(DIM_DEEP_MINE);
+    int gcols = 0, gflat = 0;
+    for (int32_t cz = C0; cz <= C1; cz++) {
+        for (int32_t cx = C0; cx <= C1; cx++) {
+            chunk_t* c = chunk_find(cx, cz);
+            if (c == NULL) continue;
+            bool frame = false;
+            for (int y = 0; y < CH_H && !frame; y++) {
+                for (int lx = 0; lx < CH_W && !frame; lx++) {
+                    for (int lz = 0; lz < CH_D && !frame; lz++) {
+                        uint8_t const b = c->id[CH_IDX(lx, y, lz)];
+                        if (b == BLK_SHAFT_COLUMN || b == BLK_SHAFT_TRUSS) frame = true;
+                    }
+                }
+            }
+            if (frame) continue;
+            for (int lz = 0; lz < CH_D; lz++) {
+                for (int lx = 0; lx < CH_W; lx++) {
+                    int32_t const wx = cx * CH_W + lx, wz = cz * CH_D + lz;
+                    int const g = world_ground(wx, wz);
+                    int const fy = deepmine_ground_y(wx, wz, seed);
+                    CHECK(g > 0 && g < deepmine_ceiling_y(wx, wz, seed),
+                          "column %d,%d reads its ground as %d, which is not inside the cave", wx, wz, g);
+                    gcols++;
+                    if (g == fy) gflat++;
+                }
+            }
+        }
+    }
+    printf("  ground: %d column(s) read the cave floor, %d of them exactly the generator's height\n", gcols, gflat);
+    CHECK(gcols > 0, "no column tested for its ground");
+    CHECK(gflat == gcols, "%d of %d columns read a ground other than their floor", gflat, gcols);
+    CHECK(gcols < 196 * CH_CELLS, "no column in the ring held a frame, so the skip was not tested");
+    dimension_set_current(DIM_OVERWORLD);
+
     // --- The player's shaft -------------------------------------------
     //
     // A flat world, so the ground test is the only thing deciding. `y` is

@@ -381,7 +381,9 @@ void chunk_mark_edited(int32_t cx, int32_t cz);
 void world_mark_dirty(int32_t x, int32_t y, int32_t z);
 
 // The y a body standing at (x, z) rests on: one above the highest solid
-// block. 0 if the column is empty, CH_H if it is full.
+// block. 0 if the column is empty, CH_H if it is full. In the Deep Mine the
+// highest solid block is the sealed roof, so the search skips bedrock -- the
+// ground there is the first solid under the open band.
 int world_ground(int32_t x, int32_t z);
 
 // Is this block something to stand on / collide with?

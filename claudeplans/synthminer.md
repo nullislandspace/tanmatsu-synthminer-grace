@@ -1913,6 +1913,11 @@ this section.
 - **Richer in iron** than the overworld, and **occasional clusters of diamond**.
 - **No sun and no moon.** Illumination is global: a constant, not a sky light
   that floods and decays.
+- **The ground is the first solid under the open band, not the highest solid in
+  the column.** In the overworld those are the same thing; in a sealed cave the
+  highest solid is the bedrock roof, so `world_ground()` has to answer the
+  question per dimension (F-151). Reading the column from below does not work
+  either, because the floor is solid from y 0 up.
 - **Hostile mobs live here** -- zombies and skeletons for now, the rest
   undecided (D-137).
 
@@ -1972,6 +1977,12 @@ one. The order is fixed (D-141):
    -- Part K's entry sequence verbatim. Physics frozen, those nine chunks as the
    gate, the rest streaming nearest-first. Determinism rule 4 is untouched,
    because the tick is skipped until the 3x3 is `CS_READY`.
+   The arrival point is **the centre cell of the frame**, and its height comes from
+   the column function rather than from the chunk, which is not there yet
+   (F-150). The frame on that side is stamped on the first tick after the nine
+   chunks arrive, because the switch empties the store before anything can be
+   written into it (D-150) -- so the arrival cell is the cell the frame's centre
+   will be, not one read off a structure that does not exist yet.
 6. **Record it** in the flight recorder (step 48): dimension, column, arrival y.
    A replay has to record the switch as an event and not as a position, or a
    replay of a session that crossed over would replay into the wrong dimension.
@@ -2297,7 +2308,7 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 | 61 | **The second dimension**: per-dimension region directories, `level.smw`'s dimension and spawn fields, and the Deep Mine generator (sealed bedrock ceiling, one cave, stone, lava, richer iron, diamond clusters) | done | Part M, **built 2026-10-11** (F-150). `world/dimension.{c,h}` is the current dimension as ONE global, because the ring is keyed by `(cx, cz)` alone and cannot hold both worlds at once; `world/deepmine.{c,h}` is the generator. Measured over 144 chunks: floor y 6..12 and roof y 26..43, both read once per grid square rather than per column, **2.5% iron against the overworld's 0.8% on the same sample**, 0.06% diamond where the overworld has none, 227 lava cells, and **95.3% of the cave walkable from a single column** (F-151). `level.smw` gained one additive tag (`dimension`), so no migration and no major version (D-32), and the regions split by directory (D-143) with the overworld keeping the flat one -- a world already on the card still reads. |
 | 62 | **Light and sky in the Deep Mine**: global illumination, no sun or moon, `voxel_sky`/`backdrop`/`horizon` suppressed, `daytime` frozen | done, **device test pending** | Part M, built 2026-10-11 (F-150). Global illumination as a number is `DM_SKY_LIGHT` 12, and it is a **constant on open cells rather than a flood**: the column pass and the sky half of the border join are skipped, and block light still floods, because a torch is what makes a patch brighter than the rest of the cave -- lighting is for seeing, not for safety (D-139). `daytime_deep_mine()` is the frozen pose, straight up, because a sealed cave has no horizon to point at. The three render-side suppressions are one guard each on `dimension_has_sky()`. **The picture itself is still unverified on the device** -- this environment has no riscv32-esp-elf toolchain, so `make check` is green and the bench flight is the outstanding half. |
 | 63 | **The mine shaft**: the recipe, the 3x3 frame with four corner columns and trusses at height 3, placement through `world_set`, the centre cell as the trigger, pairing by column | done | Part M, **built 2026-10-11** (F-150). `world/mineshaft.{c,h}`: 12 posts and 4 braces, and 16 ingots in -- the recipe and the shape are the same number, which is why the shape is exactly this. Two writers, one shape, on the same argument as `worldgen_tree_shape`: the generator stamps into one chunk and drops what falls outside, a player's goes through `world_set`. **`item_block()` answers `BLK_AIR` for it**, so `player.c` needed a branch of its own -- a shaft places a shape, not a block -- and the cell it stands ON is the one the crosshair struck, not the empty cell in front of its face. The trigger is a shape test seen from the middle, so it needs no record and works in either dimension. **The station is still the user's open question**: the recipe row names the crafting table because the game's bench is the disassembly station. **Two things added on 2026-10-11** (F-151): the generator stamps only on the 5x5 pad it flattened for its square (D-151), and the far end of a crossing is built on first use by `mineshaft_open_at()` (D-150) -- 7 generated shafts in the sample, 1 on a chunk border, all read back whole, and a far-end test on a fresh column that has no pad.
-| 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | done | Part M, **built 2026-10-11** (F-150). `world/dimension_switch.{c,h}` does steps 1-4 and 6 and **refuses rather than clears**, Part P's rule: a chunk the card never took is something the player made, and a switch that dropped it is data loss. Step 5 is in `main.c` and cannot be anywhere else, because the entry sequence is the app's -- `check_crossing()` hands the nine chunks to `start_loading()` with physics frozen. **Step 2 is a drain, not a gate** (F-151): a live streamer is never quiet, and a ring during play is dirty almost everywhere, so requiring an idle worker refused on nearly every crossing. A queue is a wait, not a refusal; what genuinely cannot be saved is a chunk whose planes are still the worker's, and draining is what separates the two. **Two things the design did not have**: the trigger has to re-arm, because the pairing is stateless and the cell you arrive in is a trigger too, so without one flag the player bounces back for ever; and a crossing during a replay is refused until step 48 records them. |
+| 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | done | Part M, **built 2026-10-11** (F-150). `world/dimension_switch.{c,h}` does steps 1-4 and 6 and **refuses rather than clears**, Part P's rule: a chunk the card never took is something the player made, and a switch that dropped it is data loss. Step 5 is in `main.c` and cannot be anywhere else, because the entry sequence is the app's -- `check_crossing()` hands the nine chunks to `start_loading()` with physics frozen. **Step 2 is a drain, not a gate** (F-151): a live streamer is never quiet, and a ring during play is dirty almost everywhere, so requiring an idle worker refused on nearly every crossing. A queue is a wait, not a refusal; what genuinely cannot be saved is a chunk whose planes are still the worker's, and draining is what separates the two. **Two things the design did not have**: the trigger has to re-arm, because the pairing is stateless and the cell you arrive in is a trigger too, so without one flag the player bounces back for ever; and a crossing during a replay is refused until step 48 records them. **The arrival cell is a real position** (F-151): the crossing records the frame's centre, and settling has to use it -- a crossing that let `world_ground()` re-derive the height put the player on top of the world at y 64, because the highest solid block in a sealed cave is the roof. |
 | 65 | **Zombies and skeletons**, in the Deep Mine only | partly done -- **population only** | Built 2026-10-11 (F-150): two rows in `MOBS[]`, `PACKS[]` (60 zombie / 40 skeleton), one roll per chunk from the world's hash, a pack inside one chunk, and nothing that comes back (D-146). Measured over 10000 chunks: **1226 packs, 12.3% against the design's 12%**, 3066 members, 0.31 a chunk; a Far ring holds 71 of the pool's 128, so `s_refused` reads 0 -- the check that says whether the numbers are right. **Combat and pathing are not built**: `hostile` is a column of the row that nothing reads yet. Drops are empty on purpose (D-144). |
 
 ---
@@ -7949,7 +7960,7 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   flat 3x3 -- one candidate square in 26000 did -- and a post inside its own floor is
   a post with nothing under it, the same thing the player's placement refuses.
 
-- **F-151** 2026-10-11, measured and fixed: **the five things the user found on the
+- **F-151** 2026-10-11, measured and fixed: **the six things the user found on the
   device, and the two numbers the design did not have.**
 
   **The flat Deep Mine was a floor read once per column.** A smooth noise floor puts
@@ -7997,10 +8008,33 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   message they were borrowing. The line is in the text budgets, so all 32 languages are
   measured against the width it is drawn at, and every one of them fits.
 
+  **The arrival height was right; the path that settles the player was not.** The
+  arrival cell IS the centre of the frame, and `cross_to()` records it -- but
+  `settle_player()` only uses a saved position when it is marked as a real one, and a
+  crossing marked it as not-yet-real, so the height was re-derived through
+  `world_ground()`. In the overworld that is the highest solid block in the column; in a
+  sealed cave the highest solid block is the bedrock roof, so the player was put on top
+  of the world at y 64. Reading the column from below is no better, because the floor is
+  solid from y 0 up. **The ground in a cave is the first solid under the open band**, and
+  `world_ground()` now says so -- the roof is bedrock and nothing a player can place is,
+  so the first solid that is not bedrock is what a body is actually standing on. A
+  crossing marks its arrival cell as a real position, so the centre is used as it was
+  computed.
+
+  **And the frame is not there yet at the moment of the transport.** The store has just
+  been emptied, so nothing can be written to it; the far end is built on the first tick
+  after the nine chunks arrive. That is the same reason the arrival height has to be
+  answerable from the column alone (D-142): the cell the player is put in is the cell the
+  frame's centre will be, not a cell read off a structure that does not exist yet.
+
   **What the checks can now prove.** `check_mineshaft()` samples the largest ring the
   store holds (14x14 chunks, `CH_SLOT_COUNT` 256), skips candidates with no pad, and
   tests the far end on a fresh column: clear ground under a corner post, placement
   refuses, `mineshaft_open_at()` succeeds, the trigger reads, and a second call refuses.
+  It also asks `world_ground()` the question the game asks it: over 44800 columns of the
+  resident ring the ground is the generator's floor height, and the 21 chunks holding a
+  frame are skipped, because a truss at height 3 is solid and a frame is not the ground
+  anything stands on.
   `check_dimension_switch()` loads a Deep Mine ring, dirties 81 chunks, switches, and
   reads the save back through `world_chunk_load()` -- **the drain itself cannot be
   measured, because the host worker is synchronous**, and the check says so rather than
