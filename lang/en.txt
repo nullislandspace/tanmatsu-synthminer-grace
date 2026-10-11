@@ -445,6 +445,10 @@ farm.needs_water = Plant rice in water one block deep, on sand
 farm.needs_ground = Plant a sapling on grass or dirt
 # Said when compost is used on a plant that is already ripe
 farm.already_ripe = It is ripe already
+# Why a placement did not happen. A shaft, a bed and a stove all want more
+# than the one cell the crosshair is on, so a use that does nothing and says
+# nothing looks exactly like a key that did not register.
+use.no_room = There is not room for that here
 
 # --- The animals -------------------------------------------------------------
 mob.pig = Pig

@@ -50,15 +50,65 @@
 #define DM_LAVA_CHANCE  0.06f
 #define DM_LAVA_R       1.5f
 
+// --- The two surfaces ------------------------------------------------
+//
+// The cave is the volume between a floor and a roof, and both are read
+// ONCE PER GRID SQUARE rather than once per column. That is the whole
+// difference between a plane and a cave: a smooth noise floor puts every
+// column one or two blocks from its neighbour, so nothing ever reads as a
+// wall, and a floor read once per square is a plateau with a step up
+// between squares. Two grids of different size, so the floor and the roof
+// never agree for long and the height of the room changes as you walk
+// through it.
+//
+// The spans are what the plateau can land on BEFORE the rough term is
+// added, so the bands in dimension.h are the bands the generator can
+// actually produce -- a span that could reach past its own maximum would
+// make the clamp the thing deciding the shape, and a check would measure
+// the clamp rather than the cave.
+#define DM_FLOOR_GRID  24
+#define DM_CEIL_GRID   12
+#define DM_FLOOR_SPAN  6
+#define DM_CEIL_SPAN   17
+// How many heights the rough term can add inside a square.
+#define DM_ROUGH       2
+// The pad a shaft stands on: the square around its spot, flattened. See
+// deepmine.c -- a shaft needs level ground under all nine cells of its
+// footprint, and a floor that changes per column almost never gives it.
+#define DM_PAD         5
+
+// A span the player can still walk is not a cosmetic preference. The jump
+// apex is 1.25 blocks and step_up is 0 (player.h), so a step of two is a
+// wall the player can only go around. A floor span of 15 put every square
+// about seven blocks above or below its neighbour, and a flood fill from
+// one column reached 12.7% of the cave: not a cave you walk through, a
+// stack of rooms you cannot get out of. Six keeps the walls -- one column
+// in ninety-six still steps two or more from its neighbour -- and leaves
+// the cave walkable, 95.3% of it from a single starting column. That is
+// what the grid is for: 24 is the largest that keeps both, and it is the
+// number the check measures rather than the one a comment asserts.
+
 // The y of the first air above the cave floor at this column -- the cell
 // the player stands in. Same convention as worldgen_height(), so the two
 // dimensions answer the same question the same way.
 int deepmine_ground_y(int32_t x, int32_t z, uint32_t seed);
 
-// Is this cell part of the sealed ceiling?
-static inline bool deepmine_is_ceiling(int y) {
-    return y >= DM_CEILING_Y;
+// The y of the first bedrock above the cave at this column -- its roof.
+// Per column, because the roof is not one flat height.
+int deepmine_ceiling_y(int32_t x, int32_t z, uint32_t seed);
+
+// Is this cell part of the sealed ceiling? Per column for the same reason,
+// and the same function the generator fills with: two answers to "is this
+// the roof" would be the difference between a cave and a hole in it.
+static inline bool deepmine_is_ceiling(int32_t x, int32_t z, int y, uint32_t seed) {
+    return y >= deepmine_ceiling_y(x, z, seed);
 }
+
+// Is (x, z) inside the flat pad a shaft stands on? Exported because the
+// generator, the placement rule and the check all have to get the same
+// answer for the same column -- the pad is part of the terrain, not a
+// decoration painted on top of it afterwards.
+bool deepmine_is_pad(int32_t x, int32_t z, uint32_t seed);
 
 // Is the floor at (x, z) covered by lava? Asked per column, because the
 // patch is a shape on a coarse grid rather than a per-cell coin flip.

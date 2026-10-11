@@ -307,6 +307,7 @@ typedef enum {
     SM_STR_FARM_NEEDS_WATER,            // farm.needs_water
     SM_STR_FARM_NEEDS_GROUND,           // farm.needs_ground
     SM_STR_FARM_ALREADY_RIPE,           // farm.already_ripe
+    SM_STR_USE_NO_ROOM,                 // use.no_room
     SM_STR_MOB_PIG,                     // mob.pig
     SM_STR_MOB_COW,                     // mob.cow
     SM_STR_MOB_DOG,                     // mob.dog

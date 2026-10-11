@@ -19,12 +19,25 @@ bool dimension_switch(int32_t x, int32_t z, dimension_t to) {
     dimension_t const from = dimension_current();
     if (from == to) return true;
 
+    // 0. LET THE WORKER FINISH WHAT IT HAS ALREADY STARTED.
+    //
+    // A live streamer is never quiet: it has jobs in the queue on almost
+    // every frame, and a switch that required an idle worker would refuse
+    // on nearly every crossing a player ever made. A queue is a wait, not
+    // a refusal. What genuinely cannot be saved is a chunk whose planes
+    // are still the worker's (Part K), and draining is what separates the
+    // two -- everything that can become saveable does, and what is left
+    // below is a chunk that truly cannot be.
+    while (chunk_worker_collect(CH_SLOT_COUNT) > 0) {
+    }
+
     // 1. SAVE EVERY DIRTY CHUNK.
     //
-    // A chunk the worker is still filling cannot be saved -- its planes
-    // are the worker's until it hands them over (Part K) -- so a switch
-    // is only ever possible when the store is quiet. That is also what
-    // makes this loop safe: nothing changes state underneath it.
+    // Freshly generated chunks are CF_EDITED from the moment they are
+    // built, so a ring during play is dirty almost everywhere. That is not
+    // a reason to refuse: it is the write point D-141 says a crossing has,
+    // and it is the same rule Part P applies to eviction -- a chunk the
+    // card did not take is something the player made.
     for (int pass = 0; pass < SWITCH_SAVE_PASSES; pass++) {
         int dirty = 0;
         for (int i = 0; i < CH_SLOT_COUNT; i++) {

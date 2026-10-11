@@ -83,6 +83,12 @@ bool mineshaft_can_place(int32_t x, int y, int32_t z);
 // unless all sixteen cells are writable.
 bool mineshaft_place(int32_t x, int y, int32_t z);
 
+// The same shape and the same writer, for the far end of a crossing: the
+// shaft that has to be standing at this column in the world being entered,
+// which the generator cannot know about. Same sixteen cells, same all-or-
+// nothing rule, but no ground rule -- see mineshaft.c.
+bool mineshaft_open_at(int32_t x, int y, int32_t z);
+
 // Is (x, y, z) -- the cell the player is standing in -- the open centre
 // of a shaft? Reads only this chunk's cells, so it works in either
 // dimension and needs no record of which shaft this is.

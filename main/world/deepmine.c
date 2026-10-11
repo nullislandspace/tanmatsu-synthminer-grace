@@ -4,6 +4,7 @@
 
 #include "world/deepmine.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "common/rng.h"
@@ -16,28 +17,105 @@
 // salt would put the two dimensions' ore in the same places -- which is
 // exactly the kind of coincidence a check would never notice.
 #define S_DM_FLOOR    0xE100u
+#define S_DM_CEIL     0xE150u
+#define S_DM_FLOOR_ROUGH 0xE180u
+#define S_DM_CEIL_ROUGH  0xE190u
 #define S_DM_LAVA     0xE200u
 #define S_DM_IRON     0xE300u
 #define S_DM_COAL     0xE350u
 #define S_DM_DIAMOND  0xE400u
 #define S_DM_PACK     0xE500u
 
-// The cave is wide rather than lumpy. A floor that changed every column
-// would make a room with no walls, and the whole point of the Deep Mine
-// is that it reads as one big room you can see the far side of.
-#define DM_FLOOR_SCALE 64.0f
+// --- The two surfaces -------------------------------------------------
 
-// --- The floor --------------------------------------------------------
+// Which grid square a column belongs to. Negative-safe, because C division
+// rounds toward zero: -1 / 16 is 0, so the square it names is not the one the
+// generator would have read for that column. Every grid in this file -- the
+// floor, the roof, the lava, the veins -- goes through here for that reason.
+static int32_t dm_square(int32_t v, int grid) {
+    return (v >= 0 ? v : v - grid + 1) / grid;
+}
+
+// One value per grid square. Everything inside a square is the same height,
+// which is what makes it a plateau, and the step from one square to the
+// next is the wall. A per-column noise would be smoother and would not be
+// a cave.
+static int dm_plateau(int32_t x, int32_t z, uint32_t seed, int grid, int base, int span, uint32_t salt) {
+    int32_t const gx = dm_square(x, grid), gz = dm_square(z, grid);
+    return base + (int)(sm_rand2(gx, gz, seed ^ salt) * (float)span);
+}
+
+// THE PAD A SHAFT STANDS ON.
+//
+// A shaft needs level ground under all nine cells of its footprint -- the
+// same rule as the player's placement -- and a floor that changes per column
+// almost never gives it: over 262144 columns, one candidate square in 26000
+// had a flat three by three, so the generator was stamping frames into rock.
+// So a candidate shaft brings its own pad, five by five, flattened to the
+// height its square would have had anyway. That is the flattening the design
+// allows, and it happens as the terrain is read, not as a decoration painted
+// on it afterwards.
+//
+// It is still a pure function of the position (Part T): the spot is the same
+// hash the generator uses. Two squares then have to agree about every column
+// of the pad, and that is what the two conditions below are.
+//
+//   - THE SHAFT SQUARE. A column outside it would be asked by a different
+//     square's shaft, and the two would answer with two different spots -- so
+//     the whole pad has to sit inside the square the spot belongs to.
+//   - THE FLOOR SQUARE. The pad is flattened to the height its own square
+//     would have had, so a column across that border would read a different
+//     height for the same cell.
+//
+// SHAFT_GRID divides DM_FLOOR_GRID, so the first condition implies the
+// second. Both are written anyway, because the first is what makes the pad
+// knowable per column and the second is what makes it flat -- and a check
+// that only enforced one of them would pass on a grid that broke the other.
+bool deepmine_is_pad(int32_t x, int32_t z, uint32_t seed) {
+    int32_t const gx = dm_square(x, SHAFT_GRID), gz = dm_square(z, SHAFT_GRID);
+    if (!mineshaft_is_candidate(x, z, seed)) return false;
+
+    int32_t wx, wz;
+    mineshaft_candidate_spot(gx, gz, seed, &wx, &wz);
+
+    int const half = DM_PAD / 2;
+    if (x - wx > half || wx - x > half || z - wz > half || wz - z > half) return false;
+
+    int32_t const sx = wx - gx * SHAFT_GRID, sz = wz - gz * SHAFT_GRID;
+    if (sx < half || sx > SHAFT_GRID - 1 - half) return false;
+    if (sz < half || sz > SHAFT_GRID - 1 - half) return false;
+
+    return dm_square(x, DM_FLOOR_GRID) == dm_square(wx, DM_FLOOR_GRID) &&
+           dm_square(z, DM_FLOOR_GRID) == dm_square(wz, DM_FLOOR_GRID);
+}
 
 int deepmine_ground_y(int32_t x, int32_t z, uint32_t seed) {
-    // Plain value noise, not fbm. Two octaves never reach 1.0 (F-126), so
-    // an fbm floor would sit low in its band for ever and the top of the
-    // band would be a number nothing ever produces. This one is honest
-    // about the range it can produce.
-    float const n = sm_noise2((float)x, (float)z, DM_FLOOR_SCALE, seed ^ S_DM_FLOOR);
-    int const   span = DM_FLOOR_MAX - DM_FLOOR_MIN + 1;
-    int         y    = DM_FLOOR_MIN + (int)(n * (float)span);
+    int const base = dm_plateau(x, z, seed, DM_FLOOR_GRID, DM_FLOOR_MIN, DM_FLOOR_SPAN, S_DM_FLOOR);
+    if (deepmine_is_pad(x, z, seed)) return base;
+
+    // Rough edges. A plateau that is exactly flat reads as a floor with
+    // something painted on it rather than as rock, so a column may sit a
+    // block above its square. It can never sit below it: the square is the
+    // floor, and the player standing on a column is standing on the plateau
+    // it belongs to.
+    int y = base + (int)(sm_rand2(x, z, seed ^ S_DM_FLOOR_ROUGH) * (float)DM_ROUGH);
     if (y > DM_FLOOR_MAX) y = DM_FLOOR_MAX;
+    return y;
+}
+
+int deepmine_ceiling_y(int32_t x, int32_t z, uint32_t seed) {
+    int y = dm_plateau(x, z, seed, DM_CEIL_GRID, DM_CEIL_MIN, DM_CEIL_SPAN, S_DM_CEIL);
+    y += (int)(sm_rand2(x, z, seed ^ S_DM_CEIL_ROUGH) * (float)DM_ROUGH);
+    if (y > DM_CEILING_Y) y = DM_CEILING_Y;
+
+    // SEALED AND WALKABLE. The bands are set so this cannot fire -- floor
+    // 6..12, roof 26..44, so fourteen open cells minimum against the four
+    // this requires -- but a guarantee that only holds because of the numbers
+    // is not a guarantee, and the consequence of breaking it is a player
+    // placed inside rock. The check that says so is in tools/worldcheck.c.
+    int const floor_y = deepmine_ground_y(x, z, seed);
+    if (y < floor_y + DM_ROOM_MIN) y = floor_y + DM_ROOM_MIN;
+    if (y > DM_CEILING_Y) y = DM_CEILING_Y;
     return y;
 }
 
@@ -48,8 +126,7 @@ int deepmine_ground_y(int32_t x, int32_t z, uint32_t seed) {
 // for the same reason -- fill_column has to give the same answer from
 // either side of a chunk border, so nothing here can be grown by walking.
 bool deepmine_lava(int32_t x, int32_t z, uint32_t seed) {
-    int32_t const gx = (x >= 0 ? x : x - VEIN_GRID + 1) / VEIN_GRID;
-    int32_t const gz = (z >= 0 ? z : z - VEIN_GRID + 1) / VEIN_GRID;
+    int32_t const gx = dm_square(x, VEIN_GRID), gz = dm_square(z, VEIN_GRID);
 
     for (int dz = -1; dz <= 1; dz++) {
         for (int dx = -1; dx <= 1; dx++) {
@@ -75,16 +152,17 @@ void deepmine_chunk(chunk_t* c, uint32_t seed) {
         for (int lx = 0; lx < CH_W; lx++) {
             int32_t const wx = c->cx * CH_W + lx, wz = c->cz * CH_D + lz;
             int     const fy = deepmine_ground_y(wx, wz, seed);
+            int     const cy = deepmine_ceiling_y(wx, wz, seed);
             bool    const wet = deepmine_lava(wx, wz, seed);
 
             for (int y = 0; y < CH_H; y++) {
                 uint8_t b = BLK_AIR;
 
-                if (y >= DM_CEILING_Y) {
-                    // The sealed ceiling. Every column, every time -- a
-                    // hole here is the difference between a cave and a
-                    // shaft open to the sky, and the check that says so
-                    // walks a fixed sample of columns.
+                if (y >= cy) {
+                    // The sealed ceiling, per column. Every column, every
+                    // time -- a hole here is the difference between a cave
+                    // and a shaft open to the sky, and the check that says
+                    // so walks a fixed sample of columns.
                     b = BLK_BEDROCK;
                 } else if (y < fy) {
                     // `fy` is the first air above the floor, the same

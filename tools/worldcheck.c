@@ -4700,9 +4700,21 @@ static void check_deep_mine(void) {
     c.id = id;
     c.st = st;
 
-    long columns = 0, sealed = 0, open_above = 0;
+    // The sample, and the floor height of every column in it. The walk is
+    // measured over the whole sample rather than inside each chunk, because a
+    // wall is a step between two squares and half of them fall on a chunk
+    // border -- a check that only looked inside a chunk could not see one.
+    int const SW = 12 * CH_W, SD = 12 * CH_D;
+    static int fh[12 * CH_W][12 * CH_D];
+    static uint8_t vis[12 * CH_W][12 * CH_D];
+
+    long columns = 0, sealed = 0, wrong = 0, open_band = 0, stand = 0, shaft = 0;
     long stone = 0, iron = 0, coal = 0, diamond = 0, lava = 0;
-    int  min_floor = CH_H, max_floor = 0, chunks = 0;
+    int  min_floor = CH_H, max_floor = 0, min_ceil = CH_H, max_ceil = 0;
+    int  min_room = CH_H, max_room = 0, walls = 0, chunks = 0;
+    int  distinct_floor = 0, distinct_ceil = 0, floor_seen[CH_H], ceil_seen[CH_H];
+    memset(floor_seen, 0, sizeof(floor_seen));
+    memset(ceil_seen, 0, sizeof(ceil_seen));
 
     for (int32_t cz = 0; cz < 12; cz++) {
         for (int32_t cx = 0; cx < 12; cx++) {
@@ -4713,18 +4725,64 @@ static void check_deep_mine(void) {
 
             for (int lz = 0; lz < CH_D; lz++) {
                 for (int lx = 0; lx < CH_W; lx++) {
+                    int32_t const wx = cx * CH_W + lx, wz = cz * CH_D + lz;
+                    int const fy = deepmine_ground_y(wx, wz, seed);
+                    int const cy = deepmine_ceiling_y(wx, wz, seed);
+                    fh[wx][wz] = fy;
+
                     columns++;
-                    int const fy = deepmine_ground_y(cx * CH_W + lx, cz * CH_D + lz, seed);
                     CHECK(fy >= DM_FLOOR_MIN && fy <= DM_FLOOR_MAX, "floor column %d,%d is at y %d, outside the band",
-                          cx * CH_W + lx, cz * CH_D + lz, fy);
+                          wx, wz, fy);
+                    CHECK(cy >= DM_CEIL_MIN && cy <= DM_CEILING_Y, "roof column %d,%d is at y %d, outside the band",
+                          wx, wz, cy);
+                    // WALKABLE BEFORE PRETTY. The arrival height is answered from
+                    // the column alone (D-142), so a column with no open cell is a
+                    // player put inside rock.
+                    CHECK(cy >= fy + DM_ROOM_MIN, "column %d,%d has %d open cells, not the %d it must", wx, wz,
+                          cy - fy, DM_ROOM_MIN);
+
                     if (fy < min_floor) min_floor = fy;
                     if (fy > max_floor) max_floor = fy;
+                    if (cy < min_ceil) min_ceil = cy;
+                    if (cy > max_ceil) max_ceil = cy;
+                    int const room = cy - fy;
+                    if (room < min_room) min_room = room;
+                    if (room > max_room) max_room = room;
+                    if (floor_seen[fy]++ == 0) distinct_floor++;
+                    if (ceil_seen[cy]++ == 0) distinct_ceil++;
 
                     for (int y = 0; y < CH_H; y++) {
                         uint8_t const b = c.id[CH_IDX(lx, y, lz)];
-                        if (y >= DM_CEILING_Y) {
+                        if (y >= cy) {
                             if (b == BLK_BEDROCK) sealed++;
-                            else open_above++;
+                            else { wrong++; }
+                        } else if (y > fy) {
+                            // THE FRAME, which is the one thing the generator
+                            // puts in the open band on purpose. It is stamped
+                            // from the same column, so it does not disagree
+                            // with the floor -- it is the shaft, and a check
+                            // that counted it as a disagreement would fail on
+                            // the generator's own best feature.
+                            if (b == BLK_AIR) open_band++;
+                            else if (b == BLK_SHAFT_COLUMN || b == BLK_SHAFT_TRUSS) shaft++;
+                            else { wrong++; }
+                        } else if (y == fy) {
+                            // The surface cell, the one the player stands in.
+                            // Lava sits on the floor rather than replacing it,
+                            // so it is counted both as the patch and as a
+                            // column you cannot stand in.
+                            if (b == BLK_AIR) stand++;
+                            else if (b == BLK_LAVA) {
+                                stand++;
+                                lava++;
+                            } else if (b == BLK_SHAFT_COLUMN || b == BLK_SHAFT_TRUSS) {
+                                shaft++;
+                            } else {
+                                wrong++;
+                            }
+                        } else if (y == CH_BEDROCK) {
+                            // The forced floor -- the same rule the overworld has,
+                            // so the same exception here.
                         } else if (b == BLK_STONE) {
                             stone++;
                         } else if (b == BLK_IRON_ORE) {
@@ -4735,6 +4793,8 @@ static void check_deep_mine(void) {
                             diamond++;
                         } else if (b == BLK_LAVA) {
                             lava++;
+                        } else {
+                            wrong++;
                         }
                     }
                 }
@@ -4742,70 +4802,118 @@ static void check_deep_mine(void) {
         }
     }
 
+    // A WALL IS A STEP BETWEEN SQUARES, not inside one. Measured over the whole
+    // sample, so a step on a chunk border counts.
+    for (int lx = 0; lx + 1 < SW; lx++) {
+        for (int lz = 0; lz < SD; lz++) {
+            if (fh[lx + 1][lz] - fh[lx][lz] >= 2) walls++;
+        }
+    }
+    CHECK(walls > 0, "no column stands two blocks above its neighbour: nothing here reads as a wall");
+
     double const ore_total = (double)(stone + iron + coal + diamond);
-    printf("  %d chunks: floor y %d..%d, ceiling at %d, ore %.1f%% iron / %.1f%% coal / %.2f%% diamond, "
-           "%ld lava cells\n",
-           chunks, min_floor, max_floor, DM_CEILING_Y, 100.0 * (double)iron / ore_total,
+    printf("  %d chunks: floor y %d..%d, roof y %d..%d, room %d..%d cells, %d distinct floors, %d distinct "
+           "roofs, %d walls\n",
+           chunks, min_floor, max_floor, min_ceil, max_ceil, min_room, max_room, distinct_floor, distinct_ceil,
+           walls);
+    printf("  %ld columns: %ld sealed, %ld open, %ld you can stand in, %ld are the frame; ore %.1f%% iron / "
+           "%.1f%% coal / %.2f%% diamond, %ld lava cells\n",
+           columns, sealed, open_band, stand, shaft, 100.0 * (double)iron / ore_total,
            100.0 * (double)coal / ore_total, 100.0 * (double)diamond / ore_total, lava);
 
-    // THE CEILING IS SEALED ON EVERY COLUMN. This is the difference
-    // between a cave and a shaft open to the sky, and it is the one
-    // thing here a player could notice from inside.
-    CHECK(open_above == 0, "%ld cell(s) above the ceiling are not bedrock", open_above);
-    CHECK(sealed == columns * (CH_H - DM_CEILING_Y), "the ceiling covers %ld of %ld cells", sealed,
-          columns * (CH_H - DM_CEILING_Y));
-    CHECK(max_floor < DM_CEILING_Y, "a column is solid all the way through: floor %d, ceiling %d", max_floor,
-          DM_CEILING_Y);
+    // THE CEILING IS SEALED ON EVERY COLUMN, and the generator agrees with
+    // the two functions that say where a column's surfaces are. A chunk that
+    // disagreed with their column would be a cave the player can walk into and
+    // a pairing that answers a different question -- which is exactly what the
+    // flat generator did: the check measured the plane, so it could not see
+    // that the plane was the whole problem.
+    CHECK(wrong == 0, "%ld cell(s) disagree with their column's floor or roof", wrong);
+    CHECK(sealed > 0 && sealed < columns * (CH_H - DM_FLOOR_MAX), "the ceiling covers %ld of %ld cells", sealed,
+          columns * (CH_H - DM_FLOOR_MAX));
+    CHECK(max_floor < DM_CEIL_MIN, "a column is solid all the way through: floor %d, roof band from %d", max_floor,
+          DM_CEIL_MIN);
 
-    // RICHER IN IRON, and the occasional cluster of diamond. Measured
-    // against the overworld on the same sample, so the claim is a
-    // comparison rather than a number in a comment.
-    long o_stone = 0, o_iron = 0, o_coal = 0, o_diamond = 0;
-    for (int32_t cz = 0; cz < 12; cz++) {
-        for (int32_t cx = 0; cx < 12; cx++) {
-            c.cx = cx;
-            c.cz = cz;
-            worldgen_chunk(&c, seed, FARLANDS_NONE);
-            for (int i = 0; i < CH_CELLS; i++) {
-                if (c.id[i] == BLK_STONE) o_stone++;
-                else if (c.id[i] == BLK_IRON_ORE) o_iron++;
-                else if (c.id[i] == BLK_COAL_ORE) o_coal++;
-                else if (c.id[i] == BLK_DIAMOND_ORE) o_diamond++;
+    // NOT A PLANE. This is the check the flat generator could not pass, and
+    // the one a player notices first: a cave whose floor and roof take many
+    // heights is a room with walls, and one whose floor takes a single value
+    // is a floor with something painted on it. The thresholds are the spans
+    // themselves, so the check says what the design can produce rather than a
+    // number that happens to be comfortable for one seed.
+    CHECK(distinct_floor >= DM_FLOOR_SPAN, "the floor takes %d heights over %ld columns, fewer than the %d its span "
+          "can produce", distinct_floor, columns, DM_FLOOR_SPAN);
+    CHECK(distinct_ceil >= DM_CEIL_SPAN, "the roof takes %d heights over %ld columns, fewer than the %d its span can "
+          "produce", distinct_ceil, columns, DM_CEIL_SPAN);
+    CHECK(max_room - min_room >= 10, "the room only ever measures %d..%d cells", min_room, max_room);
+
+    // AND YOU CAN WALK IT. The jump apex is 1.25 blocks and step_up is 0
+    // (player.h), so a two-block step is a wall you can only go around. A floor
+    // span of 15 put every square about seven blocks from its neighbour and a
+    // flood fill from one column reached 12.7% of the cave: not a cave you walk
+    // through, a stack of rooms you cannot get out of. Six keeps the walls and
+    // leaves the cave walkable -- measured here, from one column, four-way, one
+    // block of step, lava excluded because you cannot stand in it.
+    int walkable = 0, reachable = 0;
+    memset(vis, 0, sizeof(vis));
+    int start_x = SW / 2, start_z = SD / 2;
+    while (deepmine_lava(start_x, start_z, seed)) start_x++;
+    static int32_t stk[12 * CH_W * 12 * CH_D];
+    int top = 0;
+    stk[top++] = start_z * SW + start_x;
+    vis[start_x][start_z] = 1;
+    reachable++;
+    while (top > 0) {
+        int32_t const p = stk[--top];
+        int const px = p % SW, pz = p / SW;
+        for (int d = 0; d < 4; d++) {
+            int const nx = px + (d == 0 ? 1 : d == 1 ? -1 : 0);
+            int const nz = pz + (d == 2 ? 1 : d == 3 ? -1 : 0);
+            if (nx < 0 || nx >= SW || nz < 0 || nz >= SD || vis[nx][nz]) continue;
+            if (deepmine_lava(nx, nz, seed)) continue;
+            if (abs(fh[nx][nz] - fh[px][pz]) > 1) continue;
+            vis[nx][nz] = 1;
+            stk[top++] = nz * SW + nx;
+            reachable++;
+        }
+    }
+    for (int lx = 0; lx < SW; lx++) {
+        for (int lz = 0; lz < SD; lz++) {
+            if (!deepmine_lava(lx, lz, seed)) walkable++;
+        }
+    }
+    printf("  walking: %d of %d columns reachable from one column (%.1f%%), %d walls between squares\n",
+           reachable, walkable, 100.0 * (double)reachable / (double)walkable, walls);
+    CHECK(reachable * 10 > walkable * 9, "from one column you can reach %d of %d walkable columns (%.1f%%): the "
+          "plateaus are rooms, not a cave", reachable, walkable, 100.0 * (double)reachable / (double)walkable);
+
+    // THE PAD IS FLAT, and it is flat because of the square it belongs to --
+    // every column of it has to answer with its square's height, not with its
+    // own. A pad that answered two ways for one cell is the border bug: the
+    // generator stamps a frame across a square edge and reads back a floor that
+    // is one block lower under one of its posts.
+    int pads = 0, pad_flat = 0;
+    for (int32_t gz = 0; gz < SD / SHAFT_GRID; gz++) {
+        for (int32_t gx = 0; gx < SW / SHAFT_GRID; gx++) {
+            int32_t wx, wz;
+            mineshaft_candidate_spot(gx, gz, seed, &wx, &wz);
+            if (!deepmine_is_pad(wx, wz, seed)) continue;
+            pads++;
+            int const base = fh[wx % SW][wz % SD];
+            int flat = 0;
+            for (int dz = -1; dz <= 1; dz++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int32_t const px = wx + dx, pz = wz + dz;
+                    if (px < 0 || px >= SW || pz < 0 || pz >= SD) continue;
+                    if (deepmine_ground_y(px, pz, seed) == base) flat++;
+                }
             }
+            CHECK(flat == 9, "the pad at %d,%d is flat on %d of its 9 columns", wx, wz, flat);
+            pad_flat++;
         }
     }
-    double const o_iron_pct = 100.0 * (double)o_iron / (double)(o_stone + o_iron + o_coal + o_diamond);
-    double const d_iron_pct = 100.0 * (double)iron / ore_total;
-    printf("  same sample in the overworld: %.1f%% iron, %.1f%% coal, %.2f%% diamond\n", o_iron_pct,
-           100.0 * (double)o_coal / (double)(o_stone + o_iron + o_coal + o_diamond),
-           100.0 * (double)o_diamond / (double)(o_stone + o_iron + o_coal + o_diamond));
-    CHECK(d_iron_pct > o_iron_pct, "the Deep Mine is not richer in iron: %.1f%% against the overworld's %.1f%%",
-          d_iron_pct, o_iron_pct);
-    CHECK(diamond > 0, "no diamond in %d chunks: the clusters never appear", chunks);
-    CHECK(lava > 0, "no lava in %d chunks: the patches never appear", chunks);
-
-    // THE PAIRING IS BY COLUMN (D-142), so the arrival height has to be
-    // knowable before the chunk exists. It is, because both dimensions
-    // answer the same question the same way.
-    for (int32_t z = -40; z <= 40; z += 7) {
-        for (int32_t x = -40; x <= 40; x += 7) {
-            CHECK(mineshaft_arrival_y(x, z, seed, (int)DIM_DEEP_MINE) == deepmine_ground_y(x, z, seed),
-                  "column %d,%d: the arrival y is not the Deep Mine's floor", x, z);
-            CHECK(mineshaft_arrival_y(x, z, seed, (int)DIM_OVERWORLD) == worldgen_height(x, z, seed),
-                  "column %d,%d: the arrival y is not the overworld's ground", x, z);
-        }
-    }
-
-    // NO SKY, and the light is a constant. The number is the design's
-    // (DM_SKY_LIGHT), and the check is that the two agree.
-    CHECK(!dimension_has_sky(DIM_DEEP_MINE), "the Deep Mine reports a sky");
-    CHECK(dimension_sky_light(DIM_DEEP_MINE) == DM_SKY_LIGHT, "global illumination is %d, not %d",
-          dimension_sky_light(DIM_DEEP_MINE), DM_SKY_LIGHT);
-    CHECK(dimension_sky_light(DIM_OVERWORLD) == (int)LIGHT_MAX, "the overworld lost its full sky light");
-    CHECK(strcmp(dimension_region_sub(DIM_OVERWORLD), "") == 0, "the overworld moved out of its flat directory");
-    CHECK(strcmp(dimension_region_sub(DIM_DEEP_MINE), "deep_mine") == 0,
-          "the Deep Mine's region directory is \"%s\", not the one worldstore.c builds", dimension_region_sub(DIM_DEEP_MINE));
+    printf("  pads: %d candidate shaft(s) in the sample, %d flat across all nine cells\n", pads, pad_flat);
+    CHECK(pads > 0 && pad_flat == pads, "%d of %d pads are not flat", pad_flat, pads);
 }
+
 
 // The pack share, on its own, because it is the number the pool is
 // measured against (D-147) and the one that fails silently.
@@ -4889,7 +4997,11 @@ static void check_deep_mine_population(void) {
           kinds[MOB_ZOMBIE], kinds[MOB_SKELETON]);
 
     // AND THE OVERWORLD STAYS HERD-ONLY (D-137): the same entry point,
-    // the overworld's dimension, must not produce a hostile mob.
+    // the overworld's dimension, must not produce a hostile mob. The dispatch
+    // is on the CURRENT dimension, so this half only tests D-137 if it asks
+    // as the overworld -- run it down here, with the Deep Mine still current,
+    // and it answers for packs while claiming to answer for herds.
+    dimension_set_current(DIM_OVERWORLD);
     mob_reset();
     for (int32_t cz = -7; cz <= 7; cz++) {
         for (int32_t cx = -7; cx <= 7; cx++) {
@@ -4907,7 +5019,6 @@ static void check_deep_mine_population(void) {
     }
     CHECK(hostile == 0, "%d hostile mob(s) spawned in the overworld", hostile);
 
-    dimension_set_current(DIM_OVERWORLD);
     mob_reset();
     chunk_store_clear();
 }
@@ -4941,12 +5052,17 @@ static void check_mineshaft(void) {
     // A shaft is a shape that straddles borders, so the stamp walks the
     // 3x3 neighbourhood and writes only the cells landing here. Two
     // chunks each write half of it, and that is what makes it seamless.
-    // Ten chunks each way, so the sample holds enough shafts that one of
-    // them is bound to sit on a border -- a shaft lands at a random spot
-    // inside its square, so a 3x3 sample would test the seam only about
-    // one time in five.
-    for (int32_t cz = -4; cz <= 5; cz++) {
-        for (int32_t cx = -4; cx <= 5; cx++) {
+    // Fourteen chunks each way. The sample has to hold enough stamped shafts
+    // that one of them is bound to sit on a border: a shaft lands at a random
+    // spot inside its square, so a 3x3 sample would test the seam about one
+    // time in five, and the pad condition (see deepmine.c) keeps only the
+    // candidates whose whole five by five lies inside the square -- a little
+    // under half of them. Fourteen is the largest ring the store can hold
+    // without evicting, and it gives enough candidates for the seam to be a
+    // certainty rather than a luck.
+    int const C0 = -6, C1 = 7;
+    for (int32_t cz = C0; cz <= C1; cz++) {
+        for (int32_t cx = C0; cx <= C1; cx++) {
             chunk_t* c = chunk_claim(cx, cz);
             if (c == NULL) continue;
             deepmine_chunk(c, seed);
@@ -4961,22 +5077,27 @@ static void check_mineshaft(void) {
     // mineshaft_is_candidate(), but only one of them is stamped, and a
     // check that guesses from a cell would test a shaft that was never
     // written.
-    int tested = 0, straddled = 0, perfect = 0;
-    for (int32_t gz = -4; gz <= 5; gz++) {
-        for (int32_t gx = -4; gx <= 5; gx++) {
+    int tested = 0, straddled = 0, perfect = 0, skipped = 0;
+    for (int32_t gz = C0; gz <= C1; gz++) {
+        for (int32_t gx = C0; gx <= C1; gx++) {
             int32_t wx, wz;
             mineshaft_candidate_spot(gx, gz, seed, &wx, &wz);
             if (!mineshaft_is_candidate(wx, wz, seed)) continue;
             int const g = deepmine_ground_y(wx, wz, seed) - 1;
-            if (g < 0 || g + 3 >= DM_CEILING_Y || deepmine_lava(wx, wz, seed)) continue;
+            if (g < 0 || g + 3 >= deepmine_ceiling_y(wx, wz, seed) || deepmine_lava(wx, wz, seed)) continue;
+            // THE PAD, or the generator would have skipped this one. It is the
+            // same condition the generator uses, so the check asks the same
+            // question rather than assuming a candidate is always stamped --
+            // which is what made it read back frames that were never written.
+            if (!deepmine_is_pad(wx, wz, seed)) { skipped++; continue; }
 
             // Every cell of the shape has to be inside the resident 3x3,
             // or there is nothing here to read back.
             bool inside = true;
             for (size_t i = 0; i < 16; i++) {
                 shaft_cell_t const* s = &SHAFT_CELLS[i];
-                if (chunk_of(wx + s->dx) < -4 || chunk_of(wx + s->dx) > 5) inside = false;
-                if (chunk_of(wz + s->dz) < -4 || chunk_of(wz + s->dz) > 5) inside = false;
+                if (chunk_of(wx + s->dx) < C0 || chunk_of(wx + s->dx) > C1) inside = false;
+                if (chunk_of(wz + s->dz) < C0 || chunk_of(wz + s->dz) > C1) inside = false;
             }
             if (!inside) continue;
 
@@ -4997,8 +5118,9 @@ static void check_mineshaft(void) {
             CHECK(mineshaft_is_trigger(wx, g + 1, wz), "the shaft at %d,%d is not a trigger at its floor", wx, wz);
         }
     }
-    printf("  %d generated shaft(s) in the sample, %d on a chunk border, %d read back whole\n",
-           tested, straddled, perfect);
+    printf("  %d generated shaft(s) in the sample, %d on a chunk border, %d read back whole "
+           "(%d candidates had no pad and were skipped)\n",
+           tested, straddled, perfect, skipped);
     CHECK(tested > 0, "no generated shaft in the sample");
     CHECK(straddled > 0, "no generated shaft straddled a chunk border in the sample of %d", tested);
     CHECK(perfect == tested, "%d of %d generated shafts came out incomplete", perfect, tested);
@@ -5033,6 +5155,27 @@ static void check_mineshaft(void) {
     // A chunk it needs that is not here reads as the barrier (D-14), so
     // the placement refuses outright rather than building half a frame.
     CHECK(!mineshaft_can_place(48, 15, 48), "a shaft was allowed with a chunk it needs not resident");
+
+    // AND THE FAR END OF A CROSSING, which is the same shape with one rule
+    // dropped. A portal the game opens was not placed by a player who could
+    // have picked a better spot, so the ground under its feet is not what
+    // decides -- but every cell still has to be writable, and half a frame is
+    // still refused outright. Clear the ground under one corner post: the
+    // player's placement says no, the crossing says yes, and what it builds is
+    // still a trigger, because the shape is the same shape.
+    // A second column, because the first one already has the player's frame on
+    // it -- and a crossing that found one there would be a crossing writing
+    // over a shaft, which is the same all-or-nothing refusal as everywhere
+    // else. That is tested at the end, so the two are not the same test.
+    int32_t const fx = 24, fz = 24;
+    set_block(fx - 1, 15, fz - 1, BLK_AIR, 0);
+    CHECK(!mineshaft_can_place(fx, 15, fz), "the crossing's rule was used for a player's placement");
+    CHECK(mineshaft_open_at(fx, 15, fz), "the crossing refused a frame it was allowed to build");
+    CHECK(mineshaft_is_trigger(fx, 16, fz), "the frame the crossing built is not a trigger");
+    CHECK(mineshaft_trigger_y(fx, fz) == 16, "the frame the crossing built reads at y %d, not 16",
+          mineshaft_trigger_y(fx, fz));
+    CHECK(!mineshaft_can_place(fx, 15, fz), "a post standing on nothing is placeable after all");
+    CHECK(!mineshaft_open_at(fx, 15, fz), "the crossing wrote a frame over one already standing there");
 
     // AND THE PAIRING: the same column, a different height, because each
     // end stands on its own ground.
@@ -5119,6 +5262,57 @@ static void check_dimension_switch(void) {
         CHECK(chunk_slot_claimed(0, 0) == c, "the refused switch released the chunk it was refused for");
         c->cstate = CS_READY;
         CHECK(mob_live() == 0, "the refused switch left %d creature(s) in the pool", mob_live());
+    }
+
+
+    // AND A RING FULL OF DIRTY CHUNKS STILL SWITCHES.
+    //
+    // This is the case the app-side gate got wrong. main.c waited for a QUIET
+    // store, and a store with work in its queue is not quiet, so a crossing
+    // refused while the worker was doing exactly what the crossing had asked it
+    // to do -- and the HUD said "the shaft would not open" on a game that was
+    // only busy saving. A queue is a wait, not a refusal.
+    //
+    // The drain itself cannot be measured here: the host worker is synchronous,
+    // so nothing is ever in flight and the queue is always empty. What can be
+    // measured is the half the gate was refusing for -- a ring where every
+    // chunk holds something the player changed, which is the largest save a
+    // crossing will ever do, and which has to switch rather than refuse.
+    // A ring in the Deep Mine, because the switch above emptied the store and
+    // one chunk is not a ring.
+    int resident_deep = 0;
+    for (int32_t cz = -4; cz <= 4; cz++) {
+        for (int32_t cx = -4; cx <= 4; cx++) {
+            if (!chunk_worker_request_load(cx, cz)) continue;
+            resident_deep++;
+        }
+    }
+    CHECK(resident_deep > 0, "the Deep Mine would not stream a ring in");
+
+    int dirty_n = 0;
+    for (int32_t cz = -4; cz <= 4; cz++) {
+        for (int32_t cx = -4; cx <= 4; cx++) {
+            chunk_t* d = chunk_find(cx, cz);
+            if (d == NULL) continue;
+            world_set(cx * CH_W + 3, 20, cz * CH_D + 3, BLK_STONE, 0);
+            if ((d->flags & CF_EDITED) != 0) dirty_n++;
+        }
+    }
+    printf("  a ring of %d dirty chunk(s) switches, and the save is still on the card\n", dirty_n);
+    CHECK(dirty_n > 0, "nothing in the ring was dirty, so this tested nothing");
+    CHECK(dimension_switch(0, 0, DIM_OVERWORLD), "the switch refused a ring full of dirty chunks");
+
+    // AND THE SAVE ACTUALLY HAPPENED. A switch that cleared the store without
+    // writing it is data loss, which is the one thing Part P says a crossing
+    // may not do, so read one of those chunks back off the card -- as the Deep
+    // Mine, because that is the directory it was written to (D-143).
+    CHECK(dimension_switch(0, 0, DIM_DEEP_MINE), "the crossing back refused");
+    chunk_t* back = chunk_claim(0, 0);
+    CHECK(back != NULL, "could not claim a slot to read the saved ring back");
+    if (back != NULL) {
+        CHECK(world_chunk_load(back) == 1, "the saved Deep Mine chunk did not read back");
+        CHECK(back->id[CH_IDX(3, 20, 3)] == BLK_STONE, "the chunk came back without the edit it was saved with");
+        chunk_release(back);
     }
 
     (void)chunk_worker_stop();
@@ -9038,6 +9232,10 @@ static struct {
     {.key = "hud.deep_mine", .h = 16.0f, .px = 800.0f - 24.0f},
     {.key = "hud.surface", .h = 16.0f, .px = 800.0f - 24.0f},
     {.key = "hud.shaft_refused", .h = 16.0f, .px = 800.0f - 24.0f},
+    // ... and the reason a shape would not build. Same line, same room, so
+    // it belongs with the crossing's messages rather than with the farming
+    // group, even though the farming default is what used to answer for it.
+    {.key = "use.no_room", .h = 16.0f, .px = 800.0f - 24.0f},
 
     // The crafting book: the list's value column, and its footer.
     {.key = "craft.value_make", .h = 28.0f, .px = VALUE_ROOM(0.88f, 380.0f), .scope = ITEMS_BOOK},

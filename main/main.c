@@ -229,6 +229,18 @@ static bool check_crossing(void);
 static bool s_cross_armed;
 static bool s_cross_said;
 
+// The column just crossed, and whether its far end still has to be built
+// (open_crossed_shaft).
+static bool    s_cross_stamp;
+static int32_t s_cross_sx, s_cross_sz;
+
+// How many ticks until the next attempt. A crossing drains the worker, and
+// doing that every tick on a card that is not answering would be a stall
+// every frame. One attempt when the player steps in, then one a second
+// later, is enough to know whether the shaft can open.
+#define CROSS_RETRY_TICKS 30
+static int s_cross_wait;
+
 // --- The time of day ------------------------------------------------------
 //
 // The world's clock (world_meta_t.time_of_day) moves one tick per
@@ -1099,6 +1111,16 @@ static bool enter_title(void) {
     sm_audio_leave_world();
     drain_and_clear();
     worldstore_close();
+
+    // THE TITLE STANDS IN THE OVERWORLD, whatever the player left the game
+    // in. The current dimension is one global (dimension.c), and the
+    // directory IS the dimension (D-143), so a title that kept the Deep
+    // Mine would read its scratch world through the subdirectory -- find an
+    // empty one -- and have no terrain to draw the word on. It would also
+    // have no sky to draw at all (D-139), which is the same bug showing up
+    // as a black backdrop.
+    dimension_set_current(DIM_OVERWORLD);
+
     if (!title_begin(&s_meta, &s_saved)) return false;
     ESP_LOGI(TAG, "title world: %s (seed %u)", title_is_fresh() ? "GENERATING, first time or a new SM_TITLE_GEN"
                                                                 : "reading from the card",
@@ -1798,24 +1820,48 @@ static bool cross_to(dimension_t to, double wx, double wz) {
     s_saved.placed = false;
     s_player_ready = false;
 
+    // The far end of this column is not there yet, and it cannot be built
+    // now -- the store has just been emptied, so there is no chunk to write
+    // into. It gets built on the first tick after the nine chunks arrive
+    // (open_crossed_shaft).
+    s_cross_stamp = true;
+    s_cross_sx = cx;
+    s_cross_sz = cz;
+
     start_loading(s_saved.x, s_saved.z, APP_PLAY, T(SM_STR_LOADING_CROSSING), LOAD_GATE_3X3);
     hud_say(T(to == DIM_DEEP_MINE ? SM_STR_HUD_DEEP_MINE : SM_STR_HUD_SURFACE));
     sfx_play(SFX_CLICK);
     return true;
 }
 
-// Whether the store can be re-keyed at all: nothing in the queue, and no
-// chunk half way through a load. This is the difference between a crossing
-// that has to wait and a crossing that cannot happen, and the player should
-// only be told about the second one.
-static bool store_quiet(void) {
-    if (!chunk_worker_idle()) return false;
-    for (int i = 0; i < CH_SLOT_COUNT; i++) {
-        chunk_t const* c = chunk_slot_at(i);
-        if (c == NULL || c->cstate == CS_FREE) continue;
-        if (c->cstate == CS_LOADING) return false;
+// THE FAR END OF THE COLUMN, built once.
+//
+// The pairing is by column (D-142), so a shaft only works both ways if the
+// same column has one in each dimension -- and the generator cannot know
+// which column the player built in, because a generator that remembered
+// what the player did would have to read a chunk, which Part T's determinism
+// rules forbid. So the crossing builds the far end the first time a column
+// is used, and from then on the shape test answers in both directions with
+// no record anywhere: the record is the shaft.
+//
+// On the first tick after the nine chunks are here, because nothing can be
+// written to a chunk that is not resident (D-14).
+static void open_crossed_shaft(void) {
+    if (!s_cross_stamp) return;
+    s_cross_stamp = false;
+
+    int32_t const x = s_cross_sx, z = s_cross_sz;
+    if (mineshaft_trigger_y(x, z) >= 0) return;  // the generator grew one here already
+
+    int const ay = mineshaft_arrival_y(x, z, s_meta.seed, (int)dimension_current());
+    if (mineshaft_open_at(x, ay - 1, z)) {
+        trace_edit('P', x, ay - 1, z, "mine shaft", 16);
+    } else {
+        // Nothing was written. The player can still walk out, but this
+        // column has no way back, and a player who cannot get home should
+        // be able to find out why.
+        trace_note("crossed column %ld,%ld: the far end had no room for its frame", (long)x, (long)z);
     }
-    return true;
 }
 
 // THE TRIGGER HAS TO BE RELEASED BEFORE IT CAN FIRE AGAIN.
@@ -1833,6 +1879,8 @@ static bool check_crossing(void) {
     // file from that tick on.
     if (replay_playing()) return false;
 
+    open_crossed_shaft();
+
     int32_t const x = (int32_t)floor(s_player.body.x);
     int32_t const y = (int32_t)floor(s_player.body.y);
     int32_t const z = (int32_t)floor(s_player.body.z);
@@ -1843,20 +1891,28 @@ static bool check_crossing(void) {
         return false;
     }
     if (!s_cross_armed) return false;
-    // A queue is not a refusal: try again next tick, and say nothing.
-    if (!store_quiet()) return false;
+    if (s_cross_wait > 0) {
+        s_cross_wait--;
+        return false;
+    }
 
     dimension_t const to = dimension_current() == DIM_DEEP_MINE ? DIM_OVERWORLD : DIM_DEEP_MINE;
     if (!cross_to(to, (double)x, (double)z)) {
-        // Once per visit, not once a tick.
+        // A refusal now means a genuine one: a chunk that could not reach
+        // the card, or a chunk still being filled. The switch drains what
+        // it has already started before it decides (dimension_switch.c), so
+        // a busy queue is no longer a reason to say this -- and the message
+        // should only ever be the thing the player has to act on.
         if (!s_cross_said) {
             s_cross_said = true;
             hud_say(T(SM_STR_HUD_SHAFT_REFUSED));
             sfx_play(SFX_DENY);
         }
+        s_cross_wait = CROSS_RETRY_TICKS;
         return false;
     }
     s_cross_armed = false;
+    s_cross_wait = 0;
     return true;
 }
 
@@ -2887,6 +2943,14 @@ static void on_render(pax_buf_t* fb, void* user) {
                 case USE_NEEDS_WATER: key = SM_STR_FARM_NEEDS_WATER; break;
                 case USE_ALREADY_RIPE: key = SM_STR_FARM_ALREADY_RIPE; break;
                 case USE_NOT_HUNGRY: key = SM_STR_FOOD_NOT_HUNGRY; break;
+                case USE_NEEDS_GROUND: key = SM_STR_FARM_NEEDS_GROUND; break;
+                // A SHAFT, A BED AND A STOVE ALL WANT MORE THAN THE ONE CELL
+                // the crosshair is on. This case was missing, so the default
+                // answered for them -- and the default is a farming line,
+                // which is why building a shaft in the Deep Mine was told to
+                // want tilled soil. A reason with no case is the same bug as
+                // a use with no message.
+                case USE_NO_ROOM: key = SM_STR_USE_NO_ROOM; break;
                 case USE_NEEDS_SOIL:
                 default: break;
             }

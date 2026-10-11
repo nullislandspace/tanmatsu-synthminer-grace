@@ -96,10 +96,35 @@ void mineshaft_stamp(chunk_t* c, uint32_t seed) {
             // cell the player stands in -- so the cell the shaft stands ON
             // is the one below it. Getting this off by one would put every
             // generated shaft one block above its own floor.
+            // THE PAD. The frame stands on the pad the generator flattened
+            // for this square, so it only stamps where the pad exists --
+            // which is where the whole five by five lies inside the square.
+            // Without that, a post lands inside the rock of a neighbouring
+            // column, and a post inside its own floor is a post with nothing
+            // under it: the same thing the player's placement refuses.
+            if (!deepmine_is_pad(wx, wz, seed)) continue;
+
             int const g = deepmine_ground_y(wx, wz, seed) - 1;
-            // A shaft stands on the cave floor, and not in a pool of it.
-            if (g < 0 || g + 3 >= DM_CEILING_Y) continue;
-            if (deepmine_lava(wx, wz, seed)) continue;
+            if (g < 0) continue;
+
+            // Every post has its own column, and every column has its own
+            // roof and its own patch of lava, so the headroom and the dry
+            // ground are tested over all nine cells of the footprint rather
+            // than over the middle. All or nothing, as everywhere else: a
+            // frame half inside the rock is a frame half of which was never
+            // written.
+            bool ok = true;
+            for (int dz = -1; dz <= 1 && ok; dz++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int32_t const px = wx + dx, pz = wz + dz;
+                    if (g + 3 >= deepmine_ceiling_y(px, pz, seed) || deepmine_lava(px, pz, seed)) {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+            if (!ok) continue;
+
             mineshaft_shape(wx, g, wz, stamp_cell, c);
         }
     }
@@ -139,6 +164,39 @@ bool mineshaft_place(int32_t x, int y, int32_t z) {
     // refused one: the shape is the trigger, and half of it is not a
     // shaft anybody could walk into.
     if (!mineshaft_can_place(x, y, z)) return false;
+    for (size_t i = 0; i < 16; i++) {
+        shaft_cell_t const* s = &SHAFT_CELLS[i];
+        world_set(x + s->dx, y + s->dy, z + s->dz, s->block, 0);
+    }
+    return true;
+}
+
+// THE FAR END OF A CROSSING.
+//
+// The pairing is by column (D-142), so a shaft only works in both
+// directions if that column has one in each dimension -- and the generator
+// cannot know which column a player chose. It is not allowed to: a
+// generator that remembered what the player did would read a neighbouring
+// chunk, and Part T's determinism rules say it cannot.
+//
+// So the far end is built the first time a column is crossed. It is the
+// same shape and the same writer as the player's placement, with one rule
+// dropped: the ground under the nine footprint cells. A portal the game
+// opens was not placed by a player who could have picked a better spot, so
+// a post standing on a column whose floor is lower than its neighbour's
+// still has to be a post. What is not dropped is the rest -- every cell
+// still has to be writable, and a half frame is still refused outright.
+bool mineshaft_open_at(int32_t x, int y, int32_t z) {
+    if (y < 1 || y + 3 >= CH_H) return false;
+
+    for (size_t i = 0; i < 16; i++) {
+        shaft_cell_t const* s = &SHAFT_CELLS[i];
+        int32_t const wx = x + s->dx, wz = z + s->dz, wy = y + s->dy;
+        if (wy < 0 || wy >= CH_H) return false;
+        if (chunk_find(chunk_of(wx), chunk_of(wz)) == NULL) return false;
+        uint8_t const b = world_block(wx, wy, wz);
+        if (b != BLK_AIR && !block_replaceable(b)) return false;
+    }
     for (size_t i = 0; i < 16; i++) {
         shaft_cell_t const* s = &SHAFT_CELLS[i];
         world_set(x + s->dx, y + s->dy, z + s->dz, s->block, 0);

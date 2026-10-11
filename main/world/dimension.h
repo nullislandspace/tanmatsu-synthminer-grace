@@ -43,13 +43,23 @@ typedef enum {
 // inside CH_H 64, and `deepmine_ground_y()` is a pure function of the
 // column so the pairing works before the chunk exists.
 
-// The lowest y the ceiling can be. Sealed: no column is open above it.
-#define DM_CEILING_Y     44
 // The band the cave floor may wander in. Kept clear of CH_BEDROCK (the
-// forced floor) and of the ceiling, so a column is never solid all the
-// way through.
+// forced floor) and of the roof, so a column is never solid all the way
+// through.
 #define DM_FLOOR_MIN     6
-#define DM_FLOOR_MAX     26
+#define DM_FLOOR_MAX     12
+// The roof, and the two numbers that bound it. It is not one flat height:
+// a cave with a flat roof and a flat floor is a corridor, and the Deep
+// Mine is supposed to read as a room with walls. `DM_CEILING_Y` is the
+// hard cap -- no column is open above it, so the ceiling is sealed on
+// every column whatever the roof is doing.
+#define DM_CEIL_MIN      26
+#define DM_CEILING_Y     44
+// The open cells a column must have. This is not a shape preference: the
+// arrival height has to be answerable before the chunk exists (D-142), so
+// a column that is solid all the way through is a column the player can be
+// put in and cannot stand in.
+#define DM_ROOM_MIN      4
 // "Global illumination" as a number: the sky nibble of the light plane
 // is this constant everywhere the cave is open, and block light still
 // floods -- a torch matters here, for seeing rather than for spawning.
