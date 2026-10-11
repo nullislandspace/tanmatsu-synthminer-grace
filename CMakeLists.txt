@@ -31,6 +31,16 @@ set(APP_SOURCES
     main/world/fluid.c
     main/world/crops.c
     main/world/tree.c
+    # THE SECOND DIMENSION (Part M). dimension.c is the current dimension as
+    # one global, deepmine.c is its generator, mineshaft.c is the shape that
+    # pairs them, dimension_switch.c is the order a crossing runs in. All
+    # four are in the pure set, so the host checks built them -- which is
+    # exactly why a build that left them out still linked and then would not
+    # start.
+    main/world/dimension.c
+    main/world/deepmine.c
+    main/world/mineshaft.c
+    main/world/dimension_switch.c
     main/world/worldgen.c
     main/world/farlands.c
     main/world/chunk_codec.c

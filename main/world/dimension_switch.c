@@ -53,7 +53,7 @@ bool dimension_switch(int32_t x, int32_t z, dimension_t to) {
         chunk_t* c = chunk_slot_at(i);
         if (c == NULL || c->cstate == CS_FREE) continue;
         if (c->flags & CF_EDITED) {
-            trace_note("D switch refused: chunk %d,%d never reached the card", c->cx, c->cz);
+            trace_note("D switch refused: chunk %ld,%ld never reached the card", (long)c->cx, (long)c->cz);
             return false;
         }
     }
@@ -82,8 +82,8 @@ bool dimension_switch(int32_t x, int32_t z, dimension_t to) {
     // 6. Record it as an event, not as a position. A replay that only
     // stored where the player was would replay a session that crossed
     // over into the wrong dimension.
-    trace_note("D switch %s -> %s at %d,%d (%d chunks released)", dimension_name(from), dimension_name(to), x, z,
-               released);
+    trace_note("D switch %s -> %s at %ld,%ld (%d chunks released)", dimension_name(from), dimension_name(to),
+               (long)x, (long)z, released);
 
     // 5 is the caller's: the 3x3 around the arrival point, loaded
     // synchronously, and the player moved into it.
