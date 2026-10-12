@@ -78,6 +78,8 @@ is worse than none, because it is the thing a newcomer trusts.
 main/
 * main.c                  app_main, se_app_config_t, the five callbacks
   app.h                   sm_app_t -- the context threaded through se_run's `user`
+* vfd.{c,h}               OPTIONAL external VFD on the I2C bus: the item in hand,
+                          or the game's name -- its own task, a no-op without one
   common/
 *   psram.h               sm_alloc/sm_calloc/sm_free -- the ONLY host/badge seam
 *   rng.{c,h}             xorshift64*, hash2/hash3, value noise          (pure)
@@ -2310,6 +2312,8 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 | 63 | **The mine shaft**: the recipe, the 3x3 frame with four corner columns and trusses at height 3, placement through `world_set`, the centre cell as the trigger, pairing by column | done | Part M, **built 2026-10-11** (F-150). `world/mineshaft.{c,h}`: 12 posts and 4 braces, and 16 ingots in -- the recipe and the shape are the same number, which is why the shape is exactly this. Two writers, one shape, on the same argument as `worldgen_tree_shape`: the generator stamps into one chunk and drops what falls outside, a player's goes through `world_set`. **`item_block()` answers `BLK_AIR` for it**, so `player.c` needed a branch of its own -- a shaft places a shape, not a block -- and the cell it stands ON is the one the crosshair struck, not the empty cell in front of its face. The trigger is a shape test seen from the middle, so it needs no record and works in either dimension. **The station is still the user's open question**: the recipe row names the crafting table because the game's bench is the disassembly station. **Two things added on 2026-10-11** (F-151): the generator stamps only on the 5x5 pad it flattened for its square (D-151), and the far end of a crossing is built on first use by `mineshaft_open_at()` (D-150) -- 7 generated shafts in the sample, 1 on a chunk border, all read back whole, and a far-end test on a fresh column that has no pad.
 | 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | done | Part M, **built 2026-10-11** (F-150). `world/dimension_switch.{c,h}` does steps 1-4 and 6 and **refuses rather than clears**, Part P's rule: a chunk the card never took is something the player made, and a switch that dropped it is data loss. Step 5 is in `main.c` and cannot be anywhere else, because the entry sequence is the app's -- `check_crossing()` hands the nine chunks to `start_loading()` with physics frozen. **Step 2 is a drain, not a gate** (F-151): a live streamer is never quiet, and a ring during play is dirty almost everywhere, so requiring an idle worker refused on nearly every crossing. A queue is a wait, not a refusal; what genuinely cannot be saved is a chunk whose planes are still the worker's, and draining is what separates the two. **Two things the design did not have**: the trigger has to re-arm, because the pairing is stateless and the cell you arrive in is a trigger too, so without one flag the player bounces back for ever; and a crossing during a replay is refused until step 48 records them. **The arrival cell is a real position** (F-151): the crossing records the frame's centre, and settling has to use it -- a crossing that let `world_ground()` re-derive the height put the player on top of the world at y 64, because the highest solid block in a sealed cave is the roof. |
 | 65 | **Zombies and skeletons**, in the Deep Mine only | partly done -- **population only** | Built 2026-10-11 (F-150): two rows in `MOBS[]`, `PACKS[]` (60 zombie / 40 skeleton), one roll per chunk from the world's hash, a pack inside one chunk, and nothing that comes back (D-146). Measured over 10000 chunks: **1226 packs, 12.3% against the design's 12%**, 3066 members, 0.31 a chunk; a Far ring holds 71 of the pool's 128, so `s_refused` reads 0 -- the check that says whether the numbers are right. **Combat and pathing are not built**: `hostile` is a column of the row that nothing reads yet. Drops are empty on purpose (D-144). |
+| 66 | **The optional external VFD** (from synthracer): the item in hand in a world, the game's name in a menu, powered down on exit | done, **device test pending** | 2026-10-12, the user: *"Port that over here ... The VFD should display the name of the current item held in hand (or be blank otherwise). In the Menu, it should display "SynthMiner". Make sure the VFD is powered off when exiting the app."* `main/vfd.{c,h}`, D-152 and F-152. Costs 9.7 KiB of text and does nothing at all on a badge that has no tube. **Unverified here**: the probe, the scrolled names and the power-down all need a device with the display fitted. |
+| 67 | **Saving a world is a round a frame, and a refusal is on the screen** | done, **device test pending** | 2026-10-12 (D-153, F-153). `save_pass(&p, max_ask)` bounds a round and reports `saved` from the worker's own counter; `saving_step()` runs **one round per frame at 8 writes in flight**, so the bar fills as the chunks go out; `save_dirty_chunks()` stops after a round that saved nothing; `draw_saving()` prints `loading.saving_refused` under the bar and holds the screen 2 s when it has to say it. The measurement behind it: **~520 ms per refused chunk** (the loader's 5 tries + 372 ms of backoff + this file's 100 ms pace) x 49 chunks x 8 sweeps = **200 s of a screen drawn once**. **The other half of this is not in this repo**: the badge is still running graceloader 2.6.x, whose disk layer retries `ESP_ERR_NOT_SUPPORTED` five times instead of bouncing the buffer (F-147, F-148) -- `cd ../tanmatsu-graceloader && make install`. This is the hardening around that, not the fix for it. |
 
 ---
 
@@ -8045,6 +8049,138 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   toolchain here, so the light, the sky, the pad and the crossing are green on the host
   and unphotographed on the screen.
 
+- **D-152** 2026-10-12, **the user**: **what the optional external display shows, and that it
+  has to be off when the app leaves.** Some Tanmatsu units carry a 12-character ASCII VFD on the
+  I2C bus; SynthMiner shows **the item in the player's hand while they are in a world** -- the
+  same name the HUD prints -- **blank for an empty hotbar slot**, and **"SynthMiner" everywhere
+  else**: the title screen, the loading and saving screens, and every menu. Two consequences of
+  that wording are worth stating, because they are the parts a reader would otherwise get wrong.
+  **A menu is not a world.** The pause menu is not mining anything, so the tube says the game's
+  name there even though the player is standing in a chunk; the menu is asked about before the
+  world is. **And the power-down is not a nicety.** A tube left burning is a filament left
+  heating on a battery, so leaving for the launcher blanks the text, stops the scroll and writes
+  control 0 before the restart -- the same reason the audio mixer is shut down at that moment.
+
+- **F-152** 2026-10-12, ported and measured: **the VFD from synthracer, and the fact that a
+  third of the game's names do not fit on the tube.**
+
+  **What was lifted and what was replaced.** `main/vfd.{c,h}` comes from
+  `../tanmatsu-synthracer-grace/main/vfd.{c,h}` unchanged in the parts that are hardware: the
+  probe (address `0x13`, the CATT bus first and the internal bus second, because
+  `bsp_device_initialize()` leaves the CATT lines down when an add-on held them), the sharing of
+  the internal bus through `bsp_i2c_primary_bus_claim()`/`_release()` -- that bus belongs to the
+  coprocessor as much as to us -- the register map, the filament current of 110, and the
+  shutdown. What was replaced is that app's content: its STAGE / PAUSED / marquee modes have no
+  meaning here, and this game has two things to say (D-152).
+
+  **The hand-off is one aligned word, so the frame loop takes no lock.** Mode in the top byte,
+  the label's **string id** in the other 24 (`SM_STR_COUNT` is a few hundred), published every
+  frame from `on_update` and read by a task that writes only when the text actually changed.
+  Publishing an id rather than a pointer is what makes a single store atomic; it also means the
+  task resolves the text **when it writes**, which is how a language changed in Settings reaches
+  the display without the app publishing anything again. A write that fails is retried on the
+  next poll, because the "what is shown" copy never took it.
+
+  **The task sits under the chunk worker, deliberately.** Core 1's ladder is audio_mixer ~23,
+  usbnet 10, se_stream 5, cmworker 4; a status display has the loosest deadline on that core --
+  a frame late on the tube is invisible to anybody -- so it goes at `tskIDLE_PRIORITY + 3`
+  rather than competing with the mesh queue.
+
+  **The tube speaks ASCII and this game speaks thirty-two languages.** A label outside the 95
+  printable characters goes through the fold the crafting book's search box already uses
+  (`i18n/fold.h`), so "Кирка" reads as "kirka" rather than as garbage -- the same reason a player
+  of that language types it that way. **Folded per word, not per label**, because `fold_text`
+  drops spaces and the two uses want different things: the search box wants "ironpick" inside
+  "ironpickaxe", the tube wants "kobasica od pasulja" rather than "kobasicoodpasulja".
+
+  **Measured over every label the game can put on the tube** -- 110 items x 32 languages, 3520
+  strings: **1530 need the fold**, and **1018 (28.9%) are longer than the 12 visible characters**,
+  so they are scrolled by the display itself (auto-scroll left, looping, 200 ms a step, framed by
+  a blank screen width on both sides so the wrap is seamless). Longest source 37 bytes (Greek
+  "Βλαστάρι βελανιδιάς"), longest tube text 22 characters (Irish "Ribí róibéis gríosctha" ->
+  "ribi roibeis griosctha"). **Every language has some**: English 16, Swedish 9, Spanish 48. So
+  the marquee is not an edge case to be handled eventually, it is a third of what the display is
+  asked to say, and it is the reason `VFD_TEXT_MAX` is 64 rather than 12.
+
+  **The cost, and the no-op.** 9661 bytes of text, 144 of data, 40 of bss. On a badge with no
+  tube the task probes both buses, logs `no VFD at 0x13` and deletes itself; every call after
+  that is a store to a word nobody reads. `main/testkit/devtest.c` asks for the header through
+  `__has_include` rather than assuming it, so the kit stays copyable to apps that have no
+  display -- and gets the same power-down on its exit path. `tools/hostpurity.sh` is unchanged:
+  `vfd.c` is not pure and is not claimed to be.
+
+  **The device test is outstanding.** There is no riscv32-esp-elf toolchain here, so what is
+  proven is the build (`make build` green, `symcheck` clean) and the label measurements above.
+  **Whether the probe finds the display, whether a scrolled name is readable at 200 ms a step,
+  and whether the tube is actually dark after leaving for the launcher all need a unit with the
+  display fitted.**
+
+- **D-153** 2026-10-12, **the user's report** -- *"it sometimes gets stuck on the Saving world
+  screen"*, and the observation that a new world barely does it while an old one does it badly --
+  **the rule it settles: a save that cannot finish has to say so on the screen, and it must not
+  spend the player's evening on it.** Two parts, and they are different problems wearing the same
+  clothes. **A refusal is a fact the player needs**, not a log line: the world on the card is
+  part-written and they are about to be looking at a title screen instead of it, so the count goes
+  under the bar and the screen stays up long enough to be read. **And a retry loop needs a way out
+  that is not a counter.** Eight sweeps is the right bound for a queue that overflowed and the
+  wrong thing to do to a card that is refusing, and the two are distinguishable by one number: a
+  productive round saves something, an unproductive one saves nothing. **What is NOT changed is the
+  data rule** (Part N): a chunk the card refused keeps `CF_EDITED`, is never evicted, and is asked
+  for again by the next save. This is about time and about telling the truth, not about what is kept.
+
+- **F-153** 2026-10-12, out of the user's log and the arithmetic around it: **the badge is still
+  running graceloader 2.6.x, and the app was spending 200 s on writes whose answer was already
+  known.**
+
+  **The loader's version is readable out of the log, byte for byte.** It says
+  `write of 6 sector(s) at 22520643 failed 5 times (0x106) -- FatFs will leak the cluster`. 2.6.x
+  prints `failed %d times` (`git show d960089:main/sdcard_retry.c:146`); 2.7.0 and later print
+  `failed %d time(s)` and **stop after one attempt on 0x106**, because `worth_retrying()` excludes
+  `ESP_ERR_NOT_SUPPORTED` -- a buffer's address does not move between tries, so the backoff is
+  pure cost. Five identical attempts, and the line 2.7+ adds (`buffer %p is %s --
+  esp_cache_msync() refused it, so no retry can succeed`) absent: **that is the older loader**.
+  The fix exists here -- `tanmatsu-graceloader` `35b59e5`, v2.8.0, built and green -- and **has
+  not been installed on the device**: `cd ../tanmatsu-graceloader && make install`, then the
+  launcher's Graceloader entry should read 2.8.0.
+
+  **Why old worlds fail and new ones barely do is a format fact, not a mood.** Pre-Deep-Mine
+  worlds are region version 1, and a version-1 file cannot be written in place -- the directory is
+  fixed-size entries, so growing them moves the data area and there is nowhere to put a 12-byte
+  entry in an 8-byte slot. The first write to one therefore rewrites the region whole
+  (`main/world/region.c:687` -> `region_rewrite()` at `:800`): **two `fopen` handles open at the
+  same time**, i.e. two fresh `malloc`'d stdio buffers, up to 64 payloads, two 776-byte directory
+  blocks, then remove and rename. That is the most allocation-heavy write in the game, on the task
+  with the tightest stack (F-146), and its buffers come from `malloc`, which is exactly the thing
+  F-147 says lands somewhere the data phase cannot use. **A new world is version 2 from the start
+  and never takes that path.** On top of it, every chunk that becomes resident is marked
+  `CF_EDITED` the moment it is read (`main/world/chunk_worker.c:229`, the user's 2026-09-28 call
+  for animals and crops), so quitting dirties the whole resident set -- 49 chunks in the log, 64
+  once the view had grown.
+
+  **What the app did with that.** `save_dirty_chunks()` swept up to eight times, each sweep
+  draining the worker inline on the task that draws. A refused chunk costs the loader's five tries
+  plus 372 ms of backoff plus this file's own 100 ms pace: **~520 ms a chunk**, which is what the
+  log's own gaps say (50310 -> 50830 -> 51690 -> 52210). 49 chunks is 25 s a sweep and
+  **200 s of a screen that had been drawn exactly once**, the bar pinned at 0.0 because progress
+  only moved after the sweep. Not a deadlock: `s_save.drawn` was counting, `on_update` returned
+  early for `APP_SAVING`, and `enter_title()` had simply never been reached.
+
+  **What changed here.** `save_pass()` is one round with a budget (`max_ask`) and an honest
+  `saved`, taken from the worker's own total rather than from how many were queued -- the first
+  version of this reported a tidy "49 chunk(s)" for a card that took none of them.
+  `save_dirty_chunks()` now stops after a round that saved nothing. `saving_step()` runs **one
+  bounded round per frame**, 8 writes in flight: on a healthy card that is under a frame's worth
+  of stall (F-26: 6.6/21.5 ms a chunk) and on a failing card it is about four seconds, which is
+  the longest this screen will sit on one round before drawing again -- against 25 s for the whole
+  job before. `draw_saving()` prints `loading.saving_refused` under the bar, and the screen holds
+  2 s when it has something to say. `lang/en.txt` only: the other 31 fall back to English.
+
+  **Cost and what is still unproven.** 1002 bytes of text, 136 of data, 24 of bss; `make build`
+  green, `symcheck` clean, `worldcheck` green. **None of this is measured on the badge** -- there
+  is no device on this machine -- and the number that matters, whether 2.8.0 installed makes the
+  0x106 line disappear entirely, is a device question. The frame budget in the same log is poor on
+  its own (`hud 12.83`, `rast 37.02`, `rest 33.79`) and is a separate thing.
+
 ## Verification
 
 - **Host:** `make check` = `worldcheck` + `scenecheck` + `meshcheck` +
@@ -8240,7 +8376,9 @@ visible thing left that does not say what this is.
   flattening in one string is F-110.
 - **Adapted from `../tanmatsu-synthracer-grace`:** `main/controls_settings.{c,h}`
   and `main/keybind_ui.{c,h}` (the `se_bindings` + `se_ui` + `se_ui_capture_key`
-  pattern), and the `main/screens.c` menu shape.
+  pattern), the `main/screens.c` menu shape, and `main/vfd.{c,h}` (the optional
+  external VFD -- probe, bus sharing and shutdown unchanged, its display modes
+  replaced by this game's two, F-152).
 - **Copied verbatim:** `dir_open()` from `synthengine3D/src/se_mp3.c:198-245`,
   the FatFs path probing for world enumeration and deletion.
 - **Changed:** `CMakeLists.txt`, `Makefile`, `metadata/metadata.json`,

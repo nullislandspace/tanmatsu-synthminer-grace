@@ -117,6 +117,10 @@ set(APP_SOURCES
     main/audio/midi_seq.c
     main/audio/midi_synth.c
 
+    # The optional external VFD on the I2C bus: its own task on core 1, its own
+    # probe of both buses, and a cheap no-op on a badge that has none (main/vfd.h).
+    main/vfd.c
+
     # Textures by name, cached.
     main/common/texcache.c
 

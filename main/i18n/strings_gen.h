@@ -104,6 +104,7 @@ typedef enum {
     SM_STR_LOADING_WORLD,               // loading.world
     SM_STR_LOADING_CREATING,            // loading.creating
     SM_STR_LOADING_SAVING,              // loading.saving
+    SM_STR_LOADING_SAVING_REFUSED,      // loading.saving_refused
     SM_STR_HUD_INVENTORY,               // hud.inventory
     SM_STR_HUD_INVENTORY_HINT,          // hud.inventory_hint
     SM_STR_INFO_POSITION,               // info.position

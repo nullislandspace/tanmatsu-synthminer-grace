@@ -16,6 +16,13 @@
 #include "report.h"
 #include "screenshot.h"
 #include "showtime.h"
+// An app may have an external display of its own; the kit does not know
+// which apps do, so it is asked for rather than assumed. Leaving the app is the
+// one moment that is allowed to switch it off (vfd.h).
+#if __has_include("vfd.h")
+#include "vfd.h"
+#define DEVTEST_HAS_VFD 1
+#endif
 // Primitive counts come from the engine when there is one; without it
 // (TESTKIT_NO_ENGINE) the records still carry the phase split, the frame
 // rate and the heap, and the counts read zero.
@@ -93,6 +100,9 @@ static void exit_to_launcher(char const* why) {
     vTaskDelay(pdMS_TO_TICKS(300));  // let the USB FIFO drain
 #ifndef TESTKIT_NO_ENGINE
     audio_mixer_shutdown();  // a speaker left running across the restart squeals
+#endif
+#ifdef DEVTEST_HAS_VFD
+    vfd_shutdown();  // ...and a tube left burning on a battery
 #endif
     bsp_device_restart_to_launcher();
 }

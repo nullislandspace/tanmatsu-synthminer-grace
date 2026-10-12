@@ -72,6 +72,7 @@
 #include "ui/settings.h"
 #include "ui/title.h"
 #include "voxel/voxel_sky.h"
+#include "vfd.h"
 #include "world/chunk.h"
 #include "world/chunk_render.h"
 #include "world/chunk_worker.h"
@@ -880,6 +881,12 @@ static void on_init(void* user) {
     esp_err_t const radio = bsp_power_set_radio_state(BSP_POWER_RADIO_STATE_OFF);
     ESP_LOGI(TAG, "radio (ESP32-C6): %s", radio == ESP_OK ? "powered down" : esp_err_to_name(radio));
 
+    // OPTIONAL EXTERNAL VFD: probe + switch on in the background, showing the
+    // game's name until a world opens. Its own task on core 1, under the chunk
+    // worker, so it comes up during the splash below without touching the
+    // framebuffer -- and it does nothing at all on a badge without one.
+    vfd_init();
+
     // THE ENGINE'S OWN SPLASH, with its version -- the first thing the
     // program shows. `se_splash()` rather than `se_splash_ex()`,
     // because the default subtitle is "Version <se_version_string()>"
@@ -1478,8 +1485,63 @@ static int request_dirty_chunks(void) {
     return asked;
 }
 
-// Write every resident chunk that differs from the card, and do not
-// stop until there are none left. Returns how many were written.
+// ONE PASS over the resident chunks that differ from the card: ask for
+// every one the queue will take, take delivery, and say what the pass
+// achieved. It is a pass and not a loop because the loop around it wants
+// to know whether the pass got anywhere -- see `saved` and `left`.
+//
+// `dirty` is counted BEFORE asking and `left` AFTER draining, so the two
+// are the same set seen at either end of the pass, and `saved` comes from
+// THE WORKER'S OWN TOTAL, not from how many were queued. The first version
+// of this returned the number it asked for, so a card that refused every
+// write still reported a tidy "49 chunk(s)" -- a number that says the
+// opposite of what happened.
+typedef struct {
+    int dirty;  // resident chunks marked edited when the pass started
+    int asked;  // ... of which the queue accepted
+    int saved;  // ... and the card actually took
+    int left;   // ... still only in memory when the pass ended
+} chunk_pass_t;
+
+// `max_ask` bounds the round: 0 asks for everything the queue will take,
+// N asks for at most N. It exists because draining the queue is the
+// blocking part of a pass, so the number of writes in flight IS the
+// longest a frame may stall -- which is what the saving screen needs
+// (saving_step) and what the one-shot callers do not care about.
+static void save_pass(chunk_pass_t* out, int max_ask) {
+    chunk_worker_flow_t before;
+    chunk_worker_flow(&before);
+
+    int dirty = 0, asked = 0;
+    for (int i = 0; i < CH_SLOT_COUNT; i++) {
+        chunk_t const* c = chunk_slot_at(i);
+        if (c->cstate != CS_READY || (c->flags & CF_EDITED) == 0) continue;
+        dirty++;
+        if (max_ask > 0 && asked >= max_ask) continue;  // counted, asked next round
+        if (chunk_worker_request_save(c->cx, c->cz)) asked++;
+    }
+
+    // Take delivery before anything else: the queue has to drain for the
+    // next sweep to have anything to say.
+    while (!chunk_worker_idle()) chunk_worker_collect(64);
+
+    int left = 0;
+    for (int i = 0; i < CH_SLOT_COUNT; i++) {
+        chunk_t const* c = chunk_slot_at(i);
+        if (c->cstate == CS_READY && (c->flags & CF_EDITED) != 0) left++;
+    }
+
+    chunk_worker_flow_t after;
+    chunk_worker_flow(&after);
+
+    out->dirty = dirty;
+    out->asked = asked;
+    out->saved = after.saved - before.saved;
+    out->left  = left;
+}
+
+// Write every resident chunk that differs from the card, and do not stop
+// until there are none left. Returns how many were written.
 //
 // IN PASSES, because the worker's queue is 48 deep and a full view is
 // 81 chunks: one sweep asking for all of them has 33 REFUSED, and a
@@ -1491,43 +1553,40 @@ static int request_dirty_chunks(void) {
 //
 // The bound is a safety net, not a plan: with 256 slots and a queue of
 // 48, six passes clear any possible backlog.
+//
+// A PASS THAT SAVED NOTHING IS THE OTHER WAY OUT, and it is the one that
+// matters when the card is failing. A queue that merely overflowed makes
+// progress on every pass; a card that refuses makes none, and the same
+// chunks would be asked again for eight passes running. Measured on the
+// badge 2026-10-12 (F-153): a refused chunk costs the loader's five tries
+// and 372 ms of backoff plus the 100 ms this file pauses after a failure,
+// so ~520 ms a chunk. Over the 49 chunks an old world leaves resident
+// that is 25 s a pass and **200 s of "Saving world" screen** -- which is
+// what the user saw as the game getting stuck on it. Stopping after the
+// first pass that got nothing costs one pass and loses nothing: every
+// chunk the card refused is still CF_EDITED, the streamer still refuses
+// to evict it, and the next save asks for it again.
 static int save_dirty_chunks(void) {
-    chunk_worker_flow_t before;
-    chunk_worker_flow(&before);
-
-    int left = 0;
+    int saved = 0, left = 0;
     for (int pass = 0; pass < 8; pass++) {
-        int asked = 0;
-        for (int i = 0; i < CH_SLOT_COUNT; i++) {
-            chunk_t const* c = chunk_slot_at(i);
-            if (c->cstate != CS_READY || (c->flags & CF_EDITED) == 0) continue;
-            if (chunk_worker_request_save(c->cx, c->cz)) asked++;
+        chunk_pass_t p;
+        save_pass(&p, 0);
+        saved += p.saved;
+        left = p.left;
+        if (p.asked == 0) break;  // nothing left to ask for
+        if (p.saved == 0) {
+            ESP_LOGE(TAG, "a whole pass of %d chunk(s) was refused -- stopping rather than asking again", p.asked);
+            break;
         }
-        // Take delivery before asking again: the queue has to drain for
-        // the next sweep to get anywhere.
-        while (!chunk_worker_idle()) chunk_worker_collect(64);
-        if (asked == 0) break;
     }
 
     // Still dirty? Then the CARD refused, not the queue -- a chunk whose
     // write fails keeps CF_EDITED on purpose, so it is retried rather
-    // than lost, and eight sweeps is long past the point where a queue
-    // that merely overflowed would have caught up.
-    for (int i = 0; i < CH_SLOT_COUNT; i++) {
-        chunk_t const* c = chunk_slot_at(i);
-        if (c->cstate == CS_READY && (c->flags & CF_EDITED) != 0) left++;
-    }
+    // than lost.
     if (left > 0) {
         ESP_LOGE(TAG, "%d chunk(s) COULD NOT BE WRITTEN and are still only in memory -- the card is failing", left);
     }
-
-    // COUNTED FROM THE WORKER'S OWN TOTAL, not from how many were
-    // queued. The first version of this returned the number it asked
-    // for, so a card that refused every write still reported a tidy
-    // "49 chunk(s)" -- a number that says the opposite of what happened.
-    chunk_worker_flow_t after;
-    chunk_worker_flow(&after);
-    return after.saved - before.saved;
+    return saved;
 }
 
 static void save_world(char const* why) {
@@ -1624,21 +1683,40 @@ static struct {
 // one. The words go up first and nothing blocks until they have; then
 // the chunks are written, a frame is drawn, then level.smw.
 //
-// The bar therefore moves ONCE, not smoothly -- the long pole is the
-// chunk sweep and the card underneath it, and that is one call. Saying
-// this out loud because a bar that jumps from a quarter to full looks
-// like a bug unless you know it is two pieces of work and not a
-// hundred.
-#define SAVE_BAR_CHUNKS 0.25f  // where the bar sits while the chunks go out
+// The bar moves AS the chunks go out, because the chunks go out a handful
+// a frame rather than all at once. That is the whole point of the round
+// budget below: draining the worker's queue is the blocking part of a
+// save, so how many writes are in flight decides how long this screen can
+// go without being drawn.
+//
+// SAVE_FRAME_CHUNKS is that budget, picked from the two numbers this file
+// has measured. On a healthy card a chunk write is 6.6 ms and 21.5 ms
+// (F-26), so eight of them is under a frame's worth of stall. On a card
+// that is REFUSING, a chunk costs the loader's five tries, 372 ms of
+// backoff and this file's own 100 ms pace -- ~520 ms (F-153) -- so eight
+// is about four seconds, which is the longest this screen will sit on one
+// round before it draws again.
+//
+// The old shape did all of it in one call: 49 chunks, eight sweeps, and
+// 200 s of a screen that had been drawn exactly once.
+#define SAVE_BAR_CHUNKS 0.25f  // how far the bar reaches while the chunks go out
+#define SAVE_FRAME_CHUNKS 8    // writes in flight per frame
+#define SAVE_MAX_ROUNDS 64     // ... enough for every slot the store can hold
+#define SAVE_REPORT_S 2.0      // how long a refusal stays on the glass
 static struct {
-    int   step;    // 0 nothing yet, 1 the chunks are written
-    int   chunks;  // ... and how many, for the line at the end
-    int   drawn;   // frames the screen has actually had
-    float progress;
+    int    step;    // 0 the chunks are still going out, 1 they are done
+    int    total;   // chunks that differed from the card, counted once
+    int    chunks;  // ... how many the card actually took
+    int    left;    // ... the card refused, and they are only in memory
+    int    rounds;  // frames that asked for writes
+    int    drawn;   // frames the screen has actually had
+    double report;  // showtime() until which `left` is on the glass
+    float  progress;
 } s_save;
 
 static void start_saving(void) {
-    s_save = (typeof(s_save)){.step = 0, .chunks = 0, .drawn = 0, .progress = 0.0f};
+    s_save = (typeof(s_save)){.step = 0, .total = 0, .chunks = 0, .left = 0, .rounds = 0, .drawn = 0,
+                              .report = 0.0, .progress = 0.0f};
     menu_close();
     s_app = APP_SAVING;
 }
@@ -1648,13 +1726,48 @@ static void saving_step(void) {
     // words are on the glass before anything blocks, and only the
     // render side knows that they are.
     if (s_save.drawn == 0) return;
+
     if (s_save.step == 0) {
-        save_world_state();
-        s_save.chunks   = save_dirty_chunks();
-        s_save.progress = SAVE_BAR_CHUNKS;
-        s_save.step     = 1;
+        // The player's own record, once, BEFORE the card is involved. It
+        // is microseconds, and it is the part that must survive even if
+        // the rounds below run out on a card that will not write.
+        if (s_save.rounds == 0) save_world_state();
+
+        chunk_pass_t p;
+        save_pass(&p, SAVE_FRAME_CHUNKS);
+        if (s_save.rounds == 0) s_save.total = p.dirty;  // the whole job, seen once
+        s_save.rounds++;
+        s_save.chunks += p.saved;
+        s_save.left    = p.left;
+        s_save.progress =
+            s_save.total > 0 ? SAVE_BAR_CHUNKS * (float)s_save.chunks / (float)s_save.total : SAVE_BAR_CHUNKS;
+
+        // THE TWO WAYS OUT, the same two save_dirty_chunks() has. A round
+        // that asked for nothing means there is nothing left to write. A
+        // round that saved nothing means the CARD is refusing, and asking
+        // the same chunks again is cost with the answer already known
+        // (F-153) -- so the screen stops trying rather than spending
+        // another 25 s on it.
+        bool const refused = (p.asked > 0) && (p.saved == 0);
+        if (p.asked > 0 && !refused && s_save.rounds < SAVE_MAX_ROUNDS) return;
+        if (refused)
+            ESP_LOGE(TAG, "a whole round of %d chunk(s) was refused -- stopping rather than asking again", p.asked);
+        if (s_save.left > 0) {
+            ESP_LOGE(TAG, "%d chunk(s) COULD NOT BE WRITTEN and are still only in memory -- the card is failing",
+                     s_save.left);
+            // And say it on the glass, for long enough to be read. A bar
+            // that stops short of full with no word under it is the same
+            // "is it hung?" question this screen was built to answer.
+            s_save.report = showtime_now() + SAVE_REPORT_S;
+        }
+        s_save.step = 1;
         return;
     }
+
+    // The refusal is on the screen; let it be seen before the title takes
+    // the world away.
+    if (s_save.left > 0 && showtime_now() < s_save.report) return;
+
     save_world_level("quitting to the title", s_save.chunks, true);
     s_save.progress = 1.0f;
     // On success this becomes APP_LOADING (enter_title -> start_loading).
@@ -2050,6 +2163,16 @@ static void draw_saving(pax_buf_t* fb) {
     float const bw = 420.0f, bh = 14.0f, bx = (w - bw) * 0.5f, by = h * 0.62f;
     pax_simple_rect(fb, 0xFF3A4048u, bx, by, bw, bh);
     pax_simple_rect(fb, 0xFF6CC24Au, bx, by, bw * s_save.progress, bh);
+    // Chunks the card would not take. They are still in memory and still
+    // marked dirty -- nothing is lost -- but the world on the card is
+    // part-written, and a warning that only reaches a console nobody has
+    // while playing is a warning nobody sees.
+    if (s_save.left > 0) {
+        char line[96];
+        i18n_fmt(line, sizeof line, SM_STR_LOADING_SAVING_REFUSED, s_save.left);
+        pax_vec2f const lz = rendertext_size(NULL, 18.0f, line);
+        rendertext_draw(fb, 0xFFE08A66u, NULL, 18.0f, (w - lz.x) * 0.5f, by + bh + 16.0f, line);
+    }
     // Counted HERE, not in the update, because "has the player seen it"
     // is a question only the side that draws can answer.
     if (s_save.drawn < 1000) s_save.drawn++;
@@ -2120,6 +2243,22 @@ static void settle_player(cam_mode_t mode) {
     }
 }
 
+// WHAT THE OPTIONAL EXTERNAL DISPLAY SHOWS (vfd.h). In a world it is the
+// item in the player's hand, the same name the HUD prints; everywhere else --
+// the title screen, the loading and saving screens, and every menu -- it is the
+// game's name. A menu is asked about before the world is, because the pause menu
+// is not mining any more: the tube should say what the player is looking at.
+static void publish_vfd(void) {
+    if (s_app == APP_PLAY && !menu_active()) {
+        inv_slot_t const* const held  = inv_held(&s_player.inv);
+        int const               label = (held->item != 0 && held->count != 0) ? (int)item_label(held->item)
+                                                                             : VFD_NO_ITEM;
+        vfd_show(VFD_SHOW_ITEM, label);
+        return;
+    }
+    vfd_show(VFD_SHOW_TITLE, VFD_NO_ITEM);
+}
+
 // Per frame. `dt` is seconds since the last frame, already clamped --
 // unused for now: the content is drawn from the show clock instead.
 static void on_update(float dt, void* user) {
@@ -2131,6 +2270,10 @@ static void on_update(float dt, void* user) {
     // mid-piece. Reads the card when a new piece is due, which is why it
     // is here on the game thread and not in the mixer (music.h).
     sm_audio_frame(dt);
+
+    // Published BEFORE the early returns below, so a loading or saving screen
+    // gets its word on the tube too. Cheap: one aligned word (vfd.h).
+    publish_vfd();
 
     // Writing the world out before leaving it, a piece a frame.
     if (s_app == APP_SAVING) {
@@ -2203,6 +2346,7 @@ static void on_update(float dt, void* user) {
             case MENU_CMD_LEAVE:
                 ESP_LOGI(TAG, "leaving for the launcher");
                 sm_audio_shutdown();  // a speaker left running across the restart squeals
+                vfd_shutdown();       // and a tube left burning on a battery
                 bsp_device_restart_to_launcher();
                 break;
             case MENU_CMD_GRAPHICS:

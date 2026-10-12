@@ -141,9 +141,17 @@ status.keys_reset = Every key is back to its default
 loading.plain = Loading
 loading.world = Loading world
 loading.creating = Creating world
-# Shown while a world is written out on the way back to the title. The save
-# blocks, so these words have to be on the screen BEFORE it starts.
+# Shown while a world is written out on the way back to the title. The
+# chunks go out a handful a frame now, so the bar fills as they do -- but
+# these words still have to be on the glass BEFORE the first one is asked
+# for, because the first write is the one that can take a second.
 loading.saving = Saving world
+# %d is how many chunks the card refused. Nothing is lost -- they are
+# still in memory and still marked dirty, and the next save asks for them
+# again -- but the world on the card is part-written and the player is
+# about to leave it, so this has to be on the screen and not only in a
+# log nobody reads while playing.
+loading.saving_refused = %d chunk(s) could not be written
 
 # --- The heads-up display ---------------------------------------------------
 hud.inventory = Inventory
