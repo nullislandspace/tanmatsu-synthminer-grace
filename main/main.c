@@ -1867,6 +1867,19 @@ static void player_died(void) {
 }
 
 static void use_bed(int32_t x, int32_t y, int32_t z) {
+    // NO BED DOWN THERE (D-145). Placing one is already refused
+    // (interact.c), so this is the other end of the same rule: a bed that
+    // somehow exists in the cave -- a world saved before the rule, a bed
+    // carried in as an item -- must not move the spawn point, because the
+    // spawn point is where a death in the Deep Mine crosses you back TO, and
+    // a bed down here would make that a crossing into a place with nothing
+    // to stand on.
+    if (dimension_current() != DIM_OVERWORLD) {
+        hud_say(T(SM_STR_BED_NO_HERE));
+        sfx_play(SFX_DENY);
+        return;
+    }
+
     // THE FOOT IS WHERE YOU WAKE UP, whichever end was used: one bed,
     // one spawn point.
     int32_t fx = x, fy = y, fz = z;
@@ -3147,6 +3160,7 @@ static void on_render(pax_buf_t* fb, void* user) {
                 // want tilled soil. A reason with no case is the same bug as
                 // a use with no message.
                 case USE_NO_ROOM: key = SM_STR_USE_NO_ROOM; break;
+                case USE_NO_BED: key = SM_STR_BED_NO_HERE; break;
                 case USE_NEEDS_SOIL:
                 default: break;
             }

@@ -584,6 +584,9 @@ bed.slept = You sleep until morning
 bed.daytime = You can only sleep at night
 # ... and when there is no room to put one down
 bed.no_room = No room for a bed there
+# ... and where one may not be put down at all: the Deep Mine has no morning
+# to wake in, and the game has one spawn point, the overworld's (D-145)
+bed.no_here = Beds only work in the overworld
 # Said when the spawn point moves, whether or not they sleep
 bed.spawn_set = You will wake up here
 

@@ -13,6 +13,7 @@
 #include "items/item_entity.h"
 #include "world/chunk.h"
 #include "world/mineshaft.h"
+#include "world/dimension.h"
 
 // Just short of straight up or down. Exactly +-pi/2 makes the forward
 // vector's horizontal part zero, and then "which way am I walking" has
@@ -687,6 +688,14 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                         trace_edit('P', p->aim.px, p->aim.py, p->aim.pz, block_def(block)->name, 1);
                         inv_consume_held(&p->inv);
                         sfx_play_place(block);
+                    } else if (interact_block_needs_overworld(block) && dimension_current() != DIM_OVERWORLD) {
+                        // A BED, DOWN IN THE CAVE (D-145). The spot was fine
+                        // -- two free cells, solid ground under both -- and
+                        // "there is not room for that here" would send the
+                        // player looking for a gap that is not there.
+                        p->use_msg       = USE_NO_BED;
+                        p->use_msg_ticks = USE_MSG_TICKS;
+                        sfx_play(SFX_DENY);
                     } else if (block == BLK_BED_FOOT || block == BLK_STOVE) {
                         // A BED WANTS TWO CELLS and this spot had one,
                         // and so does a stove -- its chest goes down

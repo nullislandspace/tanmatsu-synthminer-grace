@@ -3707,6 +3707,126 @@ static void check_fluid(void) {
     blockupdate_clear();
 }
 
+// WATER MEETS LAVA (F-157, the user's rule of 2026-10-12: "a block where
+// water contacts lava should turn into stone").
+//
+// The bug behind the report was one flag read as an answer to two different
+// questions. Both fluids are BF_REPLACEABLE in the registry -- that flag is
+// about a pickaxe and a bucket, about being able to fill a pool in -- and
+// `accepts()` asked it as "may this fluid go here?". So a lava flow poured
+// water out of its way and a water flow poured lava out of its way, and a
+// shoreline between them was a two-cell oscillator, each tick deleting the
+// other and waking itself back up.
+static void check_fluid_lava(void) {
+    printf("fluids: water meets lava\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    blockupdate_stats_reset();
+    CHECK(flat_world(20) != NULL, "the lava world would not become resident");
+
+    // --- THE CONTACT IS BUILT BY THE WORLD, NOT BY A KEY --------------
+    //
+    // Written straight into the chunk, the way generation writes it, so
+    // nothing is queued and the only way this can react is a chunk arriving.
+    // That is also the order the game actually does it in: the two halves of
+    // a shore arrive in whichever order the streamer felt like.
+    set_block(4, 20, 4, BLK_WATER, ST_PLACED);
+    set_block(5, 20, 4, BLK_LAVA, ST_PLACED);
+    blockupdate_chunk_join(chunk_find(0, 0));
+    CHECK(blockupdate_stats().pending > 0, "a chunk arriving with water against lava woke nothing");
+    fl_run(200);
+    CHECK(world_block(5, 20, 4) == BLK_STONE, "lava standing in water is still %s",
+          block_def(world_block(5, 20, 4))->name);
+    CHECK(world_block(4, 20, 4) == BLK_WATER, "the water that touched it became %s",
+          block_def(world_block(4, 20, 4))->name);
+    CHECK(blockupdate_stats().pending == 0, "the meeting left %d cells in the queue", blockupdate_stats().pending);
+    CHECK(fl_run(40) == 0, "a quenched contact is still working");
+
+    // --- BOTH WAYS ROUND, AND BY EITHER DOOR --------------------------
+    // Lava put down first, then water; then the other order. The lava is the
+    // one that stops being a fluid whichever of the two was woken first.
+    world_set(9, 20, 9, BLK_LAVA, ST_PLACED);
+    world_set(10, 20, 9, BLK_WATER, ST_PLACED);
+    fl_run(200);
+    CHECK(world_block(9, 20, 9) == BLK_STONE, "lava laid first then watered stayed %s",
+          block_def(world_block(9, 20, 9))->name);
+    CHECK(world_block(10, 20, 9) == BLK_WATER, "the water that quenched it became %s",
+          block_def(world_block(10, 20, 9))->name);
+
+    world_set(13, 20, 13, BLK_WATER, ST_PLACED);
+    world_set(14, 20, 13, BLK_LAVA, ST_PLACED);
+    fl_run(200);
+    CHECK(world_block(14, 20, 13) == BLK_STONE, "water laid first then lava stayed %s",
+          block_def(world_block(14, 20, 13))->name);
+    CHECK(world_block(13, 20, 13) == BLK_WATER, "the water that was lava became %s",
+          block_def(world_block(13, 20, 13))->name);
+    CHECK(blockupdate_stats().pending == 0, "the meetings never went quiet");
+
+    // --- A FLOW DIES AT THE CONTACT, IT DOES NOT TRADE WITH IT --------
+    //
+    // A lava source walled in on three sides, so the only way it can go is
+    // towards the water, and the water walled in the same way, so the only
+    // way IT can go is towards the lava. What has to happen is stone at the
+    // meeting and silence afterwards -- not a shoreline that swaps two cells
+    // back and forth for the rest of the session.
+    for (int d = 0; d <= 2; d++) {
+        set_block(1, 20, 1 + d, BLK_STONE, ST_PLACED);
+        set_block(1, 21, 1, BLK_STONE, ST_PLACED);
+        set_block(9, 20, 1 + d, BLK_STONE, ST_PLACED);
+        set_block(9, 21, 1, BLK_STONE, ST_PLACED);
+    }
+    set_block(1, 20, 1, BLK_LAVA, ST_PLACED);
+    set_block(9, 20, 1, BLK_WATER, ST_PLACED);
+    blockupdate_chunk_join(chunk_find(0, 0));
+    fl_run(1200);
+    int lava = 0, water = 0, stone = 0;
+    for (int x = 0; x < CH_W; x++) {
+        for (int z = 0; z < CH_D; z++)
+            for (int y = 20; y < CH_H; y++) {
+                uint8_t const b = world_block(x, y, z);
+                if (b == BLK_LAVA) lava++;
+                else if (b == BLK_WATER) water++;
+                else if (b == BLK_STONE && y == 20) stone++;
+            }
+    }
+    printf("  a lava flow and a water flow aimed at each other: %d lava, %d water, %d stone on the floor\n", lava,
+           water, stone);
+    CHECK(lava == 0, "%d lava cell(s) survived the meeting", lava);
+    CHECK(water > 0, "the water went away with the lava");
+    CHECK(stone > 2, "the meeting made %d floor cells of stone, which is the walls I put there and nothing more",
+          stone);
+    CHECK(blockupdate_stats().pending == 0, "a flow that met its other half still had %d cells queued",
+          blockupdate_stats().pending);
+    CHECK(blockupdate_stats().dropped == 0, "the meeting overflowed the queue (%d dropped)",
+          blockupdate_stats().dropped);
+
+    // --- A BUCKET IS ENOUGH -------------------------------------------
+    // The Deep Mine's lakes are the reason this matters, and a lake is a
+    // source standing on its own fluid: settled, and not going anywhere on
+    // its own. One bucket at the shore has to wall the shore in stone.
+    chunk_store_clear();
+    blockupdate_clear();
+    blockupdate_stats_reset();
+    CHECK(flat_world(20) != NULL, "the lake world would not become resident");
+    for (int x = 6; x <= 9; x++)
+        for (int z = 6; z <= 9; z++) set_block(x, 20, z, BLK_LAVA, ST_PLACED);
+    CHECK(fluid_place_source(5, 20, 7, BLK_WATER), "a bucket would not pour at the shore of a lava lake");
+    fl_run(1200);
+    int lake = 0;
+    for (int x = 6; x <= 9; x++)
+        for (int z = 6; z <= 9; z++)
+            if (world_block(x, 20, z) == BLK_LAVA) lake++;
+    printf("  one bucket at the shore of a 4x4 lake left %d of its 16 cells liquid\n", lake);
+    CHECK(lake < 16, "a bucket poured at a lava lake changed nothing about it");
+    CHECK(lake > 0, "one bucket emptied a whole lake -- the reach of water is 7, not infinity");
+    CHECK(blockupdate_stats().pending == 0, "the lake is still arguing with the bucket (%d cells queued)",
+          blockupdate_stats().pending);
+
+    blockupdate_stats_reset();
+    chunk_store_clear();
+    blockupdate_clear();
+}
+
 // A replay is a start and a stream of per-tick inputs; it has to come
 // back from the card exactly, gyro turns included, or it replays some
 // other walk.
@@ -6165,6 +6285,33 @@ static void check_bed(void) {
     h2.face  = MESH_DIR_PY;
     CHECK(!interact_place_dir(&h2, BLK_BED_FOOT, NULL, 0.0f, 1.0f), "a bed went down with one cell of room");
     CHECK(world_block(9, 20, 6) == BLK_AIR, "a refused bed left half of itself behind");
+
+    // A BED IS AN OVERWORLD THING (D-145). Down in the Deep Mine there is no
+    // morning to wake in (D-139) and the game has one spawn point, which is
+    // up here, so a bed there would look like a bed and do nothing -- and the
+    // refusal has to be the one that says WHICH of the three reasons it is,
+    // because the cells were free and the ground under them was solid.
+    ray_hit_t h3 = {0};
+    h3.x = 12, h3.y = 19, h3.z = 12;
+    h3.px = 12, h3.py = 20, h3.pz = 12;
+    h3.block = BLK_GRASS;
+    h3.face  = MESH_DIR_PY;
+    CHECK(interact_block_needs_overworld(BLK_BED_FOOT), "a bed is not the block the rule is about");
+    CHECK(!interact_block_needs_overworld(BLK_STOVE), "the rule is not about beds alone");
+    dimension_set_current(DIM_DEEP_MINE);
+    CHECK(!interact_place_dir(&h3, BLK_BED_FOOT, NULL, 0.0f, 1.0f), "a bed went down in the Deep Mine");
+    CHECK(world_block(12, 20, 12) == BLK_AIR && world_block(12, 20, 13) == BLK_AIR,
+          "a refused bed left half of itself down there");
+    // ... and building down there is still building. The rule is about the
+    // bed, not about the dimension being a place you may not change.
+    CHECK(interact_place_dir(&h3, BLK_LOG, NULL, 0.0f, 1.0f), "the Deep Mine refused a log");
+    CHECK(world_block(12, 20, 12) == BLK_LOG, "the log the Deep Mine allowed left nothing");
+    set_block(12, 20, 12, BLK_AIR, 0);
+    // The same spot, up here, is fine. Same cell, same ground, other world.
+    dimension_set_current(DIM_OVERWORLD);
+    CHECK(interact_place_dir(&h3, BLK_BED_FOOT, NULL, 0.0f, 1.0f), "the overworld refused the same bed");
+    CHECK(world_block(12, 20, 12) == BLK_BED_FOOT && world_block(12, 20, 13) == BLK_BED_HEAD,
+          "the bed the overworld allowed came down as less than two cells");
 
     // BREAKING EITHER HALF TAKES BOTH, and only the foot pays out.
     item_entity_reset();
@@ -9767,6 +9914,9 @@ static struct {
     // it belongs with the crossing's messages rather than with the farming
     // group, even though the farming default is what used to answer for it.
     {.key = "use.no_room", .h = 16.0f, .px = 800.0f - 24.0f},
+    // ... and the reason a bed would not go down at all: the world it was
+    // offered to (D-145). Same line, same room.
+    {.key = "bed.no_here", .h = 16.0f, .px = 800.0f - 24.0f},
 
     // The crafting book: the list's value column, and its footer.
     {.key = "craft.value_make", .h = 28.0f, .px = VALUE_ROOM(0.88f, 380.0f), .scope = ITEMS_BOOK},
@@ -10693,6 +10843,7 @@ int main(void) {
     check_light();
     check_fluid();
     check_fluid_worldgen();
+    check_fluid_lava();
     check_farming();
     check_rice();
     check_composter();

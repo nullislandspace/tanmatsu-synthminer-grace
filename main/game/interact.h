@@ -107,6 +107,17 @@ bool interact_place(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoi
 // that has no such block in hand.
 bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoid, float dx, float dz);
 
+// IS THIS BLOCK SOMETHING THE DIMENSION WE ARE STANDING IN ALLOWS? One
+// predicate, because two readers need the same answer: `interact_place_dir`
+// refuses on it, and the HUD says it. A rule the caller has to guess at is
+// a rule the HUD eventually gets wrong -- which is how building a shaft in
+// the Deep Mine was once told to want tilled soil.
+//
+// A BED IS THE ONLY ONE SO FAR (D-145): the Deep Mine has no sun, no clock
+// and no morning to wake in (world/dimension.h, D-139), and the game has
+// ONE spawn point, which is the overworld's. A bed down there would look
+// like a bed and do nothing.
+bool interact_block_needs_overworld(uint8_t block);
 // THE OTHER HALF OF A STOVE at (x, y, z) -- its chest, given the stove,
 // or its stove, given the chest. False if that is neither.
 //
@@ -177,6 +188,11 @@ typedef enum {
     // "plant this in tilled soil" would send the player to a hoe for
     // no reason (world/crops.h, PLANT_NEEDS_GROUND).
     USE_NEEDS_GROUND,
+    // A BED, OFFERED TO THE DEEP MINE (D-145). Not a shortage of room and
+    // not a wrong surface -- the two cells were free and the ground was
+    // solid -- so the line has to say which of the three it is, or the
+    // player looks for a gap that is not there.
+    USE_NO_BED,
 } use_msg_t;
 
 typedef struct {

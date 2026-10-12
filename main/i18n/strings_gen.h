@@ -382,6 +382,7 @@ typedef enum {
     SM_STR_BED_SLEPT,                   // bed.slept
     SM_STR_BED_DAYTIME,                 // bed.daytime
     SM_STR_BED_NO_ROOM,                 // bed.no_room
+    SM_STR_BED_NO_HERE,                 // bed.no_here
     SM_STR_BED_SPAWN_SET,               // bed.spawn_set
     SM_STR_HUD_NEEDS_TOOL,              // hud.needs_tool
     SM_STR_ACTION_FORWARD,              // action.forward

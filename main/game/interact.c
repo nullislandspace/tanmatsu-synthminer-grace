@@ -11,6 +11,7 @@
 #include "world/tree.h"
 #include "world/crops.h"
 #include "world/fluid.h"
+#include "world/dimension.h"
 
 // Which tool the current fell is being done with. A parameter would
 // have to thread through the flood fill's whole frontier; the fell is
@@ -394,11 +395,24 @@ bool interact_place(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoi
     return interact_place_dir(hit, block, avoid, 0.0f, 1.0f);
 }
 
+bool interact_block_needs_overworld(uint8_t block) {
+    return block == BLK_BED_FOOT || block == BLK_BED_HEAD;
+}
+
 bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* avoid, float dx, float dz) {
     if (hit == NULL || block == BLK_AIR || block >= BLK_COUNT) return false;
     // A hit with no face is the player standing inside a block: there
     // is no "in front of" to place into.
     if (hit->face == 0xFFu) return false;
+
+    // A BED IS AN OVERWORLD THING (D-145), and it is refused here rather
+    // than placed and then found to do nothing. Down there there is no night
+    // to sleep through and no clock to wind on (dimension.h, D-139), and the
+    // game has one spawn point, which is the overworld's -- so the bed that
+    // would move it has to be refused where moving it means nothing. The
+    // player is told the same thing the placement decided (interact.h), which
+    // is why this is a predicate and not a line inside the `if`.
+    if (interact_block_needs_overworld(block) && dimension_current() != DIM_OVERWORLD) return false;
 
     // Aimed at something a placement overwrites -- tall grass -- the
     // block goes INTO that cell, not in front of it: that is what the
