@@ -1091,15 +1091,26 @@ static void populate_pack(int32_t cx, int32_t cz, uint32_t seed) {
         uint32_t const q  = sm_hash3(cx, (int32_t)(i + 1), cz, seed ^ 0x5EED1234u);
         int32_t const bx = cx * CH_W + 4 + (int32_t)(q % 8u);
         int32_t const bz = cz * CH_D + 4 + (int32_t)((q >> 8) % 8u);
-        int const      y = deepmine_ground_y(bx, bz, seed);
-        if (y < 0 || y >= CH_H - 2) continue;
+        // THE COLUMN A BODY FITS IN, which is three questions the generator
+        // now answers for us: is there room under the roof at all (a pinched
+        // column is a wall of the cave, not part of it), and where is the cell
+        // to stand in once the lava is counted (a mob standing in a lake is a
+        // mob nobody can reach). `deepmine_ground_y()` answered neither.
+        if (!deepmine_has_room(bx, bz, seed)) continue;
+        int const y = deepmine_stand_y(bx, bz, seed);
+        if (y < 1 || y + 2 >= CH_H) continue;
+        // And not on a lake. `stand_y` is the cell ABOVE the lava, so the two
+        // emptiness checks below would happily put a zombie on the surface of
+        // a lava sea: the cell is air, and the mob is unreachable and on fire.
+        if (deepmine_lava_top(bx, bz, seed) >= 0) continue;
 
-        // Not on a lava patch, and not inside a post or a brace: a pack
-        // has to be somewhere the player can see and reach, and a mob
-        // standing in the shaft's trigger cell would be neither.
-        if (deepmine_lava(bx, bz, seed)) continue;
-        if (world_block(bx, y - 1, bz) == BLK_LAVA) continue;
+        // And the cells have to be empty in the world that is actually
+        // resident: a player-placed shaft, or something the player dug and
+        // filled back in, is not in the generator's answer. A mob standing in
+        // a shaft's trigger cell would be a crossing the player did not mean
+        // to make.
         if (world_block(bx, y, bz) != BLK_AIR) continue;
+        if (world_block(bx, y + 1, bz) != BLK_AIR) continue;
 
         if (mob_spawn(pack_kind(q >> 16), (double)bx + 0.5, (double)y, (double)bz + 0.5, false) < 0) s_refused++;
     }

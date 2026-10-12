@@ -13,15 +13,27 @@
 // it is also the cap that makes a cut-off flow DRY UP rather than
 // hang there for ever (a cell wanting a level past the reach becomes
 // air). Water's are Minecraft's.
-// LAVA IS NOT IN THIS TABLE, on purpose (Part M). It is K_LIQUID so the
-// mesher draws only its surface and so `block_liquid()` is true for it,
-// but a fluid here would be a fluid that MOVES, and the Deep Mine's lava
-// is a hazard you walk around, not a flow. `fluid_def()` answers NULL,
-// which is the whole of why it never wakes: blockupdate.c only queues a
-// cell for a block this table knows. Adding lava to it later is a design
-// decision (a lava that flows would fill a cave), not a missing row.
+// LAVA IS IN THIS TABLE (the user, 2026-10-12: "Lava needs to flow like
+// water"). It is K_LIQUID so the mesher draws only its surface, and a row
+// here is what makes it MOVE: breach a lava lake with a pickaxe and the
+// lake runs out of the hole like water does, at a third of water's speed
+// and for three cells before it thins to nothing.
+//
+// `infinite` is FALSE, which is the one place lava is not water: two
+// neighbours of a lava flow never become a new source, so a lava lake can
+// be drained and stays drained. Minecraft's rule for the same reason --
+// an inexhaustible lava source is a furnace you cannot turn off.
+//
+// WHY THIS DOES NOT FILL THE CAVE: the Deep Mine's lava is a LEVEL
+// (DM_LAVA_LEVEL, deepmine.c), so every lake is a basin whose walls are
+// columns whose floor is above the level. A source standing on its own
+// fluid does not spread (fluid_unsettled, and step 2 of the same rule),
+// and a same-fluid neighbour only accepts something strictly fuller, so a
+// generated lake is settled the moment it is generated and puts nothing
+// in the queue. Only a player-made breach flows.
 static fluid_def_t const FLUIDS[] = {
     {.block = BLK_WATER, .delay = 5, .reach = 7, .infinite = true},
+    {.block = BLK_LAVA, .delay = 20, .reach = 3, .infinite = false},
     {.block = BLK_AIR},  // the end
 };
 

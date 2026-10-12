@@ -234,6 +234,13 @@ static bool s_cross_said;
 // (open_crossed_shaft).
 static bool    s_cross_stamp;
 static int32_t s_cross_sx, s_cross_sz;
+// How many more attempts the far end gets before we stop trying. The load
+// that follows a crossing is gated on the nine chunks around the column, so
+// the first attempt has everything it needs; the retries are for the case
+// where the load gave up early (LOAD_GUARD) and the chunk is still on its
+// way. Trying for ever would be a `world_set` a frame on a column that is
+// never going to take it.
+static int s_cross_tries;
 
 // How many ticks until the next attempt. A crossing drains the worker, and
 // doing that every tick on a card that is not answering would be a stall
@@ -241,6 +248,8 @@ static int32_t s_cross_sx, s_cross_sz;
 // later, is enough to know whether the shaft can open.
 #define CROSS_RETRY_TICKS 30
 static int s_cross_wait;
+// The far end of a crossing gets this many attempts (open_crossed_shaft).
+#define CROSS_TRIES 20
 
 // --- The time of day ------------------------------------------------------
 //
@@ -1944,6 +1953,7 @@ static bool cross_to(dimension_t to, double wx, double wz) {
     s_cross_stamp = true;
     s_cross_sx = cx;
     s_cross_sz = cz;
+    s_cross_tries = CROSS_TRIES;
 
     start_loading(s_saved.x, s_saved.z, APP_PLAY, T(SM_STR_LOADING_CROSSING), LOAD_GATE_3X3);
     hud_say(T(to == DIM_DEEP_MINE ? SM_STR_HUD_DEEP_MINE : SM_STR_HUD_SURFACE));
@@ -1962,23 +1972,38 @@ static bool cross_to(dimension_t to, double wx, double wz) {
 // no record anywhere: the record is the shaft.
 //
 // On the first tick after the nine chunks are here, because nothing can be
-// written to a chunk that is not resident (D-14).
-static void open_crossed_shaft(void) {
-    if (!s_cross_stamp) return;
-    s_cross_stamp = false;
+// written to a chunk that is not resident (D-14) -- which is why
+// `loading_step` calls it as soon as the gate is met, before the player is
+// settled: the frame has to be standing in the cell they are about to be put
+// in, or they arrive in an empty 5x5 and the way back does not exist.
+//
+// False means "not yet", and the stamp stays: the next tick tries again, up
+// to CROSS_TRIES times.
+static bool open_crossed_shaft(void) {
+    if (!s_cross_stamp) return true;
 
     int32_t const x = s_cross_sx, z = s_cross_sz;
-    if (mineshaft_trigger_y(x, z) >= 0) return;  // the generator grew one here already
+    if (mineshaft_trigger_y(x, z) >= 0) {  // one is standing here already
+        s_cross_stamp = false;
+        return true;
+    }
 
     int const ay = mineshaft_arrival_y(x, z, s_meta.seed, (int)dimension_current());
     if (mineshaft_open_at(x, ay - 1, z)) {
         trace_edit('P', x, ay - 1, z, "mine shaft", 16);
-    } else {
-        // Nothing was written. The player can still walk out, but this
-        // column has no way back, and a player who cannot get home should
-        // be able to find out why.
-        trace_note("crossed column %ld,%ld: the far end had no room for its frame", (long)x, (long)z);
+        s_cross_stamp = false;
+        return true;
     }
+
+    if (--s_cross_tries <= 0) {
+        // Nothing was written, and nothing more will be. The player can
+        // still walk out, but this column has no way back, and a player who
+        // cannot get home should be able to find out why.
+        trace_note("crossed column %ld,%ld: the far end had no room for its frame", (long)x, (long)z);
+        s_cross_stamp = false;
+        return true;
+    }
+    return false;
 }
 
 // THE TRIGGER HAS TO BE RELEASED BEFORE IT CAN FIRE AGAIN.
@@ -1996,7 +2021,7 @@ static bool check_crossing(void) {
     // file from that tick on.
     if (replay_playing()) return false;
 
-    open_crossed_shaft();
+    open_crossed_shaft();  // retries, if the load left it to do
 
     int32_t const x = (int32_t)floor(s_player.body.x);
     int32_t const y = (int32_t)floor(s_player.body.y);
@@ -2144,6 +2169,14 @@ static void loading_step(void) {
         // A replay's first tick is now -- or, under a test, the moment the
         // test called t = 0, so its clock and the replay's agree.
         s_replay_t0 = devtest_running() ? s_content_t0 : showtime_now();
+        // THE FAR END, built before the player is settled. The gate this
+        // loading waited on is the nine chunks around the column, so the
+        // cells the frame needs are resident right now -- and `settle_player`
+        // runs later in this same frame, which is the moment the player is
+        // put into the cell the frame is standing in. Build it after that and
+        // they spend a tick in a hole with no shaft in it; build it here and
+        // they arrive in the shaft.
+        open_crossed_shaft();
     }
     if (s_bench_scene) bench_ready();
 }

@@ -4,141 +4,314 @@
 
 #include "world/deepmine.h"
 
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "common/rng.h"
 #include "world/blocks.h"
-#include "world/mineshaft.h"
 #include "world/worldgen.h"
 
 // The salts. Separate from worldgen.c's, because a vein in the Deep Mine
 // is the same SHAPE (worldgen_vein_at) with different odds, and sharing a
 // salt would put the two dimensions' ore in the same places -- which is
 // exactly the kind of coincidence a check would never notice.
-#define S_DM_FLOOR    0xE100u
-#define S_DM_CEIL     0xE150u
-#define S_DM_FLOOR_ROUGH 0xE180u
-#define S_DM_CEIL_ROUGH  0xE190u
-#define S_DM_LAVA     0xE200u
-#define S_DM_IRON     0xE300u
-#define S_DM_COAL     0xE350u
-#define S_DM_DIAMOND  0xE400u
-#define S_DM_PACK     0xE500u
+#define S_DM_WALL    0xE120u
+#define S_DM_CEIL_W  0xE160u
+#define S_DM_BROAD_F 0xE180u
+#define S_DM_HEAT    0xE1A0u
+#define S_DM_DAMP    0xE1B0u
+#define S_DM_MASS    0xE1C0u
+#define S_DM_LOW     0xE1D0u
+#define S_DM_ROOM    0xE1E0u
+#define S_DM_IRON    0xE300u
+#define S_DM_COAL    0xE350u
+#define S_DM_DIAMOND 0xE400u
+#define S_DM_PACK    0xE500u
 
-// --- The two surfaces -------------------------------------------------
+// The four biome fields' scales, in blocks. Measured, not guessed: a
+// 2-octave value-noise field has a mean that depends on where the sample
+// window sits, and at 170-300 blocks that swing is huge -- 192x192 windows
+// gave means from 0.27 to 0.73, so a fixed edge is a dice roll and a biome
+// either never appears or takes half the map. At 80-95 the same windows are
+// stable (tools/worldcheck.c prints the shares every run). They are still
+// far slower than the terrace and boulder terms and far faster than the
+// broad surfaces: a biome is a few minutes across on foot, near enough to
+// find another and far enough to feel like somewhere.
+#define DM_HEAT_SCALE 90.0f
+#define DM_DAMP_SCALE 85.0f
+#define DM_MASS_SCALE 95.0f
+#define DM_LOW_SCALE  80.0f
+
+// --- The biome table --------------------------------------------------
+
+dm_biome_def_t const DM_BIOMES[DM_BIOME_COUNT] = {
+    // CAVERN: the default, and the big room. Its room is the tallest in the
+    // cave -- 24 blocks at its openest -- and its relief is two thirds of it,
+    // so a cavern is neither one hall nor one squeeze: the same district is
+    // both, depending on where the room field is.
+    [DM_BIOME_Cavern] =
+        {.name         = "Cavern",
+         .floor_base   = 10,
+         .floor_relief = 10,
+         .room_base    = 24,
+         .room_relief  = 16,
+         .iron         = 0.34f,
+         .iron_r       = 2.0f,
+         .coal         = 0.30f,
+         .coal_r       = 2.0f,
+         .diamond      = 0.05f,
+         .diamond_r    = 1.2f},
+
+    // HILLS: the macro roughness the user asked for. The floor's relief is
+    // nearly twice the cavern's, so the broad field makes real slopes and
+    // real drops, and the room stays big enough that you can see the slope
+    // you are standing on rather than only the next block of it.
+    [DM_BIOME_Hills] =
+        {.name         = "Hills",
+         .floor_base   = 12,
+         .floor_relief = 16,
+         .room_base    = 26,
+         .room_relief  = 18,
+         .iron         = 0.30f,
+         .iron_r       = 2.2f,
+         .coal         = 0.26f,
+         .coal_r       = 2.0f,
+         .diamond      = 0.04f,
+         .diamond_r    = 1.2f},
+
+    // LAVA SEA: low ground with a lake on it. The lava is a LEVEL, so this
+    // is not "occasional blobs" -- it is a sea with shores, and the ground
+    // dips in and out of it. It is a biome rather than a rule because its
+    // floor sits BELOW DM_LAVA_LEVEL: 8 with a relief of 6, where every
+    // other biome starts at 10 or 12. The sea is the level; this is the
+    // ground that lies under it. The richest iron, and the diamond the user
+    // asked for, because a sea is where a cluster is worth finding.
+    [DM_BIOME_LavaSea] =
+        {.name         = "LavaSea",
+         .floor_base   = 8,
+         .floor_relief = 6,
+         .room_base    = 18,
+         .room_relief  = 12,
+         .iron         = 0.40f,
+         .iron_r       = 2.0f,
+         .coal         = 0.20f,
+         .coal_r       = 1.8f,
+         .diamond      = 0.08f,
+         .diamond_r    = 1.4f},
+
+    // LOW HALL: the claustrophobic one. Its roof base sits barely above its
+    // floor base, so the room is a few blocks -- and its relief is BIGGER
+    // than its base, which is the whole point: the room field can take more
+    // height than there is, the roof lands ON the floor or under it, and the
+    // column is solid rock. That is a wall of the cave, and walking around
+    // it is what makes the place feel enclosed. It is also the biome a
+    // player has to dig through, which is what a mine is.
+    [DM_BIOME_LowHall] =
+        {.name         = "LowHall",
+         .floor_base   = 12,
+         .floor_relief = 8,
+         .room_base    = 9,
+         .room_relief  = 12,
+         .iron         = 0.36f,
+         .iron_r       = 1.8f,
+         .coal         = 0.34f,
+         .coal_r       = 2.0f,
+         .diamond      = 0.03f,
+         .diamond_r    = 1.0f},
+};
+
+// --- The fields -------------------------------------------------------
 
 // Which grid square a column belongs to. Negative-safe, because C division
 // rounds toward zero: -1 / 16 is 0, so the square it names is not the one the
 // generator would have read for that column. Every grid in this file -- the
-// floor, the roof, the lava, the veins -- goes through here for that reason.
+// terraces, the room, the veins -- goes through here for that reason.
 static int32_t dm_square(int32_t v, int grid) {
     return (v >= 0 ? v : v - grid + 1) / grid;
 }
 
-// One value per grid square. Everything inside a square is the same height,
-// which is what makes it a plateau, and the step from one square to the
-// next is the wall. A per-column noise would be smoother and would not be
-// a cave.
-static int dm_plateau(int32_t x, int32_t z, uint32_t seed, int grid, int base, int span, uint32_t salt) {
+// One value per grid square: 0..span-1. Everything inside a square is the
+// same height, which is what makes it a terrace, and the step from one
+// square to the next is the wall.
+static int dm_plateau(int32_t x, int32_t z, uint32_t seed, int grid, int span, uint32_t salt) {
     int32_t const gx = dm_square(x, grid), gz = dm_square(z, grid);
-    return base + (int)(sm_rand2(gx, gz, seed ^ salt) * (float)span);
+    return (int)(sm_rand2(gx, gz, seed ^ salt) * (float)span);
 }
 
-// THE PAD A SHAFT STANDS ON.
-//
-// A shaft needs level ground under all nine cells of its footprint -- the
-// same rule as the player's placement -- and a floor that changes per column
-// almost never gives it: over 262144 columns, one candidate square in 26000
-// had a flat three by three, so the generator was stamping frames into rock.
-// So a candidate shaft brings its own pad, five by five, flattened to the
-// height its square would have had anyway. That is the flattening the design
-// allows, and it happens as the terrain is read, not as a decoration painted
-// on it afterwards.
-//
-// It is still a pure function of the position (Part T): the spot is the same
-// hash the generator uses. Two squares then have to agree about every column
-// of the pad, and that is what the two conditions below are.
-//
-//   - THE SHAFT SQUARE. A column outside it would be asked by a different
-//     square's shaft, and the two would answer with two different spots -- so
-//     the whole pad has to sit inside the square the spot belongs to.
-//   - THE FLOOR SQUARE. The pad is flattened to the height its own square
-//     would have had, so a column across that border would read a different
-//     height for the same cell.
-//
-// SHAFT_GRID divides DM_FLOOR_GRID, so the first condition implies the
-// second. Both are written anyway, because the first is what makes the pad
-// knowable per column and the second is what makes it flat -- and a check
-// that only enforced one of them would pass on a grid that broke the other.
-bool deepmine_is_pad(int32_t x, int32_t z, uint32_t seed) {
-    int32_t const gx = dm_square(x, SHAFT_GRID), gz = dm_square(z, SHAFT_GRID);
-    if (!mineshaft_is_candidate(x, z, seed)) return false;
-
-    int32_t wx, wz;
-    mineshaft_candidate_spot(gx, gz, seed, &wx, &wz);
-
-    int const half = DM_PAD / 2;
-    if (x - wx > half || wx - x > half || z - wz > half || wz - z > half) return false;
-
-    int32_t const sx = wx - gx * SHAFT_GRID, sz = wz - gz * SHAFT_GRID;
-    if (sx < half || sx > SHAFT_GRID - 1 - half) return false;
-    if (sz < half || sz > SHAFT_GRID - 1 - half) return false;
-
-    return dm_square(x, DM_FLOOR_GRID) == dm_square(wx, DM_FLOOR_GRID) &&
-           dm_square(z, DM_FLOOR_GRID) == dm_square(wz, DM_FLOOR_GRID);
+// A height inside the band it is allowed to be in. The bands are what the
+// host check asserts, so this is the one place they are enforced.
+static int dm_clamp(int v, int lo, int hi) {
+    return v < lo ? lo : v > hi ? hi : v;
 }
+
+// How far a smoothstep takes a field past an edge. The same helper
+// worldgen.c uses: a hard threshold would make every biome border a line,
+// and the height numbers have to be blended for the ground to be continuous.
+#define DM_BAND 0.09f
+
+static float dm_over(float v, float edge) {
+    float t = (v - (edge - DM_BAND)) / (2.0f * DM_BAND);
+    t       = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static float dm_under(float v, float edge) {
+    return 1.0f - dm_over(v, edge);
+}
+
+void deepmine_biome_weights(int32_t x, int32_t z, uint32_t seed, float w[DM_BIOME_COUNT]) {
+    // Four fields, because a cave has more than one axis to vary along: heat
+    // (which is what makes a lava sea), damp, mass (which is what makes a
+    // hill) and lowness (which is what makes a hall the roof lands on).
+    float const heat = sm_fbm2((float)x, (float)z, DM_HEAT_SCALE, 2, seed ^ S_DM_HEAT);
+    float const damp = sm_fbm2((float)x, (float)z, DM_DAMP_SCALE, 2, seed ^ S_DM_DAMP);
+    float const mass = sm_fbm2((float)x, (float)z, DM_MASS_SCALE, 2, seed ^ S_DM_MASS);
+    float const low  = sm_fbm2((float)x, (float)z, DM_LOW_SCALE, 2, seed ^ S_DM_LOW);
+
+    // In order of precedence, each taking what the ones before it left --
+    // the same shape as the overworld's, so a place is one thing and not a
+    // compromise between four. A low hall is a low hall whatever the climate
+    // is; hot AND damp ground is a lava sea; heavy ground is hills; the rest
+    // is cavern. The edges sit where the measured distributions put them, so
+    // that over a 512x512 window on any seed the shares land near cavern
+    // 40-58% / hills 6-24% / lava sea 6-13% / low hall 20-38%. The low edge
+    // came down from 0.66 to 0.60 with the room model: the claustrophobic
+    // biome is the one the user asked for, and it has to be findable.
+    w[DM_BIOME_LowHall] = dm_over(low, 0.60f);
+    w[DM_BIOME_LavaSea] = (1.0f - w[DM_BIOME_LowHall]) * dm_over(heat, 0.52f) * dm_under(damp, 0.43f);
+    w[DM_BIOME_Hills]   = (1.0f - w[DM_BIOME_LowHall]) * (1.0f - w[DM_BIOME_LavaSea]) * dm_over(mass, 0.62f);
+    float rest          = 1.0f - w[DM_BIOME_LowHall] - w[DM_BIOME_LavaSea] - w[DM_BIOME_Hills];
+    w[DM_BIOME_Cavern]  = rest < 0.0f ? 0.0f : rest;
+}
+
+// THE LARGEST SHARE, not a second set of thresholds: one rule means the
+// shape of the ground and the lava and ore it carries can never disagree
+// about where a place is. One function answers it because the column and the
+// public biome question must never pick different biomes.
+static int dm_pick(float const w[DM_BIOME_COUNT]) {
+    int best = 0;
+    for (int b = 1; b < DM_BIOME_COUNT; b++) {
+        if (w[b] > w[best]) best = b;
+    }
+    return best;
+}
+
+uint8_t deepmine_biome(int32_t x, int32_t z, uint32_t seed) {
+    float w[DM_BIOME_COUNT];
+    deepmine_biome_weights(x, z, seed, w);
+    return (uint8_t)dm_pick(w);
+}
+
+// --- The shell: a floor, and a room on top of it ----------------------
+
+// Everything a column is asked about comes out of ONE answer. Four public
+// questions (ground, ceiling, lava, standing room) plus the chunk filler all
+// want the same column, and computing them separately is how the surfaces,
+// the lakes and the ore ended up disagreeing about which place a column is
+// in. It is also the cheap way: the fields are the expensive part, and one
+// call answers five questions with them instead of five calls.
+typedef struct {
+    int     floor_y;   // first air above the ground
+    int     roof_y;    // first bedrock above the cave
+    int     lava_top;  // top cell of the lava at this column, -1 when dry
+    int     stand_y;   // the cell a body actually stands in
+    uint8_t biome;
+} dm_col_t;
+
+static void dm_column(int32_t x, int32_t z, uint32_t seed, dm_col_t* out) {
+    float w[DM_BIOME_COUNT];
+    deepmine_biome_weights(x, z, seed, w);
+    int             const b  = dm_pick(w);
+    dm_biome_def_t const* bd = &DM_BIOMES[b];
+
+    // THE FLOOR: blended height numbers, because the floor is what you walk
+    // on and a biome border may not be a cliff you cannot climb (header).
+    // The hill first -- 120 blocks of slope, the only term that can make a
+    // macro hill -- then the terrace, which is the cliff.
+    float base = 0.0f, relief = 0.0f;
+    for (int i = 0; i < DM_BIOME_COUNT; i++) {
+        base += w[i] * (float)DM_BIOMES[i].floor_base;
+        relief += w[i] * (float)DM_BIOMES[i].floor_relief;
+    }
+    float const broad = sm_fbm2((float)x, (float)z, DM_BROAD_SCALE, DM_BROAD_OCTAVES, seed ^ S_DM_BROAD_F);
+    int     const fy  = dm_clamp((int)(base + broad * relief) +
+                                  dm_plateau(x, z, seed, DM_WALL_GRID, DM_WALL_SPAN, S_DM_WALL),
+                                  DM_FLOOR_MIN, DM_FLOOR_MAX);
+
+    // THE ROOM: this biome's number, NOT blended, taken away by a field of
+    // its own and then stepped by its own terraces. Where the field takes
+    // more than the base -- LowHall, whose relief is bigger than its base --
+    // the roof lands on the floor and the column is solid rock.
+    float const field = sm_fbm2((float)x, (float)z, DM_ROOM_SCALE, DM_ROOM_OCTAVES, seed ^ S_DM_ROOM);
+    int     const room = (int)((float)bd->room_base - field * (float)bd->room_relief) -
+                         dm_plateau(x, z, seed, DM_CEIL_GRID, DM_CEIL_SPAN, S_DM_CEIL_W);
+    int     const cy   = dm_clamp(fy + room, DM_CEIL_MIN, DM_CEILING_Y);
+
+    // THE LAKE: this column's floor is under the one level the whole
+    // dimension has, so it is filled up to that level -- clamped below the
+    // roof, because a lake pressed into the ceiling has no air above it and
+    // the crossing needs room under a roof (mineshaft.c).
+    int top = -1;
+    if (fy <= DM_LAVA_LEVEL) {
+        top = DM_LAVA_LEVEL;
+        if (top > cy - 1) top = cy - 1;
+        if (top < fy) top = -1;
+    }
+
+    out->floor_y  = fy;
+    out->roof_y   = cy;
+    out->lava_top = top;
+    out->stand_y  = top >= fy ? top + 1 : fy;
+    out->biome    = (uint8_t)b;
+}
+
+// --- Asking one column ------------------------------------------------
+//
+// Each one is a one-line read of the same answer, which is the point: the
+// shaft pairing, the mob population and the chunk filler all ask a different
+// one of these, and they can only agree about a column if they are all the
+// same function of it.
 
 int deepmine_ground_y(int32_t x, int32_t z, uint32_t seed) {
-    int const base = dm_plateau(x, z, seed, DM_FLOOR_GRID, DM_FLOOR_MIN, DM_FLOOR_SPAN, S_DM_FLOOR);
-    if (deepmine_is_pad(x, z, seed)) return base;
-
-    // Rough edges. A plateau that is exactly flat reads as a floor with
-    // something painted on it rather than as rock, so a column may sit a
-    // block above its square. It can never sit below it: the square is the
-    // floor, and the player standing on a column is standing on the plateau
-    // it belongs to.
-    int y = base + (int)(sm_rand2(x, z, seed ^ S_DM_FLOOR_ROUGH) * (float)DM_ROUGH);
-    if (y > DM_FLOOR_MAX) y = DM_FLOOR_MAX;
-    return y;
+    dm_col_t col;
+    dm_column(x, z, seed, &col);
+    return col.floor_y;
 }
 
 int deepmine_ceiling_y(int32_t x, int32_t z, uint32_t seed) {
-    int y = dm_plateau(x, z, seed, DM_CEIL_GRID, DM_CEIL_MIN, DM_CEIL_SPAN, S_DM_CEIL);
-    y += (int)(sm_rand2(x, z, seed ^ S_DM_CEIL_ROUGH) * (float)DM_ROUGH);
-    if (y > DM_CEILING_Y) y = DM_CEILING_Y;
-
-    // SEALED AND WALKABLE. The bands are set so this cannot fire -- floor
-    // 6..12, roof 26..44, so fourteen open cells minimum against the four
-    // this requires -- but a guarantee that only holds because of the numbers
-    // is not a guarantee, and the consequence of breaking it is a player
-    // placed inside rock. The check that says so is in tools/worldcheck.c.
-    int const floor_y = deepmine_ground_y(x, z, seed);
-    if (y < floor_y + DM_ROOM_MIN) y = floor_y + DM_ROOM_MIN;
-    if (y > DM_CEILING_Y) y = DM_CEILING_Y;
-    return y;
+    dm_col_t col;
+    dm_column(x, z, seed, &col);
+    return col.roof_y;
 }
 
-// --- Lava -------------------------------------------------------------
+// THE LAVA IS A LEVEL, not a patch. That is the whole of why it behaves:
+// fill every column whose floor is below the level, up to the level, and the
+// surface comes out flat, the shore comes out where the ground rises, and
+// the lake is walled by its own basin. A blob rolled per coarse cell -- what
+// this file used to do -- put a block of lava on top of a floor it was not
+// connected to, which is what the user saw as "lava blocks just standing
+// around".
+int deepmine_lava_top(int32_t x, int32_t z, uint32_t seed) {
+    dm_col_t col;
+    dm_column(x, z, seed, &col);
+    return col.lava_top;
+}
 
-// A patch, not a coin flip per cell: one candidate per coarse cell, and a
-// column is lava if it falls inside one. The same shape as an ore vein,
-// for the same reason -- fill_column has to give the same answer from
-// either side of a chunk border, so nothing here can be grown by walking.
-bool deepmine_lava(int32_t x, int32_t z, uint32_t seed) {
-    int32_t const gx = dm_square(x, VEIN_GRID), gz = dm_square(z, VEIN_GRID);
+// The cell a body stands in: above the floor, and out of the lava. The floor
+// function answers "first air above the rock"; this adds the lake, which is
+// the question a mob, a crossing or a spawn actually asks. Without it a
+// zombie is generated standing in a lava lake, because the cell is empty.
+int deepmine_stand_y(int32_t x, int32_t z, uint32_t seed) {
+    dm_col_t col;
+    dm_column(x, z, seed, &col);
+    return col.stand_y;
+}
 
-    for (int dz = -1; dz <= 1; dz++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            int32_t const cx = gx + dx, cz = gz + dz;
-            if (sm_rand2(cx, cz, seed ^ S_DM_LAVA) > DM_LAVA_CHANCE) continue;
-            float const ox = (float)(cx * VEIN_GRID) + sm_rand2(cx, cz, seed ^ (S_DM_LAVA + 1u)) * VEIN_GRID;
-            float const oz = (float)(cz * VEIN_GRID) + sm_rand2(cx, cz, seed ^ (S_DM_LAVA + 2u)) * VEIN_GRID;
-            float const d  = (float)(x - ox) * (float)(x - ox) + (float)(z - oz) * (float)(z - oz);
-            if (d <= DM_LAVA_R * DM_LAVA_R) return true;
-        }
-    }
-    return false;
+bool deepmine_has_room(int32_t x, int32_t z, uint32_t seed) {
+    dm_col_t col;
+    dm_column(x, z, seed, &col);
+    return col.stand_y < col.roof_y;
 }
 
 // --- A chunk ----------------------------------------------------------
@@ -151,9 +324,16 @@ void deepmine_chunk(chunk_t* c, uint32_t seed) {
     for (int lz = 0; lz < CH_D; lz++) {
         for (int lx = 0; lx < CH_W; lx++) {
             int32_t const wx = c->cx * CH_W + lx, wz = c->cz * CH_D + lz;
-            int     const fy = deepmine_ground_y(wx, wz, seed);
-            int     const cy = deepmine_ceiling_y(wx, wz, seed);
-            bool    const wet = deepmine_lava(wx, wz, seed);
+            dm_col_t            col;
+            dm_column(wx, wz, seed, &col);
+            int         const fy  = col.floor_y;
+            int         const cy  = col.roof_y;
+            int         const lvl = col.lava_top;
+
+            // The biome's own rates, from the same discrete answer the lava
+            // and the roof came from -- so a column's ore, its lake and its
+            // room can never disagree about which place it is in.
+            dm_biome_def_t const* bd = &DM_BIOMES[col.biome];
 
             for (int y = 0; y < CH_H; y++) {
                 uint8_t b = BLK_AIR;
@@ -166,35 +346,35 @@ void deepmine_chunk(chunk_t* c, uint32_t seed) {
                     b = BLK_BEDROCK;
                 } else if (y < fy) {
                     // `fy` is the first air above the floor, the same
-                    // convention as worldgen_height(), so the solid part
-                    // of a column is everything BELOW it. That is what
-                    // makes the pairing work: the arrival cell is the
-                    // cell the player stands in, and it is knowable
-                    // before the chunk exists.
+                    // convention as worldgen_height(), so the solid part of
+                    // a column is everything BELOW it. That is what makes
+                    // the pairing work: the arrival cell is the cell the
+                    // player stands in, and it is knowable before the chunk
+                    // exists.
+                    //
+                    // Where cy <= fy this branch simply stops at the roof:
+                    // the column is solid from the bottom of the world up to
+                    // the ceiling, which is a wall of the cave.
                     b = BLK_STONE;
-                    // Ore, in the same vein shape the overworld uses.
-                    // Diamond is tested first for the same reason iron is
-                    // tested before coal in fill_column: two ores cannot
-                    // fight over one cell.
+                    // Ore, in the same vein shape the overworld uses, with
+                    // this biome's odds and the floor as its ceiling. Diamond
+                    // first, for the same reason iron is before coal in
+                    // fill_column: two ores cannot fight over one cell.
                     if (y > CH_BEDROCK) {
-                        if (worldgen_vein_at(wx, y, wz, seed, S_DM_DIAMOND, DM_FLOOR_MAX, DM_DIAMOND_CHANCE,
-                                            DM_DIAMOND_R)) {
+                        if (worldgen_vein_at(wx, y, wz, seed, S_DM_DIAMOND, fy, bd->diamond, bd->diamond_r)) {
                             b = BLK_DIAMOND_ORE;
-                        } else if (worldgen_vein_at(wx, y, wz, seed, S_DM_IRON, DM_FLOOR_MAX, DM_IRON_CHANCE,
-                                                    DM_IRON_R)) {
+                        } else if (worldgen_vein_at(wx, y, wz, seed, S_DM_IRON, fy, bd->iron, bd->iron_r)) {
                             b = BLK_IRON_ORE;
-                        } else if (worldgen_vein_at(wx, y, wz, seed, S_DM_COAL, DM_FLOOR_MAX, DM_COAL_CHANCE,
-                                                    DM_COAL_R)) {
+                        } else if (worldgen_vein_at(wx, y, wz, seed, S_DM_COAL, fy, bd->coal, bd->coal_r)) {
                             b = BLK_COAL_ORE;
                         }
                     }
-                } else if (y == fy && wet) {
-                    // The patch of lava sits ON the floor, rather than
-                    // replacing it: a pool you can walk around is a
-                    // hazard, a hole in the floor is a way to lose the
-                    // floor. It is the surface cell -- the one the player
-                    // would be standing in -- so a pack is never rolled
-                    // into one (game/mob.c).
+                } else if (y <= lvl) {
+                    // The lake, from the floor up to its level. Sources all
+                    // the way down, exactly as the overworld fills below
+                    // CH_SEA_LEVEL -- which is also what keeps them settled:
+                    // a source standing on its own fluid does not spread
+                    // (fluid.c), and the basin walls it on every side.
                     b = BLK_LAVA;
                 }
 
@@ -203,17 +383,10 @@ void deepmine_chunk(chunk_t* c, uint32_t seed) {
         }
     }
 
-    // THE SHAFTS, and on the same grid the trees are on. A shaft is a
-    // shape that straddles chunk borders, so this walks the 3x3
-    // neighbourhood and stamps only the cells landing here -- the same
-    // argument as worldgen.c's tree pass, and the reason there is one
-    // shape in the codebase rather than two.
-    mineshaft_stamp(c, seed);
-
     // The bottom of every column, exactly as the overworld's generator
-    // leaves it. It is the same rule, so it is the same function -- a
-    // Deep Mine with its own idea of what a floor is would be two floors
-    // in the codebase.
+    // leaves it. It is the same rule, so it is the same function -- a Deep
+    // Mine with its own idea of what a floor is would be two floors in the
+    // codebase.
     worldgen_force_floor(c);
 
     c->flags |= CF_GENERATED;

@@ -103,8 +103,10 @@ main/
 *   worldgen.{c,h}        pure (seed, cx, cz) -> id/state planes         (pure)
 *   farlands.{c,h}        Beta 1.7.3's density generator, overflowed     (pure)
     deepmine.{c,h}        the Deep Mine generator: sealed ceiling, one cave,     (pure)
-                          stone, lava, iron, diamond clusters -- Part M, not built
-    mineshaft.{c,h}       the shaft's shape and its placement plan                (pure)
+                          a floor and a roof that hangs off it, biomes, lava at one
+                          level, iron, diamond clusters -- Part M
+    mineshaft.{c,h}       the shaft's shape, the player's placement rule, and the   (pure)
+                          far end a crossing builds and levels -- Part M
 *   datadir.{c,h}         /sd/synthminer: adopting old data into it (D-80),
 *                         renaming the saves and retiring CraftMiner (D-91, D-92) (pure)
 *   chunk.{c,h}           chunk_t, the ring store, world_block/set/state
@@ -1853,10 +1855,11 @@ types the code:
 
 ## Part M: the Deep Mine, and the mine shaft
 
-Added 2026-10-10 by the user, **built 2026-10-11** (F-150). The open questions at
-the end are still open deliberately: every number in this part is provisional and
-tuned after playtesting, and the code says so where it uses them rather than
-picking an answer for the user.
+Added 2026-10-10 by the user, **built 2026-10-11** (F-150) and **rebuilt once** on
+2026-10-12, from what the user saw on the device (D-154, F-154). The open questions at
+the end are still open deliberately: every number in this part is provisional and tuned
+after playtesting, and the code says so where it uses them rather than picking an answer
+for the user.
 
 **The change in one line:** the overworld has no hostile mobs. Danger lives in a
 second dimension, the **Deep Mine**, reached through a **mine shaft** you build.
@@ -1880,48 +1883,108 @@ this section.
 
 ### What the Deep Mine is
 
-- **A covered ceiling of bedrock** and essentially one big cave: the playable
-  volume is open, with the stone above it sealed. The ceiling is **per column**
-  (`deepmine_ceiling_y()`), not one flat height, and the generator fills with the
-  same function the check asks -- two answers to "is this the roof" would be the
-  difference between a cave and a hole in it.
-- **Two surfaces, read once per grid square rather than once per column.** That is
-  the whole difference between a plane and a cave: a smooth per-column floor puts
-  every column one or two blocks from its neighbour, so nothing ever reads as a
-  wall. A plateau per square is what makes walls, and the two grids are different
-  sizes (floor 24, roof 12), so the height of the room changes as you walk through
-  it -- measured over 144 chunks: floor y 6..12, roof y 26..43, 14 to 37 open
-  cells, 382 walls between squares.
-- **The floor span is a walkability number, not a cosmetic one.** The jump apex is
-  1.25 blocks and `step_up` is 0 (`player.h`), so a step of two is a wall the
-  player can only go around. A span of 15 put every square about seven blocks from
-  its neighbour and left **12.7% of the cave reachable from one column**: not a
-  cave you walk through, a stack of rooms you cannot get out of. A span of 6 keeps
-  the walls (one column in 96 still steps two or more) and leaves **95.3% walkable
-  from a single starting column**. `DM_FLOOR_GRID` 24 is the largest grid that
-  keeps both, and it is the number the check measures rather than the one a
-  comment asserts.
-- **A shaft stands on a pad the generator flattened for it** (D-151): the 5x5
-  around its spot, level at the height its own square would have had anyway. A
-  floor that changes per column almost never gives a flat 3x3 -- one candidate
-  square in 26000 did -- so without the pad the generator was stamping frames into
-  rock. The pad is part of the terrain, not a decoration painted on afterwards,
-  and it is still a pure function of position (Part T): `deepmine_is_pad()` is one
-  answer the generator, the placement rule and the check all share.
-- **Normal stone only.** No nether blocks, no nether wart, no glowstone, no
-  obsidian -- no "nether" anything. The comparison to the Nether is about the
-  **shape** (sealed ceiling, no sky, one cave), not the material.
-- **Occasional patches of lava.**
-- **Richer in iron** than the overworld, and **occasional clusters of diamond**.
-- **No sun and no moon.** Illumination is global: a constant, not a sky light
-  that floods and decays.
-- **The ground is the first solid under the open band, not the highest solid in
-  the column.** In the overworld those are the same thing; in a sealed cave the
-  highest solid is the bedrock roof, so `world_ground()` has to answer the
-  question per dimension (F-151). Reading the column from below does not work
-  either, because the floor is solid from y 0 up.
-- **Hostile mobs live here** -- zombies and skeletons for now, the rest
-  undecided (D-137).
+The brief is the user's, and it is a shape brief, not a material brief (2026-10-12):
+*"more rough on a macro level... Cliffs, sharp drops... a little more claustrophobic.
+Yes, some huge open spaces, but also some areas where the floor meets the ceiling."*
+The reference is the Nether's **terrain**, and the first version of the generator
+produced what the user called "an unfinished overworld terrain generation". What it
+produces now is a shell.
+
+- **A covered ceiling of bedrock** and essentially one big cave: the playable volume
+  is open, with the stone above it sealed. The ceiling is **per column**
+  (`deepmine_ceiling_y()`), not one flat height, and the generator fills with the same
+  function the check asks -- two answers to "is this the roof" would be the difference
+  between a cave and a hole in it.
+- **THE ROOF IS NOT A SECOND SURFACE, IT IS A DISTANCE.** The first version gave the
+  floor and the roof each its own broad field and let them wander independently, and
+  the ceiling never followed the ground: a cave with no shape. `dm_column()` answers the
+  floor first and then adds **the room** to it -- a subtractive field of its own
+  (`DM_ROOM_SCALE` 70) taken from the biome's `room_base`, where a `room_relief` bigger
+  than the `room_base` means the field can take more height than there is and the roof
+  lands **on** the floor. That column is solid rock: a wall of the cave you walk around,
+  which is the claustrophobia, and the thing a mine is for digging through.
+- **ONE ANSWER PER COLUMN, five questions.** Floor, roof, lava top, standing cell and
+  biome all come out of the same `dm_column()`, and the four public functions are one
+  line each. Computing them separately is how the surfaces, the lakes and the ore ended
+  up disagreeing about which place a column is in -- and it is the expensive way, because
+  the fields are the cost.
+- **THE FLOOR IS BLENDED BETWEEN BIOMES AND THE ROOM IS NOT.** The floor is what you
+  walk on, so its height has to be continuous across a biome border or every border is a
+  cliff you cannot climb. The roof is what you look up at: a step in it is a rock face,
+  and biome borders are the district lines a cave system has. The floor's numbers are
+  close together (8-12) so the blend barely moves them; the room's are not (9-26), so a
+  blend would have cancelled the whole point of the claustrophobic biome.
+- **Two terms per surface, read once per grid SQUARE rather than once per column.** A
+  smooth per-column noise puts every column one or two blocks from its neighbour, so
+  nothing ever reads as a wall -- exactly the "random one block steps" the user
+  complained about. The **broad field** (`DM_BROAD_SCALE` 120, two octaves) is the only
+  term that can make a hill; the **terrace** is the cliff: a plateau per
+  `DM_WALL_GRID` 16 square stepping up to `DM_WALL_SPAN`-1 = 3 blocks at its border, and
+  a second, finer terrace on the roof (`DM_CEIL_GRID` 12 / `DM_CEIL_SPAN` 4) so the room
+  height changes as you walk through one biome. Measured over 144 chunks: floor y 10..22,
+  roof y 18..41, 13 distinct floors, 24 distinct roofs, and **1919 of 4404 terrace seams
+  (43.6%) a step of two blocks or more**.
+- **GOING DOWN IS FREE; CLIMBING MORE THAN ONE BLOCK IS NOT.** The jump apex is 1.25
+  blocks and `step_up` is 0 (`player.h`), so a two-block **climb** is a wall you can only
+  go around -- a two-block **drop** is a cliff you can jump off, and a cave with cliffs is
+  still one cave. The walkability flood fill is directional for exactly that reason, and
+  it is the number that decides the terrace numbers: **34658 of 36194 walkable columns
+  reachable from one column, 95.8%**. A span of 5 with the same relief collapses it to
+  0-88% across three seeds: the cave becomes a stack of rooms you cannot get out of.
+- **Four biomes, chosen from four slow fields, not from the terrain** -- a biome that
+  followed the terrain would put the same place on every dip. Scales 80-95 blocks,
+  measured: a 2-octave value-noise field has a sample-dependent mean, and at 170-300
+  blocks that swing is 0.27-0.73 over a 192x192 window, so a fixed edge is a dice roll
+  and a biome either never appears or takes half the map.
+
+  | | floor base / relief | room base / relief | iron | coal | diamond |
+  |---|---|---|---|---|---|
+  | Cavern | 10 / 10 | 24 / 16 | 0.34 | 0.30 | 0.05 |
+  | Hills | 12 / 16 | 26 / 18 | 0.30 | 0.26 | 0.04 |
+  | LavaSea | 8 / 6 | 18 / 12 | 0.40 | 0.20 | 0.08 |
+  | LowHall | 12 / 8 | **9 / 12** | 0.36 | 0.34 | 0.03 |
+
+  LowHall's relief is bigger than its base on purpose: that is the biome whose roof
+  lands on its floor. Measured over 512x512 on three seeds: Cavern 40-58%, Hills 6-24%,
+  LavaSea 6-13%, LowHall 20-38%.
+- **THE ROOM, binned** -- because min and max cannot tell a cave that is mostly low from
+  a cave that is mostly tall. Over the 144-chunk sample: **35.5% of columns have 18 or
+  more open cells** (the huge halls), **47.3% have 5-17**, **15.4% have 1-4** (the
+  squeeze), **1.8% are solid rock**. Over 512x512 on three seeds, with 14 as the hall
+  line: 28-41% / 35-41% / 16-26% / 4-7%.
+- **THE LAVA IS ONE LEVEL for the whole dimension** (`DM_LAVA_LEVEL` 12), exactly as the
+  overworld's sea has one `CH_SEA_LEVEL`. That is the whole of why it behaves: fill every
+  column whose floor lies under the level, up to the level, and the surface comes out
+  flat, the shore comes out where the ground rises, and the lake is walled by its own
+  basin -- every cell a source standing on rock or on its own fluid, so
+  `fluid_unsettled()` reports **0 unsettled cells the moment the cave is generated** and
+  only a pickaxe starts a pour. What the rolled per-cell blobs the first version used
+  produced was lava standing on floors it was not connected to. A biome is a lava sea
+  because its `floor_base` sits **below** the one level (8), not because it has its own
+  level: a level per biome would leak at every border where a dry biome's ground sits
+  lower than a wet one's. 3.1% of columns in the sample, 4.8-6.9% over 512x512.
+- **Normal stone only.** No nether blocks, no nether wart, no glowstone, no obsidian --
+  no "nether" anything. The comparison to the Nether is about the **shape** (sealed
+  ceiling, no sky, one cave), not the material.
+- **Richer in iron** than the overworld, and **occasional clusters of diamond**: 2.4%
+  iron and 0.06% diamond of the rock in the sample, against the overworld's 0.8% and
+  none on the same sample. Ore is the same `worldgen_vein_at()` shape with each biome's
+  odds, and the biome's discrete answer -- the same one its lava and its roof came from.
+- **No sun and no moon.** Illumination is global: a constant (`DM_SKY_LIGHT` 12), not a
+  sky light that floods and decays. Block light still floods, because a torch is what
+  makes a patch brighter than the rest of the cave.
+- **The ground is the first solid under the open band, not the highest solid in the
+  column.** In the overworld those are the same thing; in a sealed cave the highest solid
+  is the bedrock roof, so `world_ground()` answers the question per dimension (F-151).
+  Reading the column from below does not work either, because the floor is solid from y 0
+  up. Measured over the resident ring: **44690 columns read exactly the generator's floor
+  height**, and the 1134 solid-rock columns are skipped rather than tested, because a
+  column with its roof on its floor has no ground to stand on.
+- **Hostile mobs live here** -- zombies and skeletons for now, the rest undecided
+  (D-137). They are generated with the terrain and do not come back (D-146), and they are
+  **figures**: `beast.c` has an `upright` shape (torso stood on end, two legs and two
+  arms, head on top) because the quadruped numbers gave a 1.8-tall humanoid a zero-length
+  body and left "a few small floating squares". A pack never stands on a lava lake.
 
 ### The shaft
 
@@ -1932,28 +1995,56 @@ this section.
 | Height | Trusses connect the columns **at height 3**, so the middle is open and the player can step into it. |
 | Trigger | Standing in the **centre cell** teleports to the same column in the other dimension. |
 
-Three things follow immediately:
+Six things follow immediately:
 
 - **Placement writes the frame through `world_set`, not into the plane directly**
   -- the same argument as D-136's sapling: the light flood, the mesher and the
   save all have to hear about it, and it must refuse outright if a chunk it needs
   is not resident, because an absent chunk reads as the barrier (D-14) and half a
   frame at the edge of the ring would never come back.
-- **Both ends have to stand on solid ground.** In the overworld that is a
-  placement rule: refuse unless the centre cell has a floor and the four columns
-  have ground under them. In the Deep Mine it is a generator rule: the shaft is
-  generated with the terrain, on that column's floor. Which is exactly why the
-  height is free -- the two ends are not at the same y, and cannot be.
-- **The far end is built the first time a column is crossed** (D-150). The pairing
-  is by column, so a shaft only works in both directions if that column has one in
-  each dimension -- and the generator cannot know which column the player chose,
-  because a generator that remembered what the player did would have to read a
-  neighbouring chunk (Part T). So the crossing opens the far end with the same
-  shape and the same writer as the player's placement, `mineshaft_open_at()`, with
-  one rule dropped: the ground under the nine footprint cells. A portal the game
-  opened was not placed by a player who could have picked a better spot. What is
-  not dropped is the rest -- every cell still has to be writable, and a half frame
-  is refused outright.
+- **Both ends have to stand on solid ground, and only one end has a rule for it.**
+  In the overworld that is a placement rule: refuse unless the centre cell has a
+  floor and the four columns have ground under them. In the Deep Mine nothing is
+  placed and nothing is generated, so the ground a far end stands on is made when
+  the crossing arrives (the next two bullets). Which is exactly why the height is
+  free -- the two ends are not at the same y, and cannot be.
+- **THE GENERATOR MAKES NO SHAFTS** (the user, 2026-10-12, D-154). It used to stamp
+  one per coarse grid square, and what the player saw was shafts "randomly appearing
+  that I didn't place" while walking into unexplored terrain. Sixteen ingots is what
+  a shaft costs; a cave full of free ones is not a mine, it is a lottery. So the only
+  shafts in either dimension are the ones somebody placed and the far ends of the
+  columns those players stood in. `SHAFT_GRID`, `mineshaft_is_candidate()` and
+  `mineshaft_shape()` are gone, and with them the pad the generator used to flatten.
+- **The far end is built the first time a column is crossed** (D-150), **and it levels
+  its own ground first** (D-154). The pairing is by column, so a shaft only works in
+  both directions if that column has one in each dimension -- and the generator cannot
+  know which column the player chose, because a generator that remembered what the
+  player did would have to read a neighbouring chunk (Part T). So the crossing opens
+  the far end with the same shape and the same writer as the player's placement,
+  `mineshaft_open_at()`, with one rule dropped -- the ground under the nine footprint
+  cells -- and one added: `mineshaft_flatten()` first, in the Deep Mine only. The
+  user's allowance: *"it's OK to flatten the terrain a bit (like in a 5x5 grid centered
+  on the mineshaft center) after natural terrain generation."* So the 5x5 gets a solid
+  slab at `mineshaft_pad_y()` and three cells of clear air above it, every write
+  through `world_set`, and the bedrock roof is never touched. A player's own placement
+  never flattens anything: carving their terrain behind their back is the same surprise
+  the free shafts were.
+- **THE PAD HEIGHT IS A COLUMN FUNCTION, for the same reason the floor is** (D-142): the
+  crossing decides where to put the player while the store is empty. Three answers, in
+  order -- the **lowest roof over the 5x5** minus the frame's four cells, because a post
+  under a column whose roof comes lower is a post inside bedrock; the **lava over a 9x9**
+  rather than the 5x5, because lava flows three cells (`fluid.c`) and a lake just outside
+  the footprint would run into the room being carved; and the **middle column's own
+  floor**, so the frame looks built on the ground it stands on. When the roof is lower
+  than the ground wants, the roof wins and the pad digs down into the rock -- which is
+  what a shaft does, and what it cannot do is land in a lake, because `DM_CEIL_MIN` sits
+  above `DM_LAVA_LEVEL + DM_ROOM_MIN`. Measured over the sample's 36194 standable
+  columns: **9216 hold a frame, pad y 13..20, 2685 of them dug down under their own
+  floor**; 8 frames built on arrival, all 16 cells read back whole.
+- **The arrival cell is the centre of that frame**, `mineshaft_pad_y() + 1`, and not the
+  cave floor. Answering with `deepmine_ground_y()` put the player at the terrain height
+  while the frame stood one or two cells elsewhere, which is what the user saw as
+  "spawning on top of the Deep Mine instead of inside the mineshaft".
 
 ### The switch
 
@@ -2067,8 +2158,9 @@ stand in (D-123) -- a pack spread over two chunks is not a pack, it is two
 records. The roll is from the world's hash, not `rand()`, so a replay reproduces
 the same population and `worldcheck` can assert the share across a fixed sample.
 It needs one generator-local test: a pack wants a walkable cell on that chunk's
-floor, which is a test inside the chunk and so does not break the determinism
-rules.
+floor, and not a cell in the middle of a lava lake (F-154 -- the first version put
+members on lakes, which is a mob standing on a fluid with nothing under it). Both are
+tests inside the chunk, so neither breaks the determinism rules.
 
 The pool is shared with the overworld's animals, but only one dimension is
 resident at a time -- the switch releases everything -- so in practice it is a
@@ -2152,11 +2244,17 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   disassembly station; the recipe book's stations are the table, the furnace and
   the bench. Either the shaft's recipe goes on the table, or the bench gains a
   craft mode. The user said "crafting bench", and the word needs pinning.
-- **The bedrock ceiling's height and the playable band** inside `CH_H` 64. The
-  overworld's profile is sea level 24 with about 20 blocks of stone below it; the
-  Deep Mine needs its own numbers, and they have to fit one column.
-- **What "global illumination" is as a number**, and whether the sky component of
-  the light plane is a constant floor or a full replacement.
+- **The ceiling's height and the playable band** inside `CH_H` 64 are answered
+  provisionally (F-154): floor 8..30, roof 18..44, lava at 12, so the deepest cave
+  floor still has 10 cells of room under the lowest roof. They are provisional in the
+  user's own words -- *"We will tune all those numbers later"* -- and the number that
+  has to be re-measured after playtesting is how tall a room has to be before a
+  corridor stops feeling like a squeeze.
+- **What "global illumination" is as a number** is answered: `DM_SKY_LIGHT` 12, a
+  constant on open cells rather than a flood, with block light still flooding. What is
+  still open is whether 12 is too bright for a cave -- the directional light down there
+  is already cut to 0.18 (`DEEP_DIR_LIGHT`, `main.c`) because 0.45 shades every face as
+  if a sun were overhead.
 - **The generator's mob rate and pack size** -- decided provisionally at **10-15%
   of chunks holding a pack, 2-3 in a pack** (D-147), to be adjusted after
   playtesting. What is not decided is whether the share should change with depth,
@@ -2165,8 +2263,13 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   slow sweep is the only shape available to it.
 - **Which items a zombie or a skeleton drops**, as long as none of them is the
   only source of anything (D-144).
-- **What happens when the mapped column has no floor** in the Deep Mine -- refuse
-  the teleport, or carve a chamber.
+- **What happens when the mapped column has no room** is answered (D-154): the pad
+  digs down into the rock, because a shaft that has to dig is still a shaft. Only a
+  column whose roof is too low for a frame at all answers -1, and then the far end is
+  simply not built -- the crossing has already happened, so the player is on the far
+  side with no way back at that column, which is what the flight recorder's
+  "the far end had no room for its frame" line is for. Whether that should instead
+  refuse the crossing is the user's to decide.
 - **Whether a shaft can be broken**, and what the far end does when one end is
   destroyed.
 - **The Far Lands under 1:1 mapping** -- a shaft at x = -2048 maps to a Far Lands
@@ -2306,12 +2409,12 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 | 58 | **Water you can actually see through** | done, **default on** | 2026-09-29, the user, after being told partial heights were the expensive part: *"Currently we have fake transparency for water (like leaves). How much actual FPS impact would it be to have actual water transparency?"* The estimate said 5-20%, scaling with how much water fills the view. They asked for it behind a key so the two could be compared in one place, played it, and reported *"The new transparent water looked much better and framerates seems comparable."* Now a Graphics setting, **on by default and on for upgrades too** (D-103). `SE_TRI_BLEND` in the engine (2.5): a 50/50 RGB565 mix, and -- the part that matters -- blended triangles sorted after every opaque one and far-to-near among themselves, which cost **one bit of the existing depth key and no extra pass**, because a positive float never sets its sign bit and the top bit was always spare. D-86 is amended a second time: water is no longer only its surface's cut-out, it is a real mix, and `water_blend.png` is the same texture without its checkerboard. **The frame-rate claim is the user's, not the trace's**: their A/B in one spot is controlled and the trace was not, because nothing recorded which mode was running -- which is now fixed (`trace_event`, F-119). |
 | 59 | **Wood and flowers that come back** | done | 2026-09-30, the user, in one message: *"Logs (trees) and yellow flowers need to be renewable resources. So cutting trees should drop one or two seedlings that can be planted to grow into a new tree. And throwing compost onto the ground should grow a 3x3 grid of yellow flowers."* **Which closes the last hole in the economy.** Stone, ore, crops, wool, meat, milk and fish all come back; WOOD did not -- there is no recipe anywhere that makes a log, so a player who cleared the forest round their house had cleared it for good. Yellow flowers were the same and worse: a pork sausage needs one for its spice, so picking the meadow stopped the sausage maker. **Two permanent block ids** (49, 50) and **one new module** (`world/tree.{c,h}`). Felling leaves **one or two seedlings PER TREE, not per block** -- forty saplings off one oak would make the first tree the last one anybody had to plant -- rolled from the world's own hash so a replay reproduces a woodpile, and **of the species felled**, because a birch wood that grew back oak is not the wood anybody planted. **A SAPLING IS A CROP** and that is why it cost almost nothing: BF_CROP gives it stages in the state byte, the chunk's shared slow clock, the phase bits that stop a whole chunk ripening on one instant, the catch-up when a chunk returns after an hour away, and the compost that pushes any plant on a stage. None of that machinery had to learn the word sapling. The ONE difference is what happens at the last stage -- a wheat plant stops and waits to be cut, this turns into a tree -- and it is a **two-row table** in tree.c and not a block flag, because `flags2` has no bits left and because a flag would say only THAT a block is a sapling where every caller wants to know WHICH tree. One in-game day, which is wheat's; it plants on **grass or dirt and not a tilled field**, the only seed in the game that does, so it gets a refusal of its own rather than sending the player to look for a hoe. **The tree is the generator's own tree** (D-136): the canopy loop came out of `place_tree` into `worldgen_tree_shape`, emitted cell by cell to two writers that could not be less alike -- the generator stamps into ONE chunk on the core-1 worker and drops whatever falls outside, which is what makes a tree seamless at a border, while a sapling writes through `world_set` on the main task so the light flood, the mesher and the save all hear about it. One shape in the codebase instead of two that agree until somebody edits one. It takes the world seed, so a planted tree is the tree that spot would have grown. **A sapling with a ceiling over it waits** rather than growing half a tree, and the sweep asks again every pass and not only when a stage is owed -- without that, one planted in the wrong place would sit at its last stage for ever with nothing ever looking at it again. **Compost on bare grass raises a 3x3 of yellow flowers**, doing what it can: cells that are not grass or are not clear are skipped rather than refusing the lot, and it only refuses, and says so, when all nine are already done. Host-checked: which sapling comes off which trunk, 400 rolls of the one-or-two (210 singles, 190 pairs), planting refused on farmland and on stone, a seedling grown into a trunk-and-canopy that is GROWN and not PLACED so it fells like any other, the ceiling case both ways, and the flower bed on grass and on nothing else. Not renewable yet: **red flowers**, which the user did not ask for -- nothing is blocked, since the sausage maker takes either colour. |
 | 60 | **Grass that spreads, and grass that dies** | todo | 2026-10-01, the user asked whether placing a dirt block regrows the grass top and whether grass under a placed block goes away. **Both are no.** The only grass-to-dirt rule in the game runs once at GENERATION time and only for Far Lands columns (`farlands.c`, "id[y] == BLK_GRASS && id[y+1] != BLK_AIR"); nothing touches it in the live world. So a floor laid on a meadow keeps its green edges, and dirt is dirt for ever. **THE TWO HALVES SHIP TOGETHER, and that is the whole of why this is a step rather than a three-line fix.** Grass that dies under a block without grass that spreads back is a ratchet: every house, path and tilled field converts grass to dirt permanently and the world only ever gets browner, which is worse than the cosmetic bug it fixes. Death is a rule at the moment of placing (one test in `world_set`). Spreading needs a SLOW SWEEP, and the shape for it already exists -- `crops_tick()` visits one chunk slot a tick and walks a marked chunk column by column from the height summary (world/crops.h), which is exactly the budget a grass pass wants. The user: *"Let's leave the grass thing for another time, just make sure it's on our todo list."* |
-| **61+** | **The Deep Mine (Part M)** -- added 2026-10-10, **built 2026-10-11 apart from step 65's combat half** | | |
-| 61 | **The second dimension**: per-dimension region directories, `level.smw`'s dimension and spawn fields, and the Deep Mine generator (sealed bedrock ceiling, one cave, stone, lava, richer iron, diamond clusters) | done | Part M, **built 2026-10-11** (F-150). `world/dimension.{c,h}` is the current dimension as ONE global, because the ring is keyed by `(cx, cz)` alone and cannot hold both worlds at once; `world/deepmine.{c,h}` is the generator. Measured over 144 chunks: floor y 6..12 and roof y 26..43, both read once per grid square rather than per column, **2.5% iron against the overworld's 0.8% on the same sample**, 0.06% diamond where the overworld has none, 227 lava cells, and **95.3% of the cave walkable from a single column** (F-151). `level.smw` gained one additive tag (`dimension`), so no migration and no major version (D-32), and the regions split by directory (D-143) with the overworld keeping the flat one -- a world already on the card still reads. |
+| **61+** | **The Deep Mine (Part M)** -- added 2026-10-10, **built 2026-10-11 apart from step 65's combat half**, **terrain and shafts rebuilt 2026-10-12** (D-154, F-154) | | |
+| 61 | **The second dimension**: per-dimension region directories, `level.smw`'s dimension and spawn fields, and the Deep Mine generator (sealed bedrock ceiling, one cave, stone, lava, richer iron, diamond clusters) | done | Part M, **built 2026-10-11, its terrain rebuilt 2026-10-12** (F-150, F-154). `world/dimension.{c,h}` is the current dimension as ONE global, because the ring is keyed by `(cx, cz)` alone and cannot hold both worlds at once; `world/deepmine.{c,h}` is the generator. `level.smw` gained one additive tag (`dimension`), so no migration and no major version (D-32), and the regions split by directory (D-143) with the overworld keeping the flat one -- a world already on the card still reads. **The shape was rebuilt once**: the cave is a shell -- a floor, and a roof that hangs off it by a room height that varies -- with four biomes, terraces for the cliffs, and one lava level for the whole dimension. Measured over 144 chunks: floor y 10..22, roof y 18..41, room -1..22 cells, 13 distinct floors and 24 distinct roofs, **35.5% of the columns a hall of 18 or more open cells, 15.4% a squeeze of 1-4, 1.8% solid rock**, 1919 of 4404 terrace seams a step of two blocks or more, **2.4% iron against the overworld's 0.8% on the same sample** and 0.06% diamond where the overworld has none, 1800 lava cells, and **95.8% of the cave walkable from one column** -- falling free, climbing capped at one block. |
 | 62 | **Light and sky in the Deep Mine**: global illumination, no sun or moon, `voxel_sky`/`backdrop`/`horizon` suppressed, `daytime` frozen | done, **device test pending** | Part M, built 2026-10-11 (F-150). Global illumination as a number is `DM_SKY_LIGHT` 12, and it is a **constant on open cells rather than a flood**: the column pass and the sky half of the border join are skipped, and block light still floods, because a torch is what makes a patch brighter than the rest of the cave -- lighting is for seeing, not for safety (D-139). `daytime_deep_mine()` is the frozen pose, straight up, because a sealed cave has no horizon to point at. The three render-side suppressions are one guard each on `dimension_has_sky()`. **The picture itself is still unverified on the device** -- this environment has no riscv32-esp-elf toolchain, so `make check` is green and the bench flight is the outstanding half. |
-| 63 | **The mine shaft**: the recipe, the 3x3 frame with four corner columns and trusses at height 3, placement through `world_set`, the centre cell as the trigger, pairing by column | done | Part M, **built 2026-10-11** (F-150). `world/mineshaft.{c,h}`: 12 posts and 4 braces, and 16 ingots in -- the recipe and the shape are the same number, which is why the shape is exactly this. Two writers, one shape, on the same argument as `worldgen_tree_shape`: the generator stamps into one chunk and drops what falls outside, a player's goes through `world_set`. **`item_block()` answers `BLK_AIR` for it**, so `player.c` needed a branch of its own -- a shaft places a shape, not a block -- and the cell it stands ON is the one the crosshair struck, not the empty cell in front of its face. The trigger is a shape test seen from the middle, so it needs no record and works in either dimension. **The station is still the user's open question**: the recipe row names the crafting table because the game's bench is the disassembly station. **Two things added on 2026-10-11** (F-151): the generator stamps only on the 5x5 pad it flattened for its square (D-151), and the far end of a crossing is built on first use by `mineshaft_open_at()` (D-150) -- 7 generated shafts in the sample, 1 on a chunk border, all read back whole, and a far-end test on a fresh column that has no pad.
+| 63 | **The mine shaft**: the recipe, the 3x3 frame with four corner columns and trusses at height 3, placement through `world_set`, the centre cell as the trigger, pairing by column | done | Part M, **built 2026-10-11, reworked 2026-10-12** (F-150, F-154). `world/mineshaft.{c,h}`: 12 posts and 4 braces, and 16 ingots in -- the recipe and the shape are the same number, which is why the shape is exactly this. **`item_block()` answers `BLK_AIR` for it**, so `player.c` needed a branch of its own -- a shaft places a shape, not a block -- and the cell it stands ON is the one the crosshair struck, not the empty cell in front of its face. The trigger is a shape test seen from the middle, so it needs no record and works in either dimension. **The station is still the user's open question**: the recipe row names the crafting table because the game's bench is the disassembly station. **What was removed on 2026-10-12: the generated shaft.** The generator stamped one per coarse grid square, and what the player met was shafts "randomly appearing that I didn't place" -- so `SHAFT_GRID`, `mineshaft_is_candidate()` and `mineshaft_shape()` are gone, because a shaft costs sixteen ingots and a cave full of free ones is a lottery (D-154). **What replaced the generator's pad**: `mineshaft_flatten()`, on arrival only and in the Deep Mine only -- a 5x5 slab at `mineshaft_pad_y()` plus three cells of clear air, the user's allowance to level the terrain after generation. 9216 of the sample's columns hold a frame, pad y 13..20, 2685 of them dug down under their own floor; 8 frames built on arrival, all 16 cells read back whole. |
 | 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | done | Part M, **built 2026-10-11** (F-150). `world/dimension_switch.{c,h}` does steps 1-4 and 6 and **refuses rather than clears**, Part P's rule: a chunk the card never took is something the player made, and a switch that dropped it is data loss. Step 5 is in `main.c` and cannot be anywhere else, because the entry sequence is the app's -- `check_crossing()` hands the nine chunks to `start_loading()` with physics frozen. **Step 2 is a drain, not a gate** (F-151): a live streamer is never quiet, and a ring during play is dirty almost everywhere, so requiring an idle worker refused on nearly every crossing. A queue is a wait, not a refusal; what genuinely cannot be saved is a chunk whose planes are still the worker's, and draining is what separates the two. **Two things the design did not have**: the trigger has to re-arm, because the pairing is stateless and the cell you arrive in is a trigger too, so without one flag the player bounces back for ever; and a crossing during a replay is refused until step 48 records them. **The arrival cell is a real position** (F-151): the crossing records the frame's centre, and settling has to use it -- a crossing that let `world_ground()` re-derive the height put the player on top of the world at y 64, because the highest solid block in a sealed cave is the roof. |
-| 65 | **Zombies and skeletons**, in the Deep Mine only | partly done -- **population only** | Built 2026-10-11 (F-150): two rows in `MOBS[]`, `PACKS[]` (60 zombie / 40 skeleton), one roll per chunk from the world's hash, a pack inside one chunk, and nothing that comes back (D-146). Measured over 10000 chunks: **1226 packs, 12.3% against the design's 12%**, 3066 members, 0.31 a chunk; a Far ring holds 71 of the pool's 128, so `s_refused` reads 0 -- the check that says whether the numbers are right. **Combat and pathing are not built**: `hostile` is a column of the row that nothing reads yet. Drops are empty on purpose (D-144). |
+| 65 | **Zombies and skeletons**, in the Deep Mine only | partly done -- **population only** | Built 2026-10-11 (F-150): two rows in `MOBS[]`, `PACKS[]` (60 zombie / 40 skeleton), one roll per chunk from the world's hash, a pack inside one chunk, and nothing that comes back (D-146). Measured over 10000 chunks: **1226 packs, 12.3% against the design's 12%**, 3066 members, 0.31 a chunk; a Far ring holds 61 of the pool's 128, 40 zombie and 21 skeleton, so `s_refused` reads 0 -- the check that says whether the numbers are right. **Fixed 2026-10-12** (F-154): both kinds were drawn with the quadruped numbers, which gave a 1.8-tall humanoid a zero-length body and left what the user called "a few small floating squares" -- `beast.c` has an `upright` shape now (torso stood on end, two legs, two arms, head on top), and a pack is never placed on a lava lake. **Combat and pathing are not built**: `hostile` is a column of the row that nothing reads yet. Drops are empty on purpose (D-144). |
 | 66 | **The optional external VFD** (from synthracer): the item in hand in a world, the game's name in a menu, powered down on exit | done, **device test pending** | 2026-10-12, the user: *"Port that over here ... The VFD should display the name of the current item held in hand (or be blank otherwise). In the Menu, it should display "SynthMiner". Make sure the VFD is powered off when exiting the app."* `main/vfd.{c,h}`, D-152 and F-152. Costs 9.7 KiB of text and does nothing at all on a badge that has no tube. **Unverified here**: the probe, the scrolled names and the power-down all need a device with the display fitted. |
 | 67 | **Saving a world is a round a frame, and a refusal is on the screen** | done, **device test pending** | 2026-10-12 (D-153, F-153). `save_pass(&p, max_ask)` bounds a round and reports `saved` from the worker's own counter; `saving_step()` runs **one round per frame at 8 writes in flight**, so the bar fills as the chunks go out; `save_dirty_chunks()` stops after a round that saved nothing; `draw_saving()` prints `loading.saving_refused` under the bar and holds the screen 2 s when it has to say it. The measurement behind it: **~520 ms per refused chunk** (the loader's 5 tries + 372 ms of backoff + this file's 100 ms pace) x 49 chunks x 8 sweeps = **200 s of a screen drawn once**. **The other half of this is not in this repo**: the badge is still running graceloader 2.6.x, whose disk layer retries `ESP_ERR_NOT_SUPPORTED` five times instead of bouncing the buffer (F-147, F-148) -- `cd ../tanmatsu-graceloader && make install`. This is the hardening around that, not the fix for it. |
 
@@ -7927,7 +8030,9 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   first version of `check_mineshaft()` was testing a shaft that does not exist. It now
   calls `mineshaft_candidate_spot()`, and the resident area was widened to chunks -4..5 so
   a shaft that straddles a border is guaranteed to be in the sample: 10 shafts, 1 on a
-  border, all 16 cells read back whole.
+  border, all 16 cells read back whole. **(Superseded by D-154/F-154 the next day: the
+  generator makes no shafts at all, so neither function exists and the check samples
+  crossings instead.)**
 
   **The numbers, measured rather than asserted.** 144 chunks: floor y 6..26, ceiling
   sealed at 44, 2.4% iron against the overworld's 0.8% on the same sample, 0.07% diamond
@@ -7956,16 +8061,25 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 
 - **D-151** 2026-10-11, **the user**: **flattening the terrain around a generated
   shaft is allowed** -- a 5x5 grid centred on the shaft, after natural terrain
-  generation. **How it is implemented matters more than the permission.** The pad is
-  computed as the terrain is read, as a pure function of position, rather than as an
-  edit painted on top of a generated chunk: `deepmine_is_pad()` is one answer that the
-  generator, the placement rule and the check all share, so they cannot disagree about
-  whether a column is pad. It exists because a per-column floor almost never gives a
-  flat 3x3 -- one candidate square in 26000 did -- and a post inside its own floor is
-  a post with nothing under it, the same thing the player's placement refuses.
+  generation. **(Superseded by D-154: there is no generated shaft, so nothing is
+  flattened while the terrain is being generated. The permission stands and is what
+  `mineshaft_flatten()` uses today, on arrival; `deepmine_is_pad()` is gone, and its
+  job -- answering the ground a frame stands on as a pure function of the column --
+  is now `mineshaft_pad_y()`.)** **How it is implemented matters more than the
+  permission.** The pad is computed as the terrain is read, as a pure function of
+  position, rather than as an edit painted on top of a generated chunk:
+  `deepmine_is_pad()` is one answer that the generator, the placement rule and the
+  check all share, so they cannot disagree about whether a column is pad. It exists
+  because a per-column floor almost never gives a flat 3x3 -- one candidate square in
+  26000 did -- and a post inside its own floor is a post with nothing under it, the
+  same thing the player's placement refuses.
 
 - **F-151** 2026-10-11, measured and fixed: **the six things the user found on the
-  device, and the two numbers the design did not have.**
+  device, and the two numbers the design did not have.** **(Superseded by F-154 for
+  the terrain numbers: the two independent surfaces, `DM_FLOOR_GRID` 24, the
+  candidate-shaft pad and its span-15 walkability figures are what the next day's
+  rework replaced. The drain-not-a-gate, the title-screen dimension, the arrival
+  cell and `world_ground()` findings below all still stand.)**
 
   **The flat Deep Mine was a floor read once per column.** A smooth noise floor puts
   every column one or two blocks from its neighbour, so nothing ever reads as a wall
@@ -8180,6 +8294,147 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   is no device on this machine -- and the number that matters, whether 2.8.0 installed makes the
   0x106 line disappear entirely, is a device question. The frame budget in the same log is poor on
   its own (`hud 12.83`, `rast 37.02`, `rest 33.79`) and is a separate thing.
+
+- **D-154** 2026-10-12, **the user**, from a play session with the Deep Mine on the device:
+  **the cave is a mine, not an unfinished overworld, and a shaft is something you built.**
+  Three rules, all of them from what the player saw rather than from the design.
+  **The shape**: *"the terrain can be more rough on a macro level in the deep mine. Cliffs,
+  sharp drops, etc. Also make it a little more claustophic. This is an underground mine/cave
+  after all. Yes, some huge open spaces, but also some areas where the floor meets the
+  ceiling."* The reference is the Nether's **terrain** -- its shape, not its material, which
+  D-139 already settled as normal stone. What the brief rules out is the first version's
+  profile: roughness at the scale of one block and none at the scale of a hill, lava standing
+  where it was placed, and one room height everywhere. **The shafts**: the generator stops
+  making them -- *"there were multiple mine shafts randomly appearing that i didn't place"*.
+  Sixteen ingots is what a shaft costs, and a cave full of free ones is not a mine, it is a
+  lottery. **The far end may level its ground** (this is D-151's permission, carried over to
+  the crossing): *"it's OK to flatten the terrain a bit (like in a 5x5 grid centered on the
+  mineshaft center) after natural terrain generation."* Every number in Part M stays
+  provisional, on the user's earlier word -- *"We will tune all those numbers later."*
+
+- **F-154** 2026-10-12, measured and fixed: **why the cave read as an unfinished overworld,
+  and the seven things that had to change to make it a mine.**
+
+  **THE CEILING HAS TO HANG OFF THE FLOOR.** The first version gave the floor and the roof a
+  broad field each and let them wander independently. Two fields that do not know about each
+  other cannot say how much room there is between them, so the cave had a floor and a lid and
+  no shape -- which is exactly what "one big room with a bumpy floor" is. `dm_column()`
+  answers the floor first and then adds **the room**: a subtractive field of its own
+  (`DM_ROOM_SCALE` 70) taken from the biome's `room_base`, and where `room_relief` is bigger
+  than `room_base` the field takes more height than there is and the roof lands **on** the
+  floor. That column is solid rock -- a wall of the cave you have to walk around, which is
+  the claustrophobia asked for, in one number, and the thing a mine is for digging through.
+  LowHall is that biome on purpose (room 9 / relief 12).
+
+  **ONE ANSWER PER COLUMN, FIVE QUESTIONS.** Floor, roof, lava top, standing cell and biome
+  all come out of the same `dm_column()`, and the public functions are one line each.
+  Computing them separately is how the surfaces, the lakes and the ore ended up disagreeing
+  about which place a column is in -- and it is the expensive way, because the fields are the
+  cost. `deepmine_ground_y()` still has to be a column function for the crossing's sake
+  (D-142), and now it is the same answer the chunk was filled with rather than a second
+  version of it.
+
+  **THE MICRO ROUGHNESS WAS A DEAD TERM AND THE MACRO ROUGHNESS WAS AT THE WRONG SCALE.**
+  `DM_ROUGH` was a noise read at span 1, which is zero by construction: the term the cliffs
+  were supposed to come from never contributed a single block, and the "random one block
+  steps" the user saw were the smooth floor itself. It is gone. A cliff is the **terrace** --
+  a plateau per `DM_WALL_GRID` 16 square, stepping up to `DM_WALL_SPAN`-1 = 3 blocks at its
+  border -- and a hill is the **broad field**, whose scale went 150 -> 120 so a slope is
+  about 120 blocks rather than a horizon-wide gradient. The roof gets a terrace of its own
+  (`DM_CEIL_GRID` 12 / `DM_CEIL_SPAN` 4) so the room changes height as you walk through one
+  biome. Measured over 144 chunks: 13 distinct floors, 24 distinct roofs, and **1919 of 4404
+  terrace seams (43.6%) a step of two blocks or more**.
+
+  **A STEP IS A WALL ONE WAY, AND THE CHECK DID NOT KNOW THAT.** The jump apex is 1.25 blocks
+  and `step_up` is 0 (`player.h`): a two-block **climb** is a wall you go around, a two-block
+  **drop** is a cliff you jump off, and a cave with cliffs is still one cave. The flood fill
+  treated both as impassable, which pushed the terraces flatter than the design wanted; it is
+  directional now, and with that rule the cave is **34658 of 36194 columns reachable from one
+  column, 95.8%** with the cliffs in it. What the same experiment says about the limit: a
+  terrace span of 5 at the same relief collapses reachability to 0-88% across three seeds --
+  the cave becomes a stack of rooms you cannot get out of. That is the number that decides
+  how rough a floor may be, not taste.
+
+  **A NOISE FIELD HAS A MEAN, AND IT IS NOT THE ONE YOU ASSUMED.** `sm_fbm2` at 170-300
+  blocks has a sample-dependent mean that swings 0.27-0.73 over a 192x192 window, so with
+  fixed edges a biome either never appears or takes half the map -- which is what the sample
+  showed. The four biome scales came down to 80-95 and the edges to 0.43-0.62. Measured over
+  512x512 on three seeds: Cavern 40-58%, Hills 6-24%, LavaSea 6-13%, LowHall 20-38%; in the
+  144-chunk sample 64.8 / 12.0 / 2.8 / 20.4. Biomes come from those fields and never from the
+  terrain, because a biome that followed the terrain would put the same biome on every dip.
+
+  **LAVA IS A LEVEL, NOT A ROLL.** The blobs were a per-column dice, so a cell could be lava
+  with air under it, or lava beside ground it was not connected to: "lava blocks just standing
+  around", and every one of them a source `fluid_unsettled()` wanted to pour. Now there is one
+  level for the whole dimension (`DM_LAVA_LEVEL` 12), exactly as the overworld's sea has one
+  `CH_SEA_LEVEL`: every column whose floor lies under it fills up to it, so the surface comes
+  out flat, the shore comes out where the ground rises, and a lake is walled by its own basin.
+  **0 unsettled cells the moment a chunk is generated**, and only a pickaxe starts a pour. A
+  biome is a lava sea because its `floor_base` (8) sits under that one level, not because it
+  has its own -- a level per biome would leak at every border where a dry biome's ground sits
+  lower than a wet one's. 875 columns of the sample (2.4%), 4.8-6.9% over 512x512.
+
+  **THE FREE SHAFTS WERE A GENERATOR RULE, AND THE RULE IS GONE.** `SHAFT_GRID`,
+  `mineshaft_is_candidate()`, `mineshaft_candidate_spot()` and `mineshaft_shape()` are
+  deleted, and with them `deepmine_is_pad()` and the pad the generator flattened. What
+  replaces them is `mineshaft_flatten()`, called by `mineshaft_open_at()` in the Deep Mine
+  only: a 5x5 slab at `mineshaft_pad_y()` and three cells of clear air above it, every write
+  through `world_set`, the bedrock roof never touched (the pad height is under the lowest roof
+  of the 5x5 by construction, and the bedrock test is the belt on top of that). A player's own
+  placement still never flattens anything -- carving their terrain behind their back is the
+  same surprise the free shafts were. `mineshaft_pad_y()` is the pad's replacement and it is a
+  column function for the crossing's reason: the **lowest roof over the 5x5** minus the
+  frame's four cells, the **lava over a 9x9** (lava flows three cells, so a lake just outside
+  the footprint would run into the room being carved), and the **middle column's own floor**;
+  when the roof is lower than the ground wants the roof wins and the pad digs down, which is
+  what a shaft does. Measured: **9216 of the sample's columns hold a frame, pad y 13..20, 2685
+  of them dug down under their own floor**; 8 frames built on arrival, all 16 cells read back
+  whole.
+
+  **THE ARRIVAL CELL IS THE FRAME'S CENTRE, NOT THE TERRAIN HEIGHT.** `mineshaft_arrival_y()`
+  answered `deepmine_ground_y()` -- the cave floor -- while the frame was being built on a
+  levelled 5x5 one or two cells away, which is what the user saw as "spawning on top of the
+  Deep Mine (Y=64.0) instead of inside the mineshaft". It is `mineshaft_pad_y() + 1` now, in
+  both dimensions the same question: the cell a body stands in at the middle of a frame built
+  on that column's own ground. The far end is stamped on the first tick after the nine chunks
+  arrive, before the player is settled, so they arrive in a shaft and not in an empty 5x5;
+  `CROSS_TRIES` 20 attempts cover a load that left the column at the edge of the ring, and a
+  column that cannot hold a frame at all says so in the flight recorder instead of silently
+  leaving the player on the far side.
+
+  **THE MOBS WERE SQUARES BECAUSE THEY WERE QUADRUPEDS.** `beast.c` had one shape -- a barrel
+  with four legs under it and a head in front -- and a 1.8-tall humanoid in those numbers gets
+  a zero-length body, a zero-length leg, and two eye boxes left standing: "a few small floating
+  squares". An `upright` flag is the second shape (torso stood on end, two legs, two arms, head
+  on top) rather than a second model, because the two kinds share every material, every mesh
+  call and the walk cycle, and the numbers are the collider's: `mob.c` pushes a zombie around in
+  w 0.6 h 1.8, so the figure has to be 1.87 tall or a mob standing in front of you hits nothing.
+  And a pack is no longer placed on a lava lake -- `populate_pack()` asks `deepmine_lava_top()`
+  before it puts a member anywhere.
+
+  **WHAT THE CHECKS HAD TO BE TOLD.** Walls are counted **at terrace seams only**, because a
+  wall that is not a border between two plateaus is the dead term back again; the flood fill is
+  directional; the room is reported as a **histogram** (hall 18+ / 5-17 / 1-4 / solid), because
+  min and max cannot tell a cave that is mostly low from a cave that is mostly tall; and
+  `check_mineshaft()` skips columns with no room, because a column whose roof is on its floor
+  has no ground to stand on and `world_ground()` answers it with the ceiling. Over 44690 columns
+  of the resident ring the ground is exactly the generator's floor height, and the 1134 solid
+  ones are skipped rather than tested.
+
+  **The numbers, measured.** 144 chunks: floor y 10..22, roof y 18..41, room -1..22 cells,
+  1.24 M sealed cells of ceiling, 513701 open, 36194 standable, 670 solid, 1800 lava cells;
+  **35.5% halls of 18 or more, 47.3% of 5-17, 15.4% of 1-4, 1.8% solid rock**; 2.4% iron and
+  0.06% diamond of the rock, against the overworld's 0.8% and none on the same sample; 95.8%
+  walkable. Over 512x512 on three seeds: floor 9..29, roof 18..44, halls 28-41%, mid 35-41%,
+  squeeze 16-26%, solid 4-7.2%, wet 4.8-6.9%, walkability 97%+. Population unchanged: 1226 packs
+  in 10000 chunks (12.3%), 3066 members, 0.31 a chunk. `make worldcheck` and `make build` green.
+
+  **What is still outstanding.** The device test, which is the whole point of this entry: the
+  cave's shape is now asserted by a host check over a fixed sample, and a check cannot say
+  whether a cave *feels* like a cave. Whether the halls and the squeezes read as the user
+  described them, whether a two-block cliff reads as a cliff at badge resolution, and whether
+  the upright figures read as a zombie and a skeleton all need the badge. The mob pool's
+  12.3% and every height in Part M are provisional on the user's word.
 
 ## Verification
 

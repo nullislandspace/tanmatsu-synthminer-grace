@@ -2,17 +2,26 @@
 // =====================================================================
 //  SynthMiner  --  the Deep Mine (see claudeplans/synthminer.md, Part M)
 // ---------------------------------------------------------------------
-//  The second dimension: a sealed cave, one big room, normal stone,
-//  occasional lava, richer iron, occasional clusters of diamond, and no
-//  sky. Nothing here is "nether" -- the comparison to the Nether is
-//  about the SHAPE (sealed ceiling, no sky, one cave), not the material.
+//  The second dimension: a sealed cave, normal stone, lava in its
+//  depressions, richer iron, occasional clusters of diamond, and no sky.
+//  Nothing here is "nether" -- the comparison to the Nether is about the
+//  SHAPE (sealed ceiling, no sky, one cave), not the material.
+//
+//  WHAT IT HAS TO FEEL LIKE (the user, 2026-10-12): *"more rough on a
+//  macro level... Cliffs, sharp drops... a little more claustrophobic.
+//  Yes, some huge open spaces, but also some areas where the floor meets
+//  the ceiling."* A cave that is one flat room with a bumpy floor is an
+//  unfinished overworld, and that is what the first version of this file
+//  produced. What it produces now is a SHELL: a floor that rolls in
+//  terraces and hills, a roof that hangs off that floor by a height that
+//  changes as you walk, terraces of its own, and lakes in the depressions.
 //
 //  PURE, like every other generator (Part T's determinism rule 3): a
-//  chunk's contents are a function of (seed, cx, cz) alone. Nothing
-//  reads a neighbouring chunk, nothing reads the clock, nothing draws
-//  from rand(). That is what makes the host checks able to assert the
-//  ceiling is sealed across a fixed sample, and what makes a replay
-//  reproduce the same cave.
+//  chunk's contents are a function of (seed, cx, cz) alone. Nothing reads
+//  a neighbouring chunk, nothing reads the clock, nothing draws from
+//  rand(). That is what makes the host checks able to assert the ceiling
+//  is sealed across a fixed sample, and what makes a replay reproduce the
+//  same cave.
 //
 //  THE FLOOR IS A COLUMN FUNCTION, and that is not a style choice. The
 //  shaft pairing is by column (D-142), so the arrival height has to be
@@ -29,64 +38,126 @@
 #include "world/chunk.h"
 #include "world/dimension.h"
 
-// --- The generator's rates -------------------------------------------
+// --- The two surfaces -------------------------------------------------
 //
-// Ore. `chance` is the share of coarse cells that carry a vein, `r` its
-// rough radius -- the same two numbers worldgen.c uses, so the Deep Mine
-// is a rate table over the same vein shape rather than a second version
-// of the same idea. Iron is richer here than above (D-139); diamond is
-// the occasional cluster, and coal holds the overworld's rate because
-// nothing said otherwise.
-#define DM_IRON_CHANCE    0.34f
-#define DM_IRON_R         2.0f
-#define DM_DIAMOND_CHANCE 0.05f
-#define DM_DIAMOND_R      1.2f
-#define DM_COAL_CHANCE    0.30f
-#define DM_COAL_R         2.0f
-
-// Lava, rolled on the same coarse grid as a vein (VEIN_GRID) for the same
-// reason: a patch you can walk around is a shape, and a coin flip per
-// cell would be speckle.
-#define DM_LAVA_CHANCE  0.06f
-#define DM_LAVA_R       1.5f
-
-// --- The two surfaces ------------------------------------------------
+// THE ROOF IS NOT A SECOND SURFACE, IT IS A DISTANCE. The old version gave
+// the floor and the roof each its own broad field and let them wander
+// independently, and the result read like an overworld with a lid on it:
+// the ceiling never followed the ground, so the cave had no shape. A cave
+// is a SHELL -- the roof hangs off the floor by a room height, and what
+// varies is that height. So the generator answers for the floor first and
+// then adds the room to it.
 //
-// The cave is the volume between a floor and a roof, and both are read
-// ONCE PER GRID SQUARE rather than once per column. That is the whole
-// difference between a plane and a cave: a smooth noise floor puts every
-// column one or two blocks from its neighbour, so nothing ever reads as a
-// wall, and a floor read once per square is a plateau with a step up
-// between squares. Two grids of different size, so the floor and the roof
-// never agree for long and the height of the room changes as you walk
-// through it.
+// Two terms each, and each one is there for a different thing the player
+// sees. Read once per grid SQUARE, not once per column: a per-column noise
+// puts every column one or two blocks from its neighbour, so nothing ever
+// reads as a wall, which is exactly the "random one block steps" the user
+// complained about.
 //
-// The spans are what the plateau can land on BEFORE the rough term is
-// added, so the bands in dimension.h are the bands the generator can
-// actually produce -- a span that could reach past its own maximum would
-// make the clamp the thing deciding the shape, and a check would measure
-// the clamp rather than the cave.
-#define DM_FLOOR_GRID  24
-#define DM_CEIL_GRID   12
-#define DM_FLOOR_SPAN  6
-#define DM_CEIL_SPAN   17
-// How many heights the rough term can add inside a square.
-#define DM_ROUGH       2
-// The pad a shaft stands on: the square around its spot, flattened. See
-// deepmine.c -- a shaft needs level ground under all nine cells of its
-// footprint, and a floor that changes per column almost never gives it.
-#define DM_PAD         5
+//   THE BROAD FIELD  -- fbm at DM_BROAD_SCALE, two octaves. This is the
+//      only term that can make a HILL: about 120 blocks of slope, so the
+//      cave has a high side and a low side and a walk from one to the other.
+//   THE TERRACE      -- a plateau per DM_WALL_GRID square. This is the
+//      CLIFF. A step of up to DM_WALL_SPAN-1 between two squares is a wall
+//      you can see and have to walk around, and it is the difference
+//      between a slope and a cave. Going DOWN a step is free (falling is,
+//      in the player's own physics); going UP more than one block is not,
+//      which is what turns a terrace into a cliff rather than a staircase.
+//
+// THE ROOM is its own field, at DM_ROOM_SCALE -- faster than the biome
+// fields and slower than the terrace, so one biome holds both a hall and a
+// place where you have to crouch. It is SUBTRACTIVE: room_base is the height
+// of the biggest room that biome ever has, and the field takes up to
+// room_relief of it away. That is what makes a hall and a pinch come out of
+// the same number, and where the field takes more than the base the roof
+// lands on the floor and the column is solid rock -- a wall of the cave.
+//
+// THE FLOOR IS BLENDED BETWEEN BIOMES AND THE ROOM IS NOT, and that is
+// deliberate. The floor is what you walk on, so its height has to be
+// continuous across a biome border or every border is a cliff you cannot
+// climb. The roof is what you look up at: a step in it is a rock face, and
+// the biome borders are exactly the district lines a cave system has. The
+// floor's numbers are also close together (8-12) so the blend barely moves
+// them; the room's are not (9-26), so the blend would have cancelled the
+// whole point of the claustrophobic biome.
+#define DM_BROAD_SCALE   120.0f
+#define DM_BROAD_OCTAVES 2
 
-// A span the player can still walk is not a cosmetic preference. The jump
-// apex is 1.25 blocks and step_up is 0 (player.h), so a step of two is a
-// wall the player can only go around. A floor span of 15 put every square
-// about seven blocks above or below its neighbour, and a flood fill from
-// one column reached 12.7% of the cave: not a cave you walk through, a
-// stack of rooms you cannot get out of. Six keeps the walls -- one column
-// in ninety-six still steps two or more from its neighbour -- and leaves
-// the cave walkable, 95.3% of it from a single starting column. That is
-// what the grid is for: 24 is the largest that keeps both, and it is the
-// number the check measures rather than the one a comment asserts.
+#define DM_WALL_GRID  16
+#define DM_WALL_SPAN  4
+#define DM_CEIL_GRID  12
+#define DM_CEIL_SPAN  4
+
+// The room field. Faster than the biome fields (80-95) on purpose: a biome
+// is a district, and a district that is one height from one side to the
+// other is a room, not a cave.
+#define DM_ROOM_SCALE   70.0f
+#define DM_ROOM_OCTAVES 2
+
+// --- Biomes -----------------------------------------------------------
+//
+// THE SAME FOURTH REGISTRY the overworld has (worldgen.h), for the same
+// reason: adding a kind of place is a row, not an edit in five functions.
+// Four of them, and they are the four things the user asked for -- a big
+// room, hills, a lava sea, and a low hall where the floor nearly meets
+// the ceiling.
+//
+// Chosen from four slow fields, NOT from the terrain: a biome that
+// followed the terrain would put the same place on every dip. The HEIGHT
+// NUMBERS are blended between biomes (so a border is a slope, not a
+// vertical cliff) and the DISCRETE ONE -- which biome's ore rates -- comes
+// from the single largest share, exactly as the overworld's surface block
+// does.
+typedef enum {
+    DM_BIOME_Cavern = 0,
+    DM_BIOME_Hills,
+    DM_BIOME_LavaSea,
+    DM_BIOME_LowHall,
+    DM_BIOME_COUNT
+} dm_biome_t;
+
+typedef struct {
+    char const* name;
+
+    // What the FLOOR does here: the level it sits on, and how far the broad
+    // field lifts it above that. Blended between biomes, because the floor
+    // has to be continuous. The terrace is shared.
+    int   floor_base;
+    int   floor_relief;
+    // The ROOM above that floor: the tallest the roof ever gets over this
+    // biome's ground, and how much of it the room field takes away. NOT
+    // blended -- see the header. A biome whose room_base is smaller than
+    // its room_relief is the claustrophobic one, because the field can take
+    // more room than there is and the roof lands on the floor.
+    int   room_base;
+    int   room_relief;
+
+    // No lava column here, deliberately: the lava has ONE level for the
+    // whole dimension (DM_LAVA_LEVEL), exactly as the overworld's sea has
+    // one CH_SEA_LEVEL, and that is what makes it stable -- a column whose
+    // floor is above the level walls its neighbour's lava with solid rock,
+    // so a lake is walled by its own basin. A level per biome would leak at
+    // every border where a dry biome's ground sits lower than a wet one's.
+    // What makes a biome a LAVA SEA is a floor_base low enough to fall
+    // below that one level: LavaSea's 8 is under it, every other biome's
+    // 10-12 is at or over it.
+
+    // Ore, in the shape worldgen_vein_at already knows: `chance` is the
+    // share of coarse cells carrying a vein, `r` its rough radius. Iron is
+    // richer here than above (D-139); diamond is the occasional cluster.
+    float iron, iron_r;
+    float coal, coal_r;
+    float diamond, diamond_r;
+} dm_biome_def_t;
+
+extern dm_biome_def_t const DM_BIOMES[DM_BIOME_COUNT];
+
+// The biome at (x, z), and each biome's smooth share of it. Pure, like
+// everything else here, so two chunks agree along their border.
+uint8_t deepmine_biome(int32_t x, int32_t z, uint32_t seed);
+void    deepmine_biome_weights(int32_t x, int32_t z, uint32_t seed, float w[DM_BIOME_COUNT]);
+
+// --- Asking a column --------------------------------------------------
 
 // The y of the first air above the cave floor at this column -- the cell
 // the player stands in. Same convention as worldgen_height(), so the two
@@ -94,7 +165,10 @@
 int deepmine_ground_y(int32_t x, int32_t z, uint32_t seed);
 
 // The y of the first bedrock above the cave at this column -- its roof.
-// Per column, because the roof is not one flat height.
+// Per column, because the roof is not one flat height -- it is the floor
+// plus this column's room. It may come down TO the floor or below it: that
+// column is solid rock, a wall of the cave rather than part of it, and that
+// is the claustrophobia the user asked for.
 int deepmine_ceiling_y(int32_t x, int32_t z, uint32_t seed);
 
 // Is this cell part of the sealed ceiling? Per column for the same reason,
@@ -104,15 +178,20 @@ static inline bool deepmine_is_ceiling(int32_t x, int32_t z, int y, uint32_t see
     return y >= deepmine_ceiling_y(x, z, seed);
 }
 
-// Is (x, z) inside the flat pad a shaft stands on? Exported because the
-// generator, the placement rule and the check all have to get the same
-// answer for the same column -- the pad is part of the terrain, not a
-// decoration painted on top of it afterwards.
-bool deepmine_is_pad(int32_t x, int32_t z, uint32_t seed);
+// The top cell of the lava at this column, or -1 for dry ground. A LEVEL,
+// not a patch: the same idea as the overworld's sea, so a lake fills the
+// depression it sits in and has a shore where the ground rises out of it.
+int deepmine_lava_top(int32_t x, int32_t z, uint32_t seed);
 
-// Is the floor at (x, z) covered by lava? Asked per column, because the
-// patch is a shape on a coarse grid rather than a per-cell coin flip.
-bool deepmine_lava(int32_t x, int32_t z, uint32_t seed);
+// The cell a body stands in at this column: above the floor, and above the
+// lava. The floor function answers "first air above the rock"; this adds
+// "and not in the middle of a lake", which is the question a mob, a
+// crossing or a spawn actually asks.
+int deepmine_stand_y(int32_t x, int32_t z, uint32_t seed);
+
+// Is there room to stand at this column at all? False where the roof has
+// come down onto the floor -- a column of solid rock.
+bool deepmine_has_room(int32_t x, int32_t z, uint32_t seed);
 
 // Fill `c` with the Deep Mine's terrain. The chunk must already carry
 // cx / cz. Marks CF_GENERATED and refreshes the column summaries; leaves

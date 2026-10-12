@@ -29,6 +29,17 @@ typedef struct {
     float   head;                    // the head cube's half-size
     float   head_fwd;                // how far the neck reaches out
     bool    horns, snout, ears, tail_up;
+    // UPRIGHT: the body is a TORSO stood on end, the head sits on top of it
+    // instead of in front of it, and there are two legs and two arms rather
+    // than four legs. That is a second shape, so it is a flag rather than a
+    // fifth animal -- and the alternative was a second model file for two
+    // creatures that share every material, every mesh call and the walk.
+    //
+    // For the Deep Mine's zombies and skeletons it is the difference between
+    // a figure and "a few small floating squares": with the quadruped numbers
+    // a 1.8-tall humanoid gets a 0-length body, a 0-length leg and only the
+    // two eye boxes left standing.
+    bool    upright;
     // THE HIDE IS A TEXTURE, one 16x16 put once on each box rather than
     // an unwrapped skin: these models are half a dozen boxes apiece and
     // an unwrap would be a layout to maintain for every one of them. A
@@ -112,10 +123,37 @@ static beast_look_t const LOOKS[MOB_KIND_COUNT] = {
                    .face     = "sheep_face.png",
                    .shorn    = "sheep_shorn.png",
                    .argb     = {0xFFEEEAE0u, 0xFF48403Au, 0xFF48403Au, 0xFF3C3632u, 0xFFD8D0C0u, 0xFF181414u}},
+
+    // A ZOMBIE (Part M, D-137). The numbers are the collider's, not a style
+    // choice: mob.c gives it w 0.6 h 1.8, and leg_h + body_h + 2*head here is
+    // 1.87 -- the figure has to be the size the box it is pushed around in
+    // says it is, or a mob that is clearly standing in front of you hits
+    // nothing. Green hide, a darker face, and no texture: at this size a
+    // silhouette and two colours ARE a zombie.
+    [MOB_ZOMBIE] = {.body_l   = 0.11f,
+                    .body_w   = 0.17f,
+                    .body_h   = 0.72f,
+                    .leg_h    = 0.85f,
+                    .leg_r    = 0.085f,
+                    .head     = 0.15f,
+                    .upright  = true,
+                    .argb     = {0xFF6E8A5Cu, 0xFF587048u, 0xFF4A5E40u, 0xFF6E8A5Cu, 0xFF3E4A36u, 0xFF181414u}},
+
+    // A SKELETON: the same figure in bone, a head shorter. It is the same
+    // model because the difference between the two at twenty blocks is colour
+    // and height, and both of those are rows in a table.
+    [MOB_SKELETON] = {.body_l   = 0.10f,
+                      .body_w   = 0.16f,
+                      .body_h   = 0.78f,
+                      .leg_h    = 0.88f,
+                      .leg_r    = 0.075f,
+                      .head     = 0.15f,
+                      .upright  = true,
+                      .argb     = {0xFFD8D4C8u, 0xFFC0BCAEu, 0xFFA8A496u, 0xFFD8D4C8u, 0xFF8E8A7Eu, 0xFF181414u}},
 };
 
 static bool          s_ready;
-static mesh_t        s_body[MOB_KIND_COUNT], s_head[MOB_KIND_COUNT], s_leg[MOB_KIND_COUNT];
+static mesh_t        s_body[MOB_KIND_COUNT], s_head[MOB_KIND_COUNT], s_leg[MOB_KIND_COUNT], s_arm[MOB_KIND_COUNT];
 static se_texture_t const* s_hide[MOB_KIND_COUNT];
 static se_texture_t const* s_face[MOB_KIND_COUNT];
 static se_texture_t const* s_shorn[MOB_KIND_COUNT];
@@ -140,20 +178,35 @@ static void build_one(uint8_t kind) {
 
     mesh_init(&s_body[kind]);
     s_body[kind].name = "beast_body";
-    // THE BARREL, with its origin at the shoulder height so a leg hangs
-    // from y = 0 and the walk is a rotation about it.
-    mesh_box(&s_body[kind], v3(-L->body_w, 0.0f, -L->body_l), v3(L->body_w, L->body_h, L->body_l), BM_HIDE, 1.0f);
-    // A stripe of the second colour along the back and down one flank:
-    // enough to read as markings without being a texture.
-    mesh_box(&s_body[kind], v3(-L->body_w * 0.55f, L->body_h - 0.01f, -L->body_l * 0.7f),
-             v3(L->body_w * 0.55f, L->body_h + 0.015f, L->body_l * 0.2f), BM_PATCH, 1.0f);
-    // The tail: up for a dog, hanging for the others.
-    if (L->tail_up) {
-        mesh_box(&s_body[kind], v3(-0.035f, L->body_h * 0.5f, -L->body_l - 0.14f),
-                 v3(0.035f, L->body_h + 0.14f, -L->body_l), BM_PATCH, 1.0f);
+    if (L->upright) {
+        // THE TORSO: the same box, stood on end. Its origin is still its
+        // bottom, so a leg still hangs from y = 0 and the walk is still a
+        // rotation about the same joint -- which is why an upright figure
+        // reuses every material and every mesh call the animals have.
+        mesh_box(&s_body[kind], v3(-L->body_w, 0.0f, -L->body_l), v3(L->body_w, L->body_h, L->body_l), BM_HIDE,
+                 1.0f);
+        // A band of the second colour at the waist, so the torso is not one
+        // flat slab. At the size these are drawn, a silhouette and two
+        // colours ARE the creature.
+        mesh_box(&s_body[kind], v3(-L->body_w, L->body_h * 0.30f, -L->body_l),
+                 v3(L->body_w, L->body_h * 0.44f, L->body_l), BM_PATCH, 1.0f);
     } else {
-        mesh_box(&s_body[kind], v3(-0.03f, L->body_h * 0.2f, -L->body_l - 0.07f),
-                 v3(0.03f, L->body_h * 0.9f, -L->body_l), BM_HIDE, 1.0f);
+        // THE BARREL, with its origin at the shoulder height so a leg hangs
+        // from y = 0 and the walk is a rotation about it.
+        mesh_box(&s_body[kind], v3(-L->body_w, 0.0f, -L->body_l), v3(L->body_w, L->body_h, L->body_l), BM_HIDE,
+                 1.0f);
+        // A stripe of the second colour along the back and down one flank:
+        // enough to read as markings without being a texture.
+        mesh_box(&s_body[kind], v3(-L->body_w * 0.55f, L->body_h - 0.01f, -L->body_l * 0.7f),
+                 v3(L->body_w * 0.55f, L->body_h + 0.015f, L->body_l * 0.2f), BM_PATCH, 1.0f);
+        // The tail: up for a dog, hanging for the others.
+        if (L->tail_up) {
+            mesh_box(&s_body[kind], v3(-0.035f, L->body_h * 0.5f, -L->body_l - 0.14f),
+                     v3(0.035f, L->body_h + 0.14f, -L->body_l), BM_PATCH, 1.0f);
+        } else {
+            mesh_box(&s_body[kind], v3(-0.03f, L->body_h * 0.2f, -L->body_l - 0.07f),
+                     v3(0.03f, L->body_h * 0.9f, -L->body_l), BM_HIDE, 1.0f);
+        }
     }
 
     mesh_init(&s_head[kind]);
@@ -188,6 +241,19 @@ static void build_one(uint8_t kind) {
     mesh_box(&s_leg[kind], v3(-L->leg_r, -L->leg_h, -L->leg_r), v3(L->leg_r, 0.0f, L->leg_r), BM_HIDE, 1.0f);
     mesh_box(&s_leg[kind], v3(-L->leg_r, -L->leg_h, -L->leg_r), v3(L->leg_r, -L->leg_h + 0.05f, L->leg_r), BM_HORN,
              1.0f);  // the hoof, or the paw
+
+    if (L->upright) {
+        // THE ARM, hung from the shoulder, `body_h` long so the hand reaches
+        // about where the player's does. A hand is a slightly wider box at
+        // the end of it, which is as far as this level of detail goes and is
+        // enough at twenty blocks.
+        float const ar = L->leg_r * 0.80f, ah = L->body_h * 0.85f;
+        mesh_init(&s_arm[kind]);
+        s_arm[kind].name = "beast_arm";
+        mesh_box(&s_arm[kind], v3(-ar, -ah, -ar), v3(ar, 0.0f, ar), BM_HIDE, 1.0f);
+        mesh_box(&s_arm[kind], v3(-ar * 1.3f, -ah - 0.10f, -ar * 1.3f), v3(ar * 1.3f, -ah, ar * 1.3f), BM_PATCH,
+                 1.0f);  // the hand
+    }
 }
 
 void beast_init(void) {
@@ -210,6 +276,7 @@ void beast_shutdown(void) {
         mesh_free(&s_body[k]);
         mesh_free(&s_head[k]);
         mesh_free(&s_leg[k]);
+        if (LOOKS[k].upright) mesh_free(&s_arm[k]);
     }
     s_ready = false;
 }
@@ -244,6 +311,33 @@ void beast_submit(xform_t const* root, uint8_t kind, bool baby, bool sitting, bo
     // cannot drift apart.
     float const   scale  = baby ? 0.5f : 1.0f;
     xform_t const scaled = {root->r, root->pos, root->scale * scale};
+
+    // AN UPRIGHT FIGURE: two legs below a torso, a head on top of it and a
+    // pair of arms hung from the shoulders. The joints are the same ones the
+    // quadrupeds use -- everything still hangs from y = 0 of the spine -- so
+    // the walk is the same rotation and only the layout differs.
+    //
+    // mat3_rot_x(a) tips the local -y (the way a limb hangs) towards -z, so
+    // a NEGATIVE angle is what reaches an arm forward, which is the pose both
+    // of these creatures are known for.
+    if (L->upright) {
+        xform_t const spine = joint(&scaled, v3(0.0f, L->leg_h, 0.0f), mat3_rot_x(0.0f));
+        mesh_submit(&s_body[kind], &spine, mats, BM_COUNT);
+
+        xform_t const head = joint(&spine, v3(0.0f, L->body_h + L->head, 0.0f), mat3_rot_x(0.10f));
+        mesh_submit(&s_head[kind], &head, mats, BM_COUNT);
+
+        float const swing = 0.55f * stride * sinf(walk);
+        for (int s = -1; s <= 1; s += 2) {
+            xform_t const leg =
+                joint(&spine, v3((float)s * (L->body_w - L->leg_r * 0.5f), 0.0f, 0.0f), mat3_rot_x((float)s * swing));
+            mesh_submit(&s_leg[kind], &leg, mats, BM_COUNT);
+            xform_t const arm = joint(&spine, v3((float)s * (L->body_w + L->leg_r * 0.9f), L->body_h * 0.96f, 0.0f),
+                                      mat3_rot_x(-1.20f + (float)s * swing * 0.35f));
+            mesh_submit(&s_arm[kind], &arm, mats, BM_COUNT);
+        }
+        return;
+    }
 
     // Sitting drops the back end and tips the body up, which is the
     // whole animation a dog needs.

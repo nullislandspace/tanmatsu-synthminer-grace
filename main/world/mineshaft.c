@@ -4,18 +4,10 @@
 
 #include "world/mineshaft.h"
 
-#include <math.h>
-
-#include "common/rng.h"
 #include "world/blocks.h"
 #include "world/deepmine.h"
 #include "world/dimension.h"
 #include "world/worldgen.h"
-
-// The shaft's own salt. Separate from the ore salts and from the tree
-// grid's, for the usual reason: a shaft that landed where a vein landed
-// would be a coincidence no check would notice.
-#define S_SHAFT 0xE700u
 
 // --- The shape --------------------------------------------------------
 
@@ -39,96 +31,76 @@ shaft_cell_t const SHAFT_CELLS[16] = {
 };
 
 
-void mineshaft_shape(int32_t x, int y, int32_t z, worldgen_cell_fn emit, void* ctx) {
-    for (size_t i = 0; i < 16; i++) {
-        shaft_cell_t const* s = &SHAFT_CELLS[i];
-        emit(ctx, x + s->dx, y + s->dy, z + s->dz, s->block, true);
+// --- The Deep Mine's ground -------------------------------------------
+
+// THE PAD, as a pure function of the column. mineshaft.h has the three
+// answers and why each one is there; the reason the function exists at all is
+// that a crossing has to know the arrival height before the chunk it lands in
+// exists, because the store is empty at the moment it decides.
+int mineshaft_pad_y(int32_t x, int32_t z, uint32_t seed) {
+    // THE ROOF, over the whole footprint. A post under a column whose roof
+    // comes lower than the middle's is a post inside bedrock, and levelling
+    // the ground is not allowed to carve the ceiling.
+    int hi = CH_H - 4;
+    for (int dz = -SHAFT_PAD; dz <= SHAFT_PAD; dz++) {
+        for (int dx = -SHAFT_PAD; dx <= SHAFT_PAD; dx++) {
+            int const room = deepmine_ceiling_y(x + dx, z + dz, seed) - DM_ROOM_MIN;
+            if (room < hi) hi = room;
+        }
     }
+    if (hi < 1) return -1;
+
+    // THE LAVA, over a 9x9 rather than the 5x5. Lava flows now, three cells
+    // (fluid.c), so a lake whose surface sits just outside the footprint would
+    // run into the room the levelling carves. Four is more than three.
+    int lo = 1;
+    for (int dz = -SHAFT_PAD - 2; dz <= SHAFT_PAD + 2; dz++) {
+        for (int dx = -SHAFT_PAD - 2; dx <= SHAFT_PAD + 2; dx++) {
+            int const top = deepmine_lava_top(x + dx, z + dz, seed);
+            if (top + 1 > lo) lo = top + 1;
+        }
+    }
+
+    // THE GROUND: the slab sits on the middle column's own floor, so the
+    // shaft looks like it was built on the ground it stands on.
+    int const ground = deepmine_ground_y(x, z, seed) - 1;
+    if (ground > lo) lo = ground;
+
+    // THE ROOF WINS. A pad that has to dig down into the rock is a shaft, and
+    // a shaft is what this is. It cannot land in a lake by doing that:
+    // DM_CEIL_MIN sits above DM_LAVA_LEVEL + DM_ROOM_MIN, so the lowest roof
+    // still leaves a frame of dry air over the highest sea.
+    if (lo > hi) lo = hi;
+    return lo;
 }
 
-// --- The generator's writer -------------------------------------------
+// LEVEL THE GROUND, on arrival only (mineshaft.h). Twenty-five cells of slab
+// and up to seventy-five of clear air: the whole of what a frame needs, and
+// nothing more. The roof is untouched -- `y` is under the lowest roof of the
+// 5x5 by `mineshaft_pad_y()`, and the bedrock test below is the belt on top
+// of that, because a hole in the ceiling is a hole in the cave.
+//
+// Through world_set, so the light flood, the mesher and the save all hear
+// about it, exactly like a player's placement. Cells that are already right
+// are skipped: a hundred writes that change nothing would mark the chunk
+// dirty and re-mesh it for nothing.
+void mineshaft_flatten(int32_t x, int y, int32_t z) {
+    if (y < 1 || y + 3 >= CH_H) return;
 
-// Write a cell, but only if it falls inside this chunk -- the same
-// argument as worldgen.c's stamp(): a shaft on a chunk border is written
-// twice, once from each side, and that is what makes it seamless without
-// either chunk reading the other.
-static void stamp(chunk_t* c, int32_t wx, int y, int32_t wz, uint8_t block, bool overwrite) {
-    if (y < 0 || y >= CH_H) return;
-    if (chunk_of(wx) != c->cx || chunk_of(wz) != c->cz) return;
-    size_t const i = CH_IDX(chunk_off(wx), y, chunk_off(wz));
-    if (!overwrite && c->id[i] != BLK_AIR) return;
-    c->id[i] = block;
-    c->st[i] = 0;  // generated, so ST_PLACED stays clear
-}
+    for (int dz = -SHAFT_PAD; dz <= SHAFT_PAD; dz++) {
+        for (int dx = -SHAFT_PAD; dx <= SHAFT_PAD; dx++) {
+            int32_t const px = x + dx, pz = z + dz;
 
-static void stamp_cell(void* ctx, int32_t wx, int y, int32_t z, uint8_t block, bool overwrite) {
-    stamp((chunk_t*)ctx, wx, y, z, block, overwrite);
-}
-
-bool mineshaft_is_candidate(int32_t x, int32_t z, uint32_t seed) {
-    int32_t const gx = (x >= 0 ? x : x - SHAFT_GRID + 1) / SHAFT_GRID;
-    int32_t const gz = (z >= 0 ? z : z - SHAFT_GRID + 1) / SHAFT_GRID;
-    return sm_rand2(gx, gz, seed ^ S_SHAFT) <= SHAFT_CHANCE;
-}
-
-// The exact column inside its grid square, so the shafts are not on a
-// visible lattice -- the same trick as the tree grid.
-void mineshaft_candidate_spot(int32_t gx, int32_t gz, uint32_t seed, int32_t* wx, int32_t* wz) {
-    *wx = gx * SHAFT_GRID + (int32_t)(sm_rand2(gx, gz, seed ^ 0xE7A1u) * SHAFT_GRID);
-    *wz = gz * SHAFT_GRID + (int32_t)(sm_rand2(gx, gz, seed ^ 0xE7B2u) * SHAFT_GRID);
-}
-
-void mineshaft_stamp(chunk_t* c, uint32_t seed) {
-    if (c == NULL) return;
-
-    int32_t const x0 = (c->cx - 1) * CH_W, x1 = (c->cx + 2) * CH_W;
-    int32_t const z0 = (c->cz - 1) * CH_D, z1 = (c->cz + 2) * CH_D;
-    int32_t const gx0 = (int32_t)floorf((float)x0 / SHAFT_GRID), gx1 = (int32_t)floorf((float)x1 / SHAFT_GRID);
-    int32_t const gz0 = (int32_t)floorf((float)z0 / SHAFT_GRID), gz1 = (int32_t)floorf((float)z1 / SHAFT_GRID);
-
-    for (int32_t gz = gz0; gz <= gz1; gz++) {
-        for (int32_t gx = gx0; gx <= gx1; gx++) {
-            int32_t wx, wz;
-            mineshaft_candidate_spot(gx, gz, seed, &wx, &wz);
-            if (!mineshaft_is_candidate(wx, wz, seed)) continue;
-
-            // deepmine_ground_y() is the first air above the floor -- the
-            // cell the player stands in -- so the cell the shaft stands ON
-            // is the one below it. Getting this off by one would put every
-            // generated shaft one block above its own floor.
-            // THE PAD. The frame stands on the pad the generator flattened
-            // for this square, so it only stamps where the pad exists --
-            // which is where the whole five by five lies inside the square.
-            // Without that, a post lands inside the rock of a neighbouring
-            // column, and a post inside its own floor is a post with nothing
-            // under it: the same thing the player's placement refuses.
-            if (!deepmine_is_pad(wx, wz, seed)) continue;
-
-            int const g = deepmine_ground_y(wx, wz, seed) - 1;
-            if (g < 0) continue;
-
-            // Every post has its own column, and every column has its own
-            // roof and its own patch of lava, so the headroom and the dry
-            // ground are tested over all nine cells of the footprint rather
-            // than over the middle. All or nothing, as everywhere else: a
-            // frame half inside the rock is a frame half of which was never
-            // written.
-            bool ok = true;
-            for (int dz = -1; dz <= 1 && ok; dz++) {
-                for (int dx = -1; dx <= 1; dx++) {
-                    int32_t const px = wx + dx, pz = wz + dz;
-                    if (g + 3 >= deepmine_ceiling_y(px, pz, seed) || deepmine_lava(px, pz, seed)) {
-                        ok = false;
-                        break;
-                    }
-                }
+            if (world_block(px, y, pz) != BLK_STONE) world_set(px, y, pz, BLK_STONE, 0);
+            for (int dy = 1; dy <= 3; dy++) {
+                uint8_t const b = world_block(px, y + dy, pz);
+                if (b == BLK_BEDROCK) continue;
+                if (b != BLK_AIR) world_set(px, y + dy, pz, BLK_AIR, 0);
             }
-            if (!ok) continue;
-
-            mineshaft_shape(wx, g, wz, stamp_cell, c);
         }
     }
 }
+
 
 // --- The player's writer ----------------------------------------------
 
@@ -181,13 +153,26 @@ bool mineshaft_place(int32_t x, int y, int32_t z) {
 //
 // So the far end is built the first time a column is crossed. It is the
 // same shape and the same writer as the player's placement, with one rule
-// dropped: the ground under the nine footprint cells. A portal the game
+// dropped and one added.
+//
+// DROPPED: the ground under the nine footprint cells. A portal the game
 // opens was not placed by a player who could have picked a better spot, so
 // a post standing on a column whose floor is lower than its neighbour's
-// still has to be a post. What is not dropped is the rest -- every cell
-// still has to be writable, and a half frame is still refused outright.
+// still has to be a post.
+//
+// ADDED, in the Deep Mine only: `mineshaft_flatten`, first. The cave's
+// ground is rough on purpose -- terraces, cliffs, columns where the roof
+// lands on the floor -- and a frame dropped into that would be refused more
+// often than not, which is the "the mineshaft would not open" the user ran
+// into. The pad is what the arrival height was computed for
+// (`mineshaft_pad_y`), so the ground the frame stands on is levelled first
+// and every cell of the shape is then air. The overworld is NOT flattened:
+// a shaft the player arrives in on the surface appears where the surface
+// already is.
 bool mineshaft_open_at(int32_t x, int y, int32_t z) {
     if (y < 1 || y + 3 >= CH_H) return false;
+
+    if (dimension_current() == DIM_DEEP_MINE) mineshaft_flatten(x, y, z);
 
     for (size_t i = 0; i < 16; i++) {
         shaft_cell_t const* s = &SHAFT_CELLS[i];
@@ -233,11 +218,21 @@ bool mineshaft_is_trigger(int32_t x, int y, int32_t z) {
 }
 
 int mineshaft_arrival_y(int32_t x, int32_t z, uint32_t seed, int dimension) {
-    // Both dimensions answer "the first air above the ground" the same
-    // way, so the arrival cell is the standing cell and nothing has to be
-    // added to it. This is the only place the 1:1 mapping is actually
-    // used: the column is shared, the height is not.
-    if (dimension == (int)DIM_DEEP_MINE) return deepmine_ground_y(x, z, seed);
+    // THE CENTRE OF THE SHAFT, in both dimensions. The pairing is by column
+    // (D-142), so what is shared is x and z and what is not is the height --
+    // and in each dimension the answer is "the cell the player stands in at
+    // the middle of a frame built on that column's own ground".
+    //
+    // In the overworld that is the surface. In the Deep Mine it is the cell
+    // above the pad, which is NOT the cave floor: the cave floor is rough,
+    // and the frame is built on a levelled 5x5 of it. Answering with
+    // `deepmine_ground_y()` here put the player at the terrain height while
+    // the frame was built one or two cells elsewhere, which is what the user
+    // saw as arriving on top of the world instead of in the shaft.
+    if (dimension == (int)DIM_DEEP_MINE) {
+        int const pad = mineshaft_pad_y(x, z, seed);
+        return pad < 0 ? deepmine_ground_y(x, z, seed) : pad + 1;
+    }
     return worldgen_height(x, z, seed);
 }
 
