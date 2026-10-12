@@ -2047,6 +2047,28 @@ Six things follow immediately:
   while the frame stood one or two cells elsewhere, which is what the user saw as
   "spawning on top of the Deep Mine instead of inside the mineshaft".
 
+- **THE OVERWORLD END STANDS ONE ABOVE ITS SURFACE BLOCK** (F-155): the arrival cell is
+  `worldgen_height() + 1` there and `mineshaft_pad_y() + 1` down there -- the same question,
+  two answers. Answering with the surface block itself buries the frame in the hill, which
+  measured **1.5% of columns able to hold a frame against 75.1%**.
+
+- **A PURE ESTIMATE, RE-ASKED ONCE THE CHUNKS ARE THERE** (F-155). The arrival height has to
+  be knowable before the target chunk exists, so it cannot know about the cave mouth that
+  took the surface block, the tree, or the slope. `mineshaft_open_near()` asks again once the
+  nine chunks are resident: base `y-d` then `y+d`, `d = 0..3`, down first. Over 512 dry
+  columns of the real overworld: **511 hold a frame, 28 needed a different height (worst 3),
+  1 cannot**. A frame that will not open is a player who cannot get home, so this is not a
+  nicety.
+
+- **WHAT A CROSSING MAY WRITE A POST INTO** (F-155). A player's placement needs air; the far
+  end may trim natural terrain, because what it is refusing is the way back. Three things it
+  still will not touch: the bedrock ceiling, a liquid, and a block carrying `ST_PLACED` (the
+  player's own wall). All 16 cells are checked before any of them is written, so a refusal
+  leaves the terrain exactly as it was. The centre cell ends AIR -- a flower or a tuft of
+  grass is decoration on the spot and is cleared, water and lava are refused by name -- and in
+  the overworld nothing is dug under the waterline, because a door at the bottom of a dry sea
+  cave is not a door.
+
 ### The switch
 
 A teleport is the only place in the game where the whole store changes identity
@@ -2273,6 +2295,10 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   side with no way back at that column, which is what the flight recorder's
   "the far end had no room for its frame" line is for. Whether that should instead
   refuse the crossing is the user's to decide.
+  **The same question now has a second source** (F-155): a column of ordinary terrain
+  where no height within +/-3 of the estimate has a floor the frame fits on -- 1 of the
+  512 the check sampled, 0.2%. Same answer for now (build nothing, record it), same
+  question for the user.
 - **Whether a shaft can be broken**, and what the far end does when one end is
   destroyed.
 - **The Far Lands under 1:1 mapping** -- a shaft at x = -2048 maps to a Far Lands
@@ -2306,7 +2332,7 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 | | **Accept:** `make worldcheck` passes determinism, cross-chunk equivalence, RLE and region round trips, torn-write recovery, compaction | | |
 | **2** | **Streaming render on the device** | | |
 | 2.1 | `chunk_worker.c`: task, queues, ownership contract, synchronous mode | done | 2026-09-20: core 1 at `configMAX_PRIORITIES-6`, 48-deep job and result queues, worker-owned 21 KiB mesher scratch (F-08 closed). Host-tested through the synchronous path (F-30). |
-| 2.2 | `chunk_render.c`: streamed LOD cache, `outside_view` with `top`/`bottom`, the view table | done | 2026-09-20: ring-at-a-time nearest-first loading, eviction with hysteresis and save-before-drop, three LOD bands, fog-tinted flat palette cached per fog step. |
+| 2.2 | `chunk_render.c`: streamed LOD cache, `outside_view` with `top`/`bottom`, the view table | done | 2026-09-20: ring-at-a-time nearest-first loading, eviction with hysteresis and save-before-drop, three LOD bands, fog-tinted flat palette cached per fog step. **Fixed 2026-10-12** (F-155): `world_set()` kept `top` incrementally and never lowered `bottom`, so a chunk generated with its first non-cube cell at y 17 kept `bottom 16` for the whole session and the draw pass threw its first section (y 0..15) away -- every tunnel dug under that floor was invisible, which is what the 2026-10-12 trace reported as "2 EDIT(S) NEVER REBUILT". Digging lowers the promise now, and only downwards. The same entry: a trimmed mesh is marked stale (the pass reads (not built, not stale) as "built and empty"), and a duplicated trim pass per frame is gone. |
 | 2.3 | G1: `mesh_tri_t.dir`, direction-grouped triangles, `mesh_submit_world()` | done | 2026-09-20: the free pad byte holds the face direction (F-01), so an axis-aligned back-face test is one compare. `meshcheck` proves every greedy face's direction matches its real normal and that plants carry none. Grouping was **skipped** — the per-triangle test is already cheap and submit time turned out to be elsewhere (F-32). |
 | 2.4 | A free-flying debug camera over a streamed world | done | 2026-09-20: a circular flight, a pure function of the show clock. 16.0 fps measured (F-31, F-32, F-33) — **that figure is wrong, see F-36**: the camera was pointing at the sky and flying sideways. Corrected, the same build is **12.3 fps**. |
 | 2.7 | The world reloading itself, reported from free flight | done | 2026-09-21: three causes (F-41). The far preset did not fit the chunk ring — two chunks per slot, evicting each other forever. A LOD change drew nothing until its mesh arrived. The result budget was still 2 a frame from before sectioning. Two of the three were mine, from D-34. |
@@ -2412,10 +2438,11 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 | 58 | **Water you can actually see through** | done, **default on** | 2026-09-29, the user, after being told partial heights were the expensive part: *"Currently we have fake transparency for water (like leaves). How much actual FPS impact would it be to have actual water transparency?"* The estimate said 5-20%, scaling with how much water fills the view. They asked for it behind a key so the two could be compared in one place, played it, and reported *"The new transparent water looked much better and framerates seems comparable."* Now a Graphics setting, **on by default and on for upgrades too** (D-103). `SE_TRI_BLEND` in the engine (2.5): a 50/50 RGB565 mix, and -- the part that matters -- blended triangles sorted after every opaque one and far-to-near among themselves, which cost **one bit of the existing depth key and no extra pass**, because a positive float never sets its sign bit and the top bit was always spare. D-86 is amended a second time: water is no longer only its surface's cut-out, it is a real mix, and `water_blend.png` is the same texture without its checkerboard. **The frame-rate claim is the user's, not the trace's**: their A/B in one spot is controlled and the trace was not, because nothing recorded which mode was running -- which is now fixed (`trace_event`, F-119). |
 | 59 | **Wood and flowers that come back** | done | 2026-09-30, the user, in one message: *"Logs (trees) and yellow flowers need to be renewable resources. So cutting trees should drop one or two seedlings that can be planted to grow into a new tree. And throwing compost onto the ground should grow a 3x3 grid of yellow flowers."* **Which closes the last hole in the economy.** Stone, ore, crops, wool, meat, milk and fish all come back; WOOD did not -- there is no recipe anywhere that makes a log, so a player who cleared the forest round their house had cleared it for good. Yellow flowers were the same and worse: a pork sausage needs one for its spice, so picking the meadow stopped the sausage maker. **Two permanent block ids** (49, 50) and **one new module** (`world/tree.{c,h}`). Felling leaves **one or two seedlings PER TREE, not per block** -- forty saplings off one oak would make the first tree the last one anybody had to plant -- rolled from the world's own hash so a replay reproduces a woodpile, and **of the species felled**, because a birch wood that grew back oak is not the wood anybody planted. **A SAPLING IS A CROP** and that is why it cost almost nothing: BF_CROP gives it stages in the state byte, the chunk's shared slow clock, the phase bits that stop a whole chunk ripening on one instant, the catch-up when a chunk returns after an hour away, and the compost that pushes any plant on a stage. None of that machinery had to learn the word sapling. The ONE difference is what happens at the last stage -- a wheat plant stops and waits to be cut, this turns into a tree -- and it is a **two-row table** in tree.c and not a block flag, because `flags2` has no bits left and because a flag would say only THAT a block is a sapling where every caller wants to know WHICH tree. One in-game day, which is wheat's; it plants on **grass or dirt and not a tilled field**, the only seed in the game that does, so it gets a refusal of its own rather than sending the player to look for a hoe. **The tree is the generator's own tree** (D-136): the canopy loop came out of `place_tree` into `worldgen_tree_shape`, emitted cell by cell to two writers that could not be less alike -- the generator stamps into ONE chunk on the core-1 worker and drops whatever falls outside, which is what makes a tree seamless at a border, while a sapling writes through `world_set` on the main task so the light flood, the mesher and the save all hear about it. One shape in the codebase instead of two that agree until somebody edits one. It takes the world seed, so a planted tree is the tree that spot would have grown. **A sapling with a ceiling over it waits** rather than growing half a tree, and the sweep asks again every pass and not only when a stage is owed -- without that, one planted in the wrong place would sit at its last stage for ever with nothing ever looking at it again. **Compost on bare grass raises a 3x3 of yellow flowers**, doing what it can: cells that are not grass or are not clear are skipped rather than refusing the lot, and it only refuses, and says so, when all nine are already done. Host-checked: which sapling comes off which trunk, 400 rolls of the one-or-two (210 singles, 190 pairs), planting refused on farmland and on stone, a seedling grown into a trunk-and-canopy that is GROWN and not PLACED so it fells like any other, the ceiling case both ways, and the flower bed on grass and on nothing else. Not renewable yet: **red flowers**, which the user did not ask for -- nothing is blocked, since the sausage maker takes either colour. |
 | 60 | **Grass that spreads, and grass that dies** | todo | 2026-10-01, the user asked whether placing a dirt block regrows the grass top and whether grass under a placed block goes away. **Both are no.** The only grass-to-dirt rule in the game runs once at GENERATION time and only for Far Lands columns (`farlands.c`, "id[y] == BLK_GRASS && id[y+1] != BLK_AIR"); nothing touches it in the live world. So a floor laid on a meadow keeps its green edges, and dirt is dirt for ever. **THE TWO HALVES SHIP TOGETHER, and that is the whole of why this is a step rather than a three-line fix.** Grass that dies under a block without grass that spreads back is a ratchet: every house, path and tilled field converts grass to dirt permanently and the world only ever gets browner, which is worse than the cosmetic bug it fixes. Death is a rule at the moment of placing (one test in `world_set`). Spreading needs a SLOW SWEEP, and the shape for it already exists -- `crops_tick()` visits one chunk slot a tick and walks a marked chunk column by column from the height summary (world/crops.h), which is exactly the budget a grass pass wants. The user: *"Let's leave the grass thing for another time, just make sure it's on our todo list."* |
-| **61+** | **The Deep Mine (Part M)** -- added 2026-10-10, **built 2026-10-11 apart from step 65's combat half**, **terrain and shafts rebuilt 2026-10-12** (D-154, F-154) | | |
+| **61+** | **The Deep Mine (Part M)** -- added 2026-10-10, **built 2026-10-11 apart from step 65's combat half**, **terrain and shafts rebuilt 2026-10-12** (D-154, F-154, F-155) | | |
 | 61 | **The second dimension**: per-dimension region directories, `level.smw`'s dimension and spawn fields, and the Deep Mine generator (sealed bedrock ceiling, one cave, stone, lava, richer iron, diamond clusters) | done | Part M, **built 2026-10-11, its terrain rebuilt 2026-10-12** (F-150, F-154). `world/dimension.{c,h}` is the current dimension as ONE global, because the ring is keyed by `(cx, cz)` alone and cannot hold both worlds at once; `world/deepmine.{c,h}` is the generator. `level.smw` gained one additive tag (`dimension`), so no migration and no major version (D-32), and the regions split by directory (D-143) with the overworld keeping the flat one -- a world already on the card still reads. **The shape was rebuilt once**: the cave is a shell -- a floor, and a roof that hangs off it by a room height that varies -- with four biomes, terraces for the cliffs, and one lava level for the whole dimension. Measured over 144 chunks: floor y 10..22, roof y 18..41, room -1..22 cells, 13 distinct floors and 24 distinct roofs, **35.5% of the columns a hall of 18 or more open cells, 15.4% a squeeze of 1-4, 1.8% solid rock**, 1919 of 4404 terrace seams a step of two blocks or more, **2.4% iron against the overworld's 0.8% on the same sample** and 0.06% diamond where the overworld has none, 1800 lava cells, and **95.8% of the cave walkable from one column** -- falling free, climbing capped at one block. |
 | 62 | **Light and sky in the Deep Mine**: global illumination, no sun or moon, `voxel_sky`/`backdrop`/`horizon` suppressed, `daytime` frozen | done, **device test pending** | Part M, built 2026-10-11 (F-150). Global illumination as a number is `DM_SKY_LIGHT` 12, and it is a **constant on open cells rather than a flood**: the column pass and the sky half of the border join are skipped, and block light still floods, because a torch is what makes a patch brighter than the rest of the cave -- lighting is for seeing, not for safety (D-139). `daytime_deep_mine()` is the frozen pose, straight up, because a sealed cave has no horizon to point at. The three render-side suppressions are one guard each on `dimension_has_sky()`. **The picture itself is still unverified on the device** -- this environment has no riscv32-esp-elf toolchain, so `make check` is green and the bench flight is the outstanding half. |
 | 63 | **The mine shaft**: the recipe, the 3x3 frame with four corner columns and trusses at height 3, placement through `world_set`, the centre cell as the trigger, pairing by column | done | Part M, **built 2026-10-11, reworked 2026-10-12** (F-150, F-154). `world/mineshaft.{c,h}`: 12 posts and 4 braces, and 16 ingots in -- the recipe and the shape are the same number, which is why the shape is exactly this. **`item_block()` answers `BLK_AIR` for it**, so `player.c` needed a branch of its own -- a shaft places a shape, not a block -- and the cell it stands ON is the one the crosshair struck, not the empty cell in front of its face. The trigger is a shape test seen from the middle, so it needs no record and works in either dimension. **The station is still the user's open question**: the recipe row names the crafting table because the game's bench is the disassembly station. **What was removed on 2026-10-12: the generated shaft.** The generator stamped one per coarse grid square, and what the player met was shafts "randomly appearing that I didn't place" -- so `SHAFT_GRID`, `mineshaft_is_candidate()` and `mineshaft_shape()` are gone, because a shaft costs sixteen ingots and a cave full of free ones is a lottery (D-154). **What replaced the generator's pad**: `mineshaft_flatten()`, on arrival only and in the Deep Mine only -- a 5x5 slab at `mineshaft_pad_y()` plus three cells of clear air, the user's allowance to level the terrain after generation. all 9216 columns the check sampled hold a frame, pad y 13..20, 2685 of them dug down under their own floor; 8 frames built on arrival, all 16 cells read back whole. |
+| 63b | **What a shaft may be built into, in either dimension** | done | 2026-10-12 (F-155), from the device report "it sometimes says mineshaft would not open". The overworld arrival cell is `worldgen_height() + 1` -- one above the surface block, not inside it: **1.5% of columns buildable before, 75.1% after**. `mineshaft_open_near()` re-asks that estimate +/-3 once the chunks are resident (28 of 511 real columns needed a different height, worst 3). A crossing may trim natural terrain and never the bedrock ceiling, a liquid, or a block with `ST_PLACED`; all 16 cells are checked before any is written. The centre ends air -- a plant is cleared, water and lava refused by name -- and no frame is dug under `CH_SEA_LEVEL`. Over 512 dry columns of the real overworld: **511 hold a frame, 1 cannot (0.2%), 449 refused for being under the waterline**. |
 | 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | done | Part M, **built 2026-10-11** (F-150). `world/dimension_switch.{c,h}` does steps 1-4 and 6 and **refuses rather than clears**, Part P's rule: a chunk the card never took is something the player made, and a switch that dropped it is data loss. Step 5 is in `main.c` and cannot be anywhere else, because the entry sequence is the app's -- `check_crossing()` hands the nine chunks to `start_loading()` with physics frozen. **Step 2 is a drain, not a gate** (F-151): a live streamer is never quiet, and a ring during play is dirty almost everywhere, so requiring an idle worker refused on nearly every crossing. A queue is a wait, not a refusal; what genuinely cannot be saved is a chunk whose planes are still the worker's, and draining is what separates the two. **Two things the design did not have**: the trigger has to re-arm, because the pairing is stateless and the cell you arrive in is a trigger too, so without one flag the player bounces back for ever; and a crossing during a replay is refused until step 48 records them. **The arrival cell is a real position** (F-151): the crossing records the frame's centre, and settling has to use it -- a crossing that let `world_ground()` re-derive the height put the player on top of the world at y 64, because the highest solid block in a sealed cave is the roof. |
 | 65 | **Zombies and skeletons**, in the Deep Mine only | partly done -- **population only** | Built 2026-10-11 (F-150): two rows in `MOBS[]`, `PACKS[]` (60 zombie / 40 skeleton), one roll per chunk from the world's hash, a pack inside one chunk, and nothing that comes back (D-146). Measured over 10000 chunks: **1226 packs, 12.3% against the design's 12%**, 3066 members, 0.31 a chunk; a Far ring holds 61 of the pool's 128, 40 zombie and 21 skeleton, so `s_refused` reads 0 -- the check that says whether the numbers are right. **Fixed 2026-10-12** (F-154): both kinds were drawn with the quadruped numbers, which gave a 1.8-tall humanoid a zero-length body and left what the user called "a few small floating squares" -- `beast.c` has an `upright` shape now (torso stood on end, two legs, two arms, head on top), and a pack is never placed on a lava lake. **Combat and pathing are not built**: `hostile` is a column of the row that nothing reads yet. Drops are empty on purpose (D-144). |
 | 66 | **The optional external VFD** (from synthracer): the item in hand in a world, the game's name in a menu, powered down on exit | done, **device test pending** | 2026-10-12, the user: *"Port that over here ... The VFD should display the name of the current item held in hand (or be blank otherwise). In the Menu, it should display "SynthMiner". Make sure the VFD is powered off when exiting the app."* `main/vfd.{c,h}`, D-152 and F-152. Costs 9.7 KiB of text and does nothing at all on a badge that has no tube. **Unverified here**: the probe, the scrolled names and the power-down all need a device with the display fitted. |
@@ -8438,6 +8465,97 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   described them, whether a two-block cliff reads as a cliff at badge resolution, and whether
   the upright figures read as a zombie and a skeleton all need the badge. The mob pool's
   12.3% and every height in Part M are provisional on the user's word.
+
+  Superseded in part by **F-155** the same day: the arrival height in the overworld, and
+  what a crossing may write a post into.
+
+- **F-155** 2026-10-12, measured and fixed: **the two edits the trace said were never
+  rebuilt, and the shaft that would not open on a hillside.**
+
+  **THE TRACE WAS RIGHT, AND IT WAS NOT THE MESHER.** The 2026-10-12 trace of the Deep Mine
+  run (seed 1237517243) reported `2 EDIT(S) NEVER REBUILT`, both at `(-24,15,47)` /
+  `(-24,14,47)`, chunk `-2,2` section 0, and the user's own words for it were "monsters do
+  not render correctly" and a cave that "does not feel like a big mine cave". The mesher was
+  not involved: the edits landed, the mesh was built, and the draw pass had already thrown
+  the section away. `chunk_resummarise()` keeps a `bottom` per chunk -- the lowest y that can
+  show a face -- and `chunk_render.c` skips any section whose top is at or below it. A chunk
+  generated with its first non-cube cell at y 17 sat at `bottom 16` for the whole session, so
+  section 0 (y 0..15) was culled from the first frame to the last, and every tunnel dug under
+  that floor was invisible. `world_set()` kept `top` incrementally and never touched `bottom`.
+  Measured on the real terrain of that seed: chunk `-2,2` `bottom 16`, chunk `-2,3` `bottom 14`
+  -- which is exactly why the same trace meshed the edits in `-2,3` and not the ones in `-2,2`.
+  Breaking `(-24,15,47)` left `bottom 16`.
+
+  **DIGGING LOWERS THE PROMISE, AND ONLY DOWNWARDS.** `world_set()` now walks the column up
+  while the cells are `K_CUBE` and lowers `bottom` to the last one. It is never raised:
+  raising it needs the minimum over all 256 columns, and the two ways for this to be wrong are
+  not equal -- a `bottom` too LOW costs a mesh that comes out empty, a `bottom` too HIGH is a
+  hole in the world. Filling a hole back in therefore does not put the culling back. On the
+  real chunk above, breaking `(-24,15,47)` now takes `bottom` 16 -> 14 and section 0 is drawn.
+  `check_mesh_budget()` digs through the game's own funnel: a flat floor at y 0..19 starts at
+  `bottom 19`, digging at y 12 brings it to 11, `16 > bottom` so section 0 is no longer
+  culled, and the mesh for that section goes from **0 triangles to 12**; refilling the hole
+  leaves it at 11.
+
+  **A TRIMMED MESH HAS TO BE TOLD.** `chunk_store_trim_meshes()` cleared `lod_built` and
+  cleared `lod_stale` too, on the reasoning that nothing is waiting for a section nobody is
+  looking at. But the draw pass asks about *stale*, because **(not built, not stale) is also
+  what a section that WAS built and came out EMPTY looks like** -- solid rock, open sky -- and
+  the pass reads that as "nothing here" and moves on. A freed section was invisible until
+  something else happened to mark it stale. It sets the stale bit now (`lod_urgent`
+  deliberately not: nobody is looking at it, that is why it was freed), and the check asserts
+  it: of the 432 sections that held geometry before the trim, **432 are marked stale, 0 are
+  not**.
+
+  **THE SAME TRIM WAS DONE TWICE A FRAME.** `chunk_render_stream()` carried two copies of the
+  trim-and-floor block, one with `(uint32_t)` casts and one without. The duplicate is gone;
+  the pass runs once.
+
+  **THE FAR END IN THE OVERWORLD STANDS ONE ABOVE THE SURFACE BLOCK.**
+  `mineshaft_arrival_y()` answered `worldgen_height()`, which is the y of the SURFACE BLOCK --
+  so the frame's ground cell was inside the ground and the whole shape was buried in the hill.
+  Measured over 16384 columns of that seed: with the base at `h0-1` as the code had it, **248
+  columns (1.5%) can hold a frame**; at `h0`, 12304 (75.1%). It is `worldgen_height() + 1`
+  now, which is also what `worldgen.h` always said `worldgen_height()` was, in words the
+  comment did not match.
+
+  **WHAT A CROSSING MAY WRITE A POST INTO.** A player's placement needs air. The far end of a
+  crossing may trim natural terrain, because what it is refusing is the player's way back --
+  but three things it still will not touch, each one a hole in something somebody cares
+  about: the bedrock ceiling of the Deep Mine, a lake or a lava pool, and any block carrying
+  `ST_PLACED` (the player's own wall). It checks all 16 cells **before** writing any of them,
+  so a refusal leaves the terrain exactly as it was.
+
+  **THE CENTRE IS AIR OR A PLANT, AND NEVER UNDER THE WATERLINE.** The centre cell may be air
+  or a plant (a flower or tall grass is `BF_REPLACEABLE` and a frame built through one is
+  still a door); water and lava are refused by name, because water is replaceable and a middle
+  full of water is a frame that looks like a doorway and is not one. In the overworld the
+  centre is also scanned from `y+2` up to `CH_SEA_LEVEL` for water: **no frame may be dug into
+  a dry sea cave**, which is what the first version did. "Wet" is strictly *below* the
+  waterline -- a column whose surface IS the waterline has no water above it, and a frame on
+  the shore is a door like any other. Writing the centre to air is a separate step
+  (`open_centre_clear()`), taken from both the placement and the crossing.
+
+  **A PURE ESTIMATE IS CHECKED AGAINST THE TERRAIN THAT IS ACTUALLY THERE.**
+  `mineshaft_arrival_y()` has to be answerable before the target chunk exists, so it cannot
+  know about the cave mouth, the tree or the slope. `mineshaft_open_near()` is the moment the
+  chunks are resident and the estimate gets checked: base `y-d` then `y+d`, `d = 0..3`, down
+  first. Over 512 dry columns of the real overworld from the failing seed: **511 hold a frame,
+  28 needed a different height (worst 3), 1 cannot** (0.2%: an overhang column with no solid
+  floor within +/-3); 449 further columns were refused for being under the waterline, which is
+  its own test and not a failure of this one. The check asserts under 0.5%, because one column
+  that cannot hold a frame is one player who cannot get home.
+
+  **And the bedrock question the user asked.** There is no bedrock placed at random heights:
+  what looks like it is each column's own sealed lid, and the roof of the cave runs y 18..44
+  over the sampled chunk ring (F-154). The top and bottom layers are bedrock, and every column
+  in between ends in one too -- that is what "sealed" means here.
+
+  **What is still outstanding.** The device test again: the culling fix is asserted on the
+  host and on the real terrain of the failing seed, but whether the Deep Mine now *looks*
+  right is the user's to see. And the 0.2%: a column whose terrain gives the frame no floor
+  within +/-3 still leaves the player on the far side with no way back at that column -- the
+  crossing refuses nothing there, and whether it should is the user's to decide.
 
 ## Verification
 

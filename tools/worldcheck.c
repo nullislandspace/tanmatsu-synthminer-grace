@@ -3998,6 +3998,22 @@ static void check_mesh_budget(void) {
 
     // The player stands in the middle. Keep 20 blocks, which is one
     // chunk out: everything further has to go.
+    // Which sections HELD geometry first, so the check afterwards can tell
+    // "the trim freed this" from "this was empty all along".
+    uint16_t pre[2 * R + 1][2 * R + 1];
+    for (int cz = 0; cz < 2 * R + 1; cz++)
+        for (int cx = 0; cx < 2 * R + 1; cx++) {
+            chunk_t* c = chunk_find(cx - R, cz - R);
+            uint16_t mask = 0;
+            if (c != NULL) {
+                for (int m = 0; m < CH_MESH_N; m++) {
+                    mesh_t const* mesh = chunk_mesh(c, m / CH_SECT_N, m % CH_SECT_N);
+                    if (mesh->vcap > 0 || mesh->tcap > 0) mask |= (uint16_t)((uint16_t)1u << m);
+                }
+            }
+            pre[cz][cx] = mask;
+        }
+
     int const freed = chunk_store_trim_meshes(8.5, 8.5, 20.0f);
     size_t const after = chunk_store_mesh_bytes(&meshes, &chunks);
     printf("  trimming to 20 blocks freed %d meshes: %u KiB -> %u KiB, %d chunks still resident\n",
@@ -4031,6 +4047,27 @@ static void check_mesh_budget(void) {
     CHECK(far_held == 0, "%d meshes survived the trim beyond the keep distance", far_held);
     CHECK(lying == 0, "%d section(s) claim to be built with no geometry behind them", lying);
 
+    // AND THE DRAW PASS IS TOLD. It does not ask "is this built" -- it asks
+    // "is this stale", because (not built, not stale) is ALSO what a section
+    // that was built and came out EMPTY looks like, and the pass reads that as
+    // "nothing here" and moves on. A trim that only cleared `lod_built` would
+    // leave the freed section invisible until something else happened to mark
+    // it stale.
+    int unmarked = 0, marked = 0;
+    for (int cz = 0; cz < 2 * R + 1; cz++)
+        for (int cx = 0; cx < 2 * R + 1; cx++) {
+            chunk_t* c = chunk_find(cx - R, cz - R);
+            if (c == NULL) continue;
+            for (int m = 0; m < CH_MESH_N; m++) {
+                uint16_t const bit = (uint16_t)((uint16_t)1u << m);
+                if ((pre[cz][cx] & bit) == 0) continue;  // nothing was freed here
+                if ((c->lod_stale & bit) != 0) marked++;
+                else unmarked++;
+            }
+        }
+    printf("  every freed mesh is marked stale for the draw pass: %d marked, %d not\n", marked, unmarked);
+    CHECK(unmarked == 0, "%d trimmed section(s) are not marked stale, so nothing would ever rebuild them", unmarked);
+
     // AND IT IS REVERSIBLE: asking again rebuilds, which is what the
     // draw pass does when it finds a section not built.
     chunk_t* far_c = chunk_find(R, R);
@@ -4040,6 +4077,46 @@ static void check_mesh_budget(void) {
         printf("  a trimmed section rebuilds on demand: %s\n", ok ? "yes" : "NO");
         CHECK(ok, "a section that was trimmed would not build again");
         mesh_free(&m);
+    }
+
+    // AND DIGGING MOVES THE BOTTOM OF A CHUNK (F-155). `bottom` is a culling
+    // PROMISE -- "nothing below here can show a face" -- and the draw pass
+    // throws whole sections away on it (chunk_render.c). Editing a chunk kept
+    // `top` and used to leave `bottom` alone, which is a hole in the world:
+    // dig under a floor and the tunnel you dug is never drawn. The 2026-10-12
+    // trace called it "2 EDIT(S) NEVER REBUILT" -- the edits landed, the mesh
+    // was built, and the draw pass had already decided that section could not
+    // show anything.
+    chunk_store_clear();
+    chunk_t* dig = flat_world(20);
+    CHECK(dig != NULL, "no flat chunk to dig in");
+    if (dig != NULL) {
+        CHECK(dig->bottom == 19, "a floor at y 0..19 starts with bottom %d, not its top solid cell", (int)dig->bottom);
+
+        mesh_t sealed;
+        bool const ok_sealed = chunkmesh_build(0, 0, LOD_FANCY, 0, scratch, &sealed);
+        printf("  the buried section of a flat floor meshes to %d triangles\n", ok_sealed ? sealed.tn : -1);
+        CHECK(ok_sealed && sealed.tn == 0, "the buried half of a flat floor is not empty after all");
+        mesh_free(&sealed);
+
+        world_set(4, 12, 4, BLK_AIR, 0);  // a hole under the floor, from the game's own funnel
+        CHECK(dig->bottom == 11, "digging at y 12 left bottom at %d, so the cell under the hole still cannot show a face",
+              (int)dig->bottom);
+        // The draw pass drops a section whose top is at or below `bottom`.
+        CHECK(16 > (int)dig->bottom, "section 0 (y 0..15) is still culled, so the tunnel would be invisible");
+
+        mesh_t dug;
+        bool const ok_dug = chunkmesh_build(0, 0, LOD_FANCY, 0, scratch, &dug);
+        printf("  after digging, the same section meshes to %d triangles\n", ok_dug ? dug.tn : -1);
+        CHECK(ok_dug && dug.tn > 0, "the hole dug under the floor produced no geometry");
+        mesh_free(&dug);
+
+        // Filling it back in does NOT take the culling back, which is the way
+        // for this promise to fall: too low wastes a mesh, too HIGH hides the
+        // world. Raising it would need the minimum over all 256 columns.
+        world_set(4, 12, 4, BLK_STONE, 0);
+        CHECK(dig->bottom == 11, "refilling the hole raised bottom to %d, which the draw pass would then believe",
+              (int)dig->bottom);
     }
 
     free(scratch);
@@ -5338,14 +5415,157 @@ static void check_mineshaft(void) {
     CHECK(!mineshaft_can_place(fx, 15, fz), "a post standing on nothing is placeable after all");
     CHECK(!mineshaft_open_at(fx, 15, fz), "the crossing wrote a frame over one already standing there");
 
+    // WHAT A CROSSING MAY WRITE A POST INTO. A player's placement needs air;
+    // the far end of a crossing may trim natural terrain, because the thing
+    // it is refusing is the player's way back. Three things it still will not
+    // touch, and each one is a hole in something somebody cares about: the
+    // ceiling of the Deep Mine, a lake, and a block with ST_PLACED on it.
+    int32_t const gx = -8, gz = 8;  // inside the flat world's three chunks
+    set_block(gx + 1, 16, gz + 1, BLK_GRASS, 0);  // a corner post against a slope
+    CHECK(!mineshaft_can_place(gx, 15, gz), "a player's placement was allowed into terrain");
+    CHECK(mineshaft_open_at(gx, 15, gz), "the crossing refused to trim the turf a post stood in");
+    CHECK(world_block(gx + 1, 16, gz + 1) == BLK_SHAFT_COLUMN, "the post did not replace the turf");
+    CHECK(mineshaft_is_trigger(gx, 16, gz), "a frame trimmed into a slope is not a trigger");
+
+    int32_t const hx = -8, hz = -8;
+    set_block(hx - 1, 17, hz - 1, BLK_BEDROCK, 0);
+    CHECK(!mineshaft_open_at(hx, 15, hz), "the crossing carved a post through bedrock");
+    CHECK(world_block(hx - 1, 17, hz - 1) == BLK_BEDROCK, "bedrock was overwritten anyway");
+    set_block(hx - 1, 17, hz - 1, BLK_AIR, 0);
+
+    set_block(hx + 1, 16, hz + 1, BLK_LAVA, 0);
+    CHECK(!mineshaft_open_at(hx, 15, hz), "the crossing built a post inside lava");
+    CHECK(world_block(hx + 1, 16, hz + 1) == BLK_LAVA, "the lava was overwritten anyway");
+    set_block(hx + 1, 16, hz + 1, BLK_AIR, 0);
+
+    set_block(hx - 1, 16, hz - 1, BLK_PLANKS, ST_PLACED);
+    CHECK(!mineshaft_open_at(hx, 15, hz), "the crossing carved a block the player placed");
+    CHECK(world_block(hx - 1, 16, hz - 1) == BLK_PLANKS, "the player's own wall was overwritten anyway");
+    set_block(hx - 1, 16, hz - 1, BLK_AIR, 0);
+
+    // THE CENTRE IS THE ONE CELL THAT CANNOT FLOAT: the trigger is read from
+    // it, so a frame with nothing under its middle is a frame nobody can
+    // cross back from. And `mineshaft_open_near` is what finds the height that
+    // does have ground -- the pure estimate cannot know that a cave mouth ate
+    // the surface block, which is the failure the 2026-10-12 trace ended on.
+    int32_t const jx = 8, jz = -8;
+    set_block(jx, 15, jz, BLK_AIR, 0);
+    CHECK(!mineshaft_open_at(jx, 15, jz), "the crossing built a frame with nothing under its centre");
+    for (size_t i = 0; i < 16; i++) {
+        shaft_cell_t const* s = &SHAFT_CELLS[i];
+        uint8_t const b = world_block(jx + s->dx, 15 + s->dy, jz + s->dz);
+        CHECK(b != BLK_SHAFT_COLUMN && b != BLK_SHAFT_TRUSS,
+              "the refused attempt at y=15 wrote a shape cell anyway: everything is checked first");
+    }
+    int const found = mineshaft_open_near(jx, 15, jz);
+    CHECK(found == 14, "mineshaft_open_near answered %d, not the solid cell one below the estimate", found);
+    CHECK(mineshaft_trigger_y(jx, jz) == 15, "the frame it found reads its centre as y %d, not 15",
+          mineshaft_trigger_y(jx, jz));
+
+    // A PLANT ON THE SPOT. Decoration is not in the way of a doorway: a flower
+    // or a tuft of tall grass stands ON the ground the frame wants, and the
+    // frame takes the cell rather than refusing. Six of the seven columns the
+    // 2026-10-12 sample could not hold a frame were exactly this.
+    int32_t const kx = 8, kz = 24;
+    set_block(kx, 16, kz, BLK_TALL_GRASS, 0);
+    CHECK(!mineshaft_is_trigger(kx, 16, kz), "a tuft in an empty cell reads as a doorway");
+    CHECK(mineshaft_open_at(kx, 15, kz), "the crossing refused a frame because a plant stood in its centre");
+    CHECK(world_block(kx, 16, kz) == BLK_AIR, "the plant was left standing in the doorway it built");
+    CHECK(mineshaft_is_trigger(kx, 16, kz), "the frame built over a plant is not a trigger");
+
+    // UNDER THE WATERLINE IS NOT A DOOR. The generator carves caves below the
+    // sea and does not flood them (worldgen.c: "a cave under water would
+    // flood, and there is no fluid simulation to flood it with"), so a crossing
+    // allowed to dig down far enough finds dry air at the bottom of the sea --
+    // and a player dropped into it has no way up. The centre has to be clear of
+    // water up to the waterline, which is what the real-terrain sample below
+    // measures.
+    int32_t const nx = -8, nz = 0;
+    for (int yy = 17; yy <= 20; yy++) set_block(nx, yy, nz, BLK_WATER, 0);
+    CHECK(!mineshaft_open_at(nx, 15, nz), "the crossing built a frame under the waterline");
+    CHECK(!mineshaft_can_place(nx, 15, nz), "a player was allowed to build a doorway under the sea");
+    for (int yy = 17; yy <= 20; yy++) set_block(nx, yy, nz, BLK_AIR, 0);
+    CHECK(mineshaft_open_at(nx, 15, nz), "the frame was still refused after the water went away");
+
     // AND THE PAIRING: the same column, a different height, because each
     // end stands on its own ground -- and down there its own ground is the
     // levelled pad, not the rough cave floor it was levelled from. Answering
     // with the floor is what put a player above the frame instead of in it.
     CHECK(mineshaft_arrival_y(px, pz, seed, (int)DIM_DEEP_MINE) == mineshaft_pad_y(px, pz, seed) + 1,
           "column %d,%d does not pair back to the centre of the frame built on its pad", px, pz);
-    CHECK(mineshaft_arrival_y(px, pz, seed, (int)DIM_OVERWORLD) == worldgen_height(px, pz, seed),
-          "column %d,%d does not pair back to the overworld's ground", px, pz);
+    CHECK(mineshaft_arrival_y(px, pz, seed, (int)DIM_OVERWORLD) == worldgen_height(px, pz, seed) + 1,
+          "column %d,%d does not pair back to the cell above the overworld's surface block", px, pz);
+
+    // --- The far end on REAL terrain ----------------------------------
+    //
+    // Everything above is a hand-built world, and the hand is the problem:
+    // what the user hit was a frame that would not open on a real hillside,
+    // and no flat world can show that. So: a ring of the real overworld, from
+    // the seed of the run that failed, and every column in it asked the
+    // question the crossing asks. `mineshaft_open_near` WRITES, so this runs
+    // on a scratch store, and every fourth column so no frame can touch the
+    // column the next one is being asked about.
+    chunk_store_clear();
+    uint32_t const tseed = 1237517243u;
+    int32_t const T0 = -4, T1 = 5;
+    for (int32_t cz = T0; cz <= T1; cz++) {
+        for (int32_t cx = T0; cx <= T1; cx++) {
+            chunk_t* c = chunk_claim(cx, cz);
+            if (c == NULL) continue;
+            worldgen_chunk(c, tseed, FARLANDS_NONE);
+            c->cstate = CS_READY;
+            chunk_resummarise(c);
+        }
+    }
+
+    long tcols = 0, tbuilt = 0, tmoved = 0, tfailed = 0, wet = 0;
+    int  worst = 0;
+    for (int32_t wz = T0 * CH_D + 4; wz <= (T1 - 1) * CH_D - 4; wz += 4) {
+        for (int32_t wx = T0 * CH_W + 4; wx <= (T1 - 1) * CH_W - 4; wx += 4) {
+            // A column under the waterline cannot hold a working shaft at all:
+            // its centre cell would be water, and a middle full of water is a
+            // frame that looks like a door and is not one. That is its own
+            // test, not a failure of this one.
+            // (STRICTLY below: a column whose surface IS the waterline has no
+            // water above it at all, and a frame on the shore is a door like
+            // any other.)
+            if (worldgen_height(wx, wz, tseed) < CH_SEA_LEVEL) {
+                wet++;
+                int const wy = mineshaft_arrival_y(wx, wz, tseed, (int)DIM_OVERWORLD);
+                CHECK(mineshaft_open_near(wx, wy - 1, wz) < 0,
+                      "a frame was built in the sea cave at %d,%d, under the waterline", wx, wz);
+                continue;
+            }
+            int const ay   = mineshaft_arrival_y(wx, wz, tseed, (int)DIM_OVERWORLD);
+            int const base = mineshaft_open_near(wx, ay - 1, wz);
+            tcols++;
+            if (base < 0) {
+                tfailed++;
+                continue;
+            }
+            tbuilt++;
+            if (base != ay - 1) {
+                tmoved++;
+                int d = base - (ay - 1);
+                if (d < 0) d = -d;
+                if (d > worst) worst = d;
+            }
+            CHECK(block_solid(world_block(wx, base, wz)), "the frame at %d,%d stands on y=%d, which is not ground", wx, wz,
+                  base);
+            CHECK(mineshaft_trigger_y(wx, wz) == base + 1, "the frame at %d,%d reads its centre as y %d, not %d", wx, wz,
+                  mineshaft_trigger_y(wx, wz), base + 1);
+        }
+    }
+    printf("  far end on real terrain: %ld dry column(s) asked, %ld hold a frame, %ld needed a different height (worst "
+           "%d), %ld cannot; %ld column(s) under the waterline refused\n",
+           tcols, tbuilt, tmoved, worst, tfailed, wet);
+    CHECK(tbuilt > 0, "no column of the real overworld can hold a shaft");
+    // Not every column can: a handful sit in a cave mouth whose surface block
+    // is gone, more than three cells down. Under half a percent is the point
+    // -- the 2026-10-12 trace failed on one column, and one is a player who
+    // cannot get home.
+    CHECK(tfailed * 200 <= tcols, "%ld of %ld columns could not hold a frame, which is more than 0.5%%", tfailed,
+          tcols);
 
     chunk_store_clear();
 }

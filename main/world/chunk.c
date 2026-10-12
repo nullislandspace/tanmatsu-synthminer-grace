@@ -111,9 +111,17 @@ void chunk_store_shutdown(void) {
 // where free PSRAM was under 512 KiB.
 //
 // Freeing one is cheap and reversible: `lod_built` goes back to 0 and
-// the draw pass asks for it again the moment it is wanted. `lod_inflight`
-// is deliberately NOT touched -- a job already on the worker will land
-// and be accepted as usual.
+// `lod_stale` goes to 1, which is exactly what the draw pass asks about, so it
+// rebuilds the moment the section is wanted again. `lod_inflight` is
+// deliberately NOT touched -- a job already on the worker will land and be
+// accepted as usual.
+//
+// Setting the stale bit is the whole point, not a tidy-up. "Not built" on its
+// own does NOT make the draw pass ask: (not built, not stale) is the state a
+// section that WAS built and came out EMPTY -- solid rock, open sky -- has, and
+// the pass reads it as "nothing here" and moves on. Freeing a mesh without
+// saying so would leave a trimmed section invisible until something else
+// happened to mark it stale.
 int chunk_store_trim_meshes(double wx, double wz, float keep) {
     if (keep < 0.0f) return 0;
     double const keep2 = (double)keep * (double)keep;
@@ -138,9 +146,10 @@ int chunk_store_trim_meshes(double wx, double wz, float keep) {
             mesh_free(mesh);
             uint16_t const bit = (uint16_t)((uint16_t)1u << m);
             c->lod_built &= (uint16_t)~bit;
-            // Not stale either: nothing is waiting for it. "Not built"
-            // is what makes the draw pass ask again.
-            c->lod_stale &= (uint16_t)~bit;
+            // Waiting for a new one, and an ordinary one: `lod_urgent` is NOT
+            // set, because nobody is looking at this section -- that is why it
+            // was freed.
+            c->lod_stale |= bit;
             freed++;
         }
     }
@@ -402,6 +411,30 @@ void world_set(int32_t x, int32_t y, int32_t z, uint8_t block, uint8_t state) {
             }
         }
         *t = (uint8_t)n;
+    }
+
+    // ... AND THE BOTTOM, but only DOWNWARDS. `bottom` is a culling PROMISE --
+    // "nothing below here can show a face" -- and the draw pass throws whole
+    // sections away on it (chunk_render.c). Too low costs a mesh that comes out
+    // empty; too HIGH is a hole in the world.
+    //
+    // Digging is exactly the case that lowers it, and this function kept `top`
+    // and never touched `bottom`: a chunk generated with its first non-cube at
+    // y=17 stayed at bottom 16 for the whole session, section 0 (y 0..15) was
+    // culled the entire time, and every tunnel dug under that floor was
+    // invisible -- the two edits the 2026-10-12 trace reported as never
+    // rebuilt, and the Deep Mine's "rendering problems" (F-155).
+    //
+    // Only ever lowered, never raised: raising it needs the whole 256-column
+    // min, and a promise that is too low is only ever a wasted mesh. Filling a
+    // hole back in does not put the culling back, and that is the right way for
+    // the mistake to fall.
+    if (block_kind(block) != K_CUBE) {
+        uint8_t const* col = &c->id[CH_IDX(lx, 0, lz)];
+        int            b   = 0;
+        while (b < CH_H && block_kind(col[b]) == K_CUBE) b++;
+        if (b > 0) b--;
+        if (b < (int)c->bottom) c->bottom = (uint8_t)b;
     }
 
     // A cell on a border shows a face to the chunk next door, and that

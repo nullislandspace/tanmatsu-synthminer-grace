@@ -423,33 +423,6 @@ void chunk_render_stream(double wx, double wz) {
         }
     }
 
-    // ... AND GIVE BACK THE MESHES OF WHAT IS STILL RESIDENT BUT NO
-    // LONGER DRAWN (F-135). The ring is five chunks deep and the draw
-    // distance is less than three of them, so most of what the cache
-    // held was geometry the draw pass would never submit again. Nothing
-    // freed it, so it grew until PSRAM ran out -- and once it had, a
-    // rebuild could not allocate, which does not slow the frame down, it
-    // LEAVES THE BLOCK YOU BROKE ON THE SCREEN.
-    //
-    // Done every frame rather than only when memory is short, so the
-    // cache sits at a size instead of sawtoothing between fine and
-    // broken. The slack stops a chunk on the boundary being freed and
-    // rebuilt as the player steps back and forth.
-    s_trimmed_total += chunk_store_trim_meshes(wx, wz, s_view.draw_dist + MESH_KEEP_SLACK);
-
-    // AND A FLOOR UNDER THE FREE MEMORY, because the pass above is
-    // measured in distance and what actually matters is bytes: a dense
-    // near field can fill PSRAM inside the draw distance all by itself.
-    // So if it is still short, give up the far half of what is drawn --
-    // the coarse band first, which is the cheapest thing to look at and
-    // the cheapest to rebuild.
-    if (sm_free_bytes() < MESH_FLOOR_BYTES) {
-        s_trimmed_total += chunk_store_trim_meshes(wx, wz, s_view.coarse_dist);
-        if (sm_free_bytes() < MESH_FLOOR_BYTES) {
-            s_trimmed_total += chunk_store_trim_meshes(wx, wz, s_view.fancy_dist);
-        }
-    }
-
     // Ask for what is missing, nearest first: a ring at a time outwards,
     // so the ground under the player arrives before the horizon.
     s_resident = 0;

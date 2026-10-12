@@ -42,6 +42,12 @@
 #define SHAFT_FOOT  1   // +1 each way from the centre: a 3x3
 #define SHAFT_PAD   2   // +2 each way: a 5x5, the ground the frame stands in
 
+// How far away from its pure estimate a crossing is allowed to look for a
+// ground cell the frame fits on (mineshaft_open_near). Three each way: the
+// measured reason an estimate is wrong is a cave mouth that took the surface
+// block, and that is one or two cells, not ten.
+#define SHAFT_BASE_TRIES 3
+
 // One cell of the shape, as an offset from the GROUND cell the shaft
 // stands on. The shaft itself occupies y+1..y+3; the centre at y+1 is
 // left open, because that is where the player steps in.
@@ -110,13 +116,22 @@ bool mineshaft_place(int32_t x, int y, int32_t z);
 // nothing rule, but no ground rule -- see mineshaft.c.
 bool mineshaft_open_at(int32_t x, int y, int32_t z);
 
+// The same, but allowed to look for the height the frame fits on: `y` is the
+// pure estimate and the answer is the ground cell it actually built on, or -1
+// when this column cannot hold a frame at all. A pure estimate cannot know
+// about the cave mouth, the tree or the slope, so the crossing asks again
+// once the chunks are resident.
+int mineshaft_open_near(int32_t x, int y, int32_t z);
+
 // Is (x, y, z) -- the cell the player is standing in -- the open centre
 // of a shaft? Reads only this chunk's cells, so it works in either
 // dimension and needs no record of which shaft this is.
 bool mineshaft_is_trigger(int32_t x, int y, int32_t z);
 
 // The cell a crossing lands in at this column, in `to`. Pure, because
-// the arrival height has to be knowable before the target chunk exists.
+// the arrival height has to be knowable before the target chunk exists --
+// which also makes it an estimate, and `mineshaft_open_near` is the moment
+// the estimate gets checked against the terrain that is actually there.
 int mineshaft_arrival_y(int32_t x, int32_t z, uint32_t seed, int dimension);
 
 // If a shaft is already standing at this column in the resident world,

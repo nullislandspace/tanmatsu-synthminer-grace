@@ -220,7 +220,7 @@ static void start_loading(double wx, double wz, app_state_t next, char const* wh
 // meshes, record -- belongs to world/dimension_switch.h; what is here is
 // the part only the app can do: the arrival point and the nine chunks
 // around it.
-static bool cross_to(dimension_t to, double wx, double wz);
+static bool cross_to(dimension_t to, double wx, double wz, bool far_end);
 static bool check_crossing(void);
 
 // Whether the shaft the player is standing in may be crossed again. It
@@ -231,7 +231,9 @@ static bool s_cross_armed;
 static bool s_cross_said;
 
 // The column just crossed, and whether its far end still has to be built
-// (open_crossed_shaft).
+// (open_crossed_shaft). Only a SHAFT crossing asks for one: a respawn at the
+// bed is not a crossing the player chose a column for, and building a shaft
+// there would be another shaft that appeared without anybody building it.
 static bool    s_cross_stamp;
 static int32_t s_cross_sx, s_cross_sz;
 // How many more attempts the far end gets before we stop trying. The load
@@ -1845,7 +1847,7 @@ static void player_died(void) {
     // dropping a chunk the card had not taken would be data loss, so it
     // wakes up where it fell instead and tries again after the player
     // steps out of the frame.
-    bool const crossed = dimension_current() == DIM_OVERWORLD || cross_to(DIM_OVERWORLD, hx, hz);
+    bool const crossed = dimension_current() == DIM_OVERWORLD || cross_to(DIM_OVERWORLD, hx, hz, false);
     if (!crossed) {
         ESP_LOGW(TAG, "died in the %s and could not cross back; waking up where they fell",
                  dimension_name(dimension_current()));
@@ -1924,7 +1926,7 @@ static void start_loading(double wx, double wz, app_state_t next, char const* wh
 // False means nothing was changed, and the caller stays where it is.
 // Refusing is the right answer for the same reason Part P refuses on
 // eviction: a chunk the card never took is something the player made.
-static bool cross_to(dimension_t to, double wx, double wz) {
+static bool cross_to(dimension_t to, double wx, double wz, bool far_end) {
     int32_t const cx = (int32_t)floor(wx), cz = (int32_t)floor(wz);
     if (!dimension_switch(cx, cz, to)) return false;
 
@@ -1950,10 +1952,10 @@ static bool cross_to(dimension_t to, double wx, double wz) {
     // now -- the store has just been emptied, so there is no chunk to write
     // into. It gets built on the first tick after the nine chunks arrive
     // (open_crossed_shaft).
-    s_cross_stamp = true;
-    s_cross_sx = cx;
-    s_cross_sz = cz;
-    s_cross_tries = CROSS_TRIES;
+    s_cross_stamp = far_end;
+    s_cross_sx    = cx;
+    s_cross_sz    = cz;
+    s_cross_tries = far_end ? CROSS_TRIES : 0;
 
     start_loading(s_saved.x, s_saved.z, APP_PLAY, T(SM_STR_LOADING_CROSSING), LOAD_GATE_3X3);
     hud_say(T(to == DIM_DEEP_MINE ? SM_STR_HUD_DEEP_MINE : SM_STR_HUD_SURFACE));
@@ -1983,14 +1985,27 @@ static bool open_crossed_shaft(void) {
     if (!s_cross_stamp) return true;
 
     int32_t const x = s_cross_sx, z = s_cross_sz;
-    if (mineshaft_trigger_y(x, z) >= 0) {  // one is standing here already
+
+    // ONE IS ALREADY STANDING HERE -- the one the player built, most of the
+    // time, and it is standing where THEY put it, which is not necessarily
+    // where the pure estimate says the surface is. Land them in the frame
+    // that exists, not in the frame the estimate imagined.
+    int const standing = mineshaft_trigger_y(x, z);
+    if (standing >= 0) {
+        s_saved.y    = (double)standing;
         s_cross_stamp = false;
         return true;
     }
 
-    int const ay = mineshaft_arrival_y(x, z, s_meta.seed, (int)dimension_current());
-    if (mineshaft_open_at(x, ay - 1, z)) {
-        trace_edit('P', x, ay - 1, z, "mine shaft", 16);
+    // THE FAR END. `ay` is the estimate; the frame goes where the terrain
+    // actually lets it, and the player goes with the frame. `settle_player`
+    // runs later in this same frame (loading_step), so correcting the saved
+    // height here is what puts them in the cell they can cross back from.
+    int const ay   = mineshaft_arrival_y(x, z, s_meta.seed, (int)dimension_current());
+    int const base = mineshaft_open_near(x, ay - 1, z);
+    if (base >= 0) {
+        trace_edit('P', x, base, z, "mine shaft", 16);
+        s_saved.y = (double)(base + 1);
         s_cross_stamp = false;
         return true;
     }
@@ -2039,7 +2054,7 @@ static bool check_crossing(void) {
     }
 
     dimension_t const to = dimension_current() == DIM_DEEP_MINE ? DIM_OVERWORLD : DIM_DEEP_MINE;
-    if (!cross_to(to, (double)x, (double)z)) {
+    if (!cross_to(to, (double)x, (double)z, true)) {
         // A refusal now means a genuine one: a chunk that could not reach
         // the card, or a chunk still being filled. The switch drains what
         // it has already started before it decides (dimension_switch.c), so

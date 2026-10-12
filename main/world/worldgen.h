@@ -45,9 +45,12 @@ void worldgen_force_floor(chunk_t* c);
 
 void worldgen_chunk(chunk_t* c, uint32_t seed, int32_t farlands_x);
 
-// The surface height at a column: the y of the first air above the
-// solid ground, before caves and decorations. Exposed because spawn
-// selection and the host checks want it without generating a chunk.
+// The surface height at a column: the y of the SURFACE BLOCK -- the top
+// solid cell of the undecorated column, before caves and decorations. The
+// cell a player stands in is one above it. (deepmine_ground_y() answers the
+// other one, the first air above its floor, and says so in deepmine.h;
+// mineshaft_arrival_y() is where the two are lined up.) Exposed because
+// spawn selection and the host checks want it without generating a chunk.
 int worldgen_height(int32_t x, int32_t z, uint32_t seed);
 
 // How deep each ore may appear. Here rather than in the .c so the host
