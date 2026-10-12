@@ -92,6 +92,11 @@ static sfx_def_t const SFX[SFX_COUNT] = {
     [SFX_OINK]       = {"oink",  O_SAW,    330, 250, 0.60f, 0.25f, F_BPF, 1500, 900,  2.20f, 0.008f, 0.130f, 0.30f, 0.14f},
     [SFX_BARK]       = {"bark",  O_SQUARE, 420, 260, 0.45f, 0.70f, F_BPF, 1700, 800,  1.60f, 0.003f, 0.120f, 0.34f, 0.12f},
     [SFX_BEAST_HURT] = {"beast_hurt", O_SAW, 400, 190, 0.65f, 0.35f, F_LPF, 2000, 700, 0.90f, 0.004f, 0.240f, 0.38f, 0.10f},
+    // A GROWL IS A MOO'S OPPOSITE: the same low saw, but more rasp than
+    // vowel -- more noise than tone, a filter shut down over it, and a
+    // pitch that falls rather than a note that holds. Long, because a
+    // hostile mob says it to announce itself, not to answer something.
+    [SFX_GROWL]      = {"growl", O_SAW, 110, 78, 0.45f, 0.60f, F_LPF, 700, 300, 1.25f, 0.030f, 0.520f, 0.40f, 0.18f},
 };
 
 // --- The voice --------------------------------------------------------

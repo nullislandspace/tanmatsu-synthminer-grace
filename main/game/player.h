@@ -144,6 +144,21 @@ typedef struct {
     uint8_t     food_msg;
     uint16_t    food_msg_ticks;
 
+    // ... AND WHO DID IT (player_hurt_t), on the same clock.
+    //
+    // `food_msg` used to carry this on its own, and it is the wrong word
+    // for it: food_hurt() answers FOOD_STARVED for ANY damage that is not
+    // the last of the health (game/food.c), because it has one enum for
+    // two questions. So a bad landing has been printing "You are starving"
+    // on the HUD since the fall rule was written, and a zombie would have
+    // printed it too. The health lives in food; the reason lives here.
+    uint8_t  hurt_msg;
+    uint16_t hurt_msg_ticks;
+    // TICKS BEFORE THE NEXT BURN (physics.h, LAVA_BURN_TICKS). Counted on
+    // the player because the player's lava is this struct's business, the
+    // same way the mob pool counts its own.
+    uint8_t  lava_cd;
+
     // Breaking is HELD, not tapped: a block takes item_break_ticks() of
     // them, which is what makes hardness and tool choice mean anything
     // and what the crack overlay will animate. Tracked against the cell
@@ -224,6 +239,17 @@ typedef struct {
     bool      ui_open;
 } player_t;
 
+// WHAT HURT THE PLAYER (D-156). `food.health` is the number and this is
+// the reason: "you are hurt" is the same mystery as a swing that did
+// nothing, and a player who cannot tell a fall from the lava they are
+// standing in cannot fix either.
+typedef enum {
+    PLAYER_HURT_NONE = 0,
+    PLAYER_HURT_FALL,
+    PLAYER_HURT_LAVA,
+    PLAYER_HURT_MOB,
+} player_hurt_t;
+
 // How far through breaking the aimed block, 0..1. Zero when not mining.
 float player_mine_progress(player_t const* p);
 
@@ -247,6 +273,16 @@ bool player_place(player_t* p, double x, double y, double z, float yaw, float pi
 // the actions that went down since the last tick (so a held key places
 // one block, not twenty).
 void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed);
+
+// TAKE DAMAGE (D-156): the health, the sound, and the reason the HUD will
+// give. `n` points, `why` a player_hurt_t.
+//
+// ONE FUNCTION RATHER THAN food_hurt CALLED FROM THREE PLACES, because the
+// three places -- a landing, a lava pool, and a creature that reached you
+// -- have to cost the same and say different things. main.c calls it for
+// the mobs, because mob_tick REPORTS damage rather than applying it, and
+// game/mob.c has no business knowing what health is.
+void player_hurt(player_t* p, int n, uint8_t why);
 
 
 // The eye for the frame being drawn. `alpha` is how far through the

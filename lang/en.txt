@@ -563,6 +563,17 @@ food.died = You died
 # Said when the player wakes up again, which is at their bed or at spawn
 food.respawn = You wake up with half your strength
 
+# --- Being hurt ---------------------------------------------------------------
+# Said when a landing costs health. Everything else about damage says who or
+# what did it; a fall has nobody to name.
+hurt.fall = You fall hard
+# ... when standing in it, which is the one thing in the Deep Mine that can
+# take health without anything else being involved
+hurt.lava = The lava burns
+# ... when a creature reached you. Named, because "you are hurt" with no
+# name is the same mystery as a swing that did nothing.
+hurt.mob = %s hits you
+
 # --- Fishing ----------------------------------------------------------------
 # Said when the line goes out, which costs one worm
 fish.cast = You cast the line

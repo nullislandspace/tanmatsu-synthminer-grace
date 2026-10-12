@@ -220,6 +220,26 @@ void player_state_defaults(player_state_t* p, world_meta_t const* meta) {
     p->has_inv     = false;
 }
 
+bool worldstore_spawn(world_meta_t const* meta, player_state_t const* saved, int32_t* x, int32_t* y, int32_t* z) {
+    if (x != NULL) *x = 0;
+    if (y != NULL) *y = 0;
+    if (z != NULL) *z = 0;
+
+    if (saved != NULL && saved->has_bed) {
+        if (x != NULL) *x = saved->bed_x;
+        if (y != NULL) *y = saved->bed_y;
+        if (z != NULL) *z = saved->bed_z;
+        return true;  // the foot cell, exactly as slept in
+    }
+
+    if (meta != NULL) {
+        if (x != NULL) *x = meta->spawn_x;
+        if (y != NULL) *y = meta->spawn_y;
+        if (z != NULL) *z = meta->spawn_z;
+    }
+    return false;  // the column; `spawn_y` is the placeholder it was created with
+}
+
 // --- The palette ------------------------------------------------------
 //
 // This is what lets block ids move. Writing it costs a string per block;

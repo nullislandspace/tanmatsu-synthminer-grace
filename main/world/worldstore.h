@@ -156,6 +156,25 @@ typedef struct {
 // Sensible values for a player who has never played.
 void player_state_defaults(player_state_t* p, world_meta_t const* meta);
 
+// WHERE THE PLAYER COMES BACK TO: the bed they last slept in, or the
+// column the world was created around. The respawn (main.c) and the
+// compass's HOME are the same question, so there is one answer to it --
+// here, because the bed and spawn fields are this file's own.
+//
+// Returns whether the HEIGHT is known too. A bed is a cell the player
+// actually stood in, so it is used as it was saved. `spawn_y` is not: it
+// is written once at creation (create_at) and never revisited, because
+// the real spawn height is settled by putting the player on the ground
+// once the terrain around it exists. False therefore means "column only"
+// and the caller answers the height itself -- `world_ground()` once the
+// chunk is resident, the generator's estimate before it is.
+//
+// A bed is never down in the Deep Mine (D-145 refuses it at both ends:
+// interact.c will not place one, use_bed will not set one), so the cell
+// this returns is always a cell in the overworld -- which is what makes
+// "die in the cave, wake at home" need no second spawn point.
+bool worldstore_spawn(world_meta_t const* meta, player_state_t const* saved, int32_t* x, int32_t* y, int32_t* z);
+
 // --- The store --------------------------------------------------------
 
 // `base` is the player's data directory (SM_DATA_DIR, /sd/synthminer, on

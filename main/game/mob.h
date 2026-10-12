@@ -89,6 +89,11 @@ typedef enum {
     MOB_FLEE,    // just been hit, running from where the blow came
     MOB_FOLLOW,  // after a player: the food they are holding, or its owner
     MOB_SEEK,    // fed, and walking to the nearest other fed one of its kind
+    // THE FIFTH, and the one only a hostile row can be in (D-156): it has
+    // picked somebody and wants to reach them and hit them. Deliberately
+    // not "MOB_ATTACK", because nothing here attacks -- it walks to
+    // within reach, and the swing is what that reach buys.
+    MOB_HUNT,
 } mob_intent_t;
 
 // What it wants to say, drained once a tick by the caller. Never played
@@ -131,6 +136,14 @@ typedef struct {
     // allowed to put it in.
     bool        hostile;
 
+    // WHAT A SWING OF ITS'S IS WORTH, in health points, and 0 for a
+    // creature that does not swing at all. A column rather than a rule
+    // about hostile kinds, because "it is hostile" and "it hurts you for
+    // three" are two questions and the day something is hostile and
+    // harmless (a mob that only chases you off) it is a row, not a
+    // special case.
+    uint8_t     attack;
+
     uint32_t    argb;  // the flat colour it draws as when textures are off
 } mob_def_t;
 
@@ -150,6 +163,24 @@ typedef struct {
     uint8_t     intent;    // mob_intent_t
     uint16_t    intent_for;  // ticks left of it
     float       flee_x, flee_z;  // the direction it is running
+
+    // WHO IT IS AGGRESSIVE AGAINST (D-156): nobody, the player, or one
+    // other creature. Zero or one, never a list -- the user's rule.
+    //
+    // A pool INDEX is the obvious thing to store and the wrong one: a
+    // creature that dies frees its slot and the next one born takes it,
+    // so a zombie chasing "slot 7" ends up chasing something that was
+    // not there a second ago. Ids are unique while a world is open
+    // (mob_spawn hands them out in order), so the id is stored and the
+    // index is looked up afresh every tick.
+    //
+    // TRANSIENT, like turn_cd: a creature that comes back off the card
+    // has nobody to be angry at, which is the honest answer and the one
+    // that needs no new tag in the entity record.
+    uint8_t  target_kind;  // mob_target_t
+    uint32_t target_id;    // the creature's id, when target_kind is MOB
+    uint8_t  attack_cd;    // ticks before it may swing again
+    uint8_t  lava_cd;      // ticks before the next burn (physics.h)
 
     // AGE IN TICKS ELAPSED, never a timestamp (D-51): a calf left in an
     // unloaded chunk does not grow up while nobody is looking, which is
@@ -205,6 +236,50 @@ typedef struct {
 // so the animal is still there to be fed, milked or sheared. It is also
 // what a dog's heel distance already assumed.
 #define MOB_FOLLOW_STANDOFF 2.0f
+
+// --- Aggression (D-156) ------------------------------------------------
+
+// WHO A CREATURE IS AGGRESSIVE AGAINST. The player is a kind of their
+// own because they are not in the pool.
+typedef enum {
+    MOB_TARGET_NONE = 0,
+    MOB_TARGET_PLAYER,
+    MOB_TARGET_MOB,
+} mob_target_t;
+
+// HOW NEAR THE PLAYER HAS TO COME TO BE NOTICED, and how far away before
+// it is forgotten.
+//
+// Sixteen blocks, which is the same distance an animal will walk to a
+// mate (MOB_SEEK_RANGE) and about the depth of the fog on a handheld: a
+// zombie at the far end of a lit corridor is already walking towards you
+// by the time you can see it. The forget range is wider than the aggro
+// range on purpose -- a target acquired at 16 must not be dropped the
+// moment the player steps to 17, or a mob would give up mid-chase every
+// time it took a corner.
+//
+// All four numbers here are provisional, like the rest of Part M: the
+// user's rule is that they get tuned after playing, not before.
+#define MOB_AGGRO_RANGE  16.0f
+#define MOB_FORGET_RANGE 26.0f
+
+// WHAT A SWING REACHES, and how often one may be made.
+//
+// A body is 0.6 wide, so two of them touching are 0.6 apart: 1.7 is a
+// comfortable swing with room to be standing slightly off, and short
+// enough that a mob has to actually come to you rather than hit you
+// across a room. One second between swings, which is the same beat
+// MOB_TURN_COOLDOWN rations turns on -- a hostile mob that could swing
+// every tick would take 60 health a second and there are only 20.
+#define MOB_ATTACK_RANGE    1.7f
+#define MOB_ATTACK_COOLDOWN 20u
+
+// HOW CLOSE TO THE WAY IT IS FACING a swing counts as hitting something,
+// as a dot product of the direction to the body and the direction it
+// looks. 0.5 is 60 degrees either side: wide enough that a bystander who
+// steps between two fighting mobs gets hit -- which IS the user's "by
+// accident" -- and narrow enough that it cannot hit what is behind it.
+#define MOB_ATTACK_ARC 0.5f
 
 // HOW OFTEN A CREATURE MAY CHANGE ITS MIND ABOUT WHICH WAY IT FACES, and
 // what counts as changing it (the user, 2026-10-01: "it might be
@@ -292,7 +367,19 @@ int mob_spawn(uint8_t kind, double x, double y, double z, bool baby);
 // moves them both. That is the one thing an animal does TO the player
 // rather than because of them, and it needs somewhere to write. NULL is
 // allowed -- the host checks run herds with nobody about.
-void mob_tick(uint32_t now, phys_body_t* player, uint16_t held);
+//
+// RETURNS how much damage the hostile ones did to that body this tick,
+// which is reported rather than applied for the same reason used_block
+// is: player.c has no business knowing what a mob is, and main.c is
+// what owns health, death and respawn. 0 when nothing hit anybody, which
+// is every overworld tick there has ever been.
+int mob_tick(uint32_t now, phys_body_t* player, uint16_t held);
+
+// WHICH KIND hit the player during the last mob_tick, or MOB_NONE if
+// nothing did. The damage is a number and a number is not a reason:
+// "you are hurt" is the same mystery as a swing that did nothing, and
+// the HUD wants the name of the thing that did it.
+uint8_t mob_attacker_kind(void);
 
 // HOW HARD THEY SHOVE. Blocks a tick, and the most one shove can move
 // anything: a soft separation rather than a wall, so two animals in a

@@ -69,6 +69,10 @@ typedef enum {
     SFX_OINK,
     SFX_BARK,
     SFX_BEAST_HURT,
+    // ... AND THE VOICE OF SOMETHING THAT WANTS YOU (D-156). Before this,
+    // a zombie used the dog's bark: the sound of a friendly animal being
+    // cheerful, heard out of the dark at the end of a lit corridor.
+    SFX_GROWL,
 
     SFX_COUNT
 } sfx_id_t;

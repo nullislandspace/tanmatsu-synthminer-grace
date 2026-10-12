@@ -91,6 +91,9 @@ void player_reset(player_t* p) {
     p->crouch      = 0.0f;
     p->prev_crouch = 0.0f;
     fishing_reset(&p->fish);
+    p->hurt_msg       = PLAYER_HURT_NONE;
+    p->hurt_msg_ticks = 0;
+    p->lava_cd        = 0;
 
     // NOTHING. The starting kit is gone, the day a crafting table can
     // make what was in it (the user's call, 2026-09-23): punch a tree,
@@ -105,6 +108,37 @@ float player_mine_progress(player_t const* p) {
     if (!p->mining || p->mine_needed <= 0) return 0.0f;
     float const f = (float)p->mine_ticks / (float)p->mine_needed;
     return f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
+}
+
+// TAKE DAMAGE (D-156).
+//
+// The reason this is a function of its own instead of `food_hurt` called
+// where the damage happens: a landing, a lava pool and a creature that
+// reached you must COST the same and SAY different things. Put the cost
+// in three places and the third one drifts -- which is the kind of rule
+// nobody can see, only feel.
+//
+// FOOD_NOTHING means the points did not even register, and FOOD_DIED
+// means they were the last: both get a line, because both are the player
+// asking "what just happened to me".
+void player_hurt(player_t* p, int n, uint8_t why) {
+    if (p == NULL || n <= 0) return;
+
+    food_event_t const e = food_hurt(&p->food, n);
+    if (e == FOOD_NOTHING) return;  // already dead; nothing left to take
+
+    if (e == FOOD_DIED) {
+        // The reason does not matter any more, and `food_msg` is the one
+        // line main.c already knows how to end the game on.
+        p->food_msg       = (uint8_t)e;
+        p->food_msg_ticks = USE_MSG_TICKS;
+        sfx_play(SFX_DENY);
+        return;
+    }
+
+    p->hurt_msg       = why;
+    p->hurt_msg_ticks = USE_MSG_TICKS;
+    sfx_play(SFX_HURT);
 }
 
 // --- Survival, which happens whatever else the tick did ---------------
@@ -125,10 +159,23 @@ static void survival(player_t* p, float moved, bool swimming, bool jumped) {
     // against a real body rather than against a copy of the arithmetic.
     int const hurt = fall_tick(&p->fall, p->body.y, p->body.on_ground, swimming);
     if (hurt > 0) {
-        food_event_t const e = food_hurt(&p->food, hurt);
-        p->food_msg          = (uint8_t)e;
-        p->food_msg_ticks    = USE_MSG_TICKS;
-        sfx_play(e == FOOD_DIED ? SFX_DENY : SFX_HIT);
+        player_hurt(p, hurt, PLAYER_HURT_FALL);
+    }
+
+    // --- The lava (D-156) ----------------------------------------------
+    //
+    // The same burn a creature takes, from the same predicate and on the
+    // same beat (physics.h), because a player who can stand in a lava sea
+    // twice as long as a zombie is a rule nobody can see -- it can only be
+    // noticed by being wrong.
+    //
+    // Asked here and not in the movement branch, for the reason the fall
+    // is: a player who opens the inventory while standing in lava is still
+    // standing in lava.
+    if (p->lava_cd > 0) p->lava_cd--;
+    else if (phys_in_lava(&p->body)) {
+        p->lava_cd = (uint8_t)LAVA_BURN_TICKS;
+        player_hurt(p, LAVA_DAMAGE, PLAYER_HURT_LAVA);
     }
 
     // --- Hunger, saturation, regeneration and starving ---------------
@@ -165,6 +212,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     if (p->fish_msg_ticks > 0 && --p->fish_msg_ticks == 0) p->fish_msg = FISH_NOTHING;
     if (p->mob_msg_ticks > 0 && --p->mob_msg_ticks == 0) p->mob_msg = MOB_USE_NOTHING;
     if (p->food_msg_ticks > 0 && --p->food_msg_ticks == 0) p->food_msg = FOOD_NOTHING;
+    if (p->hurt_msg_ticks > 0 && --p->hurt_msg_ticks == 0) p->hurt_msg = PLAYER_HURT_NONE;
 
     // --- The inventory screen ----------------------------------------
     //

@@ -2219,6 +2219,38 @@ having are the ones that read as loot off a body rather than as an ingredient.
 And if a mob is not a resource, then a cleared chunk staying cleared costs
 nothing -- which is the play side of the generate-once argument above.
 
+### Aggression, and what hurts you (D-156)
+
+**ZERO OR ONE TARGET, NEVER A LIST.** A hostile mob has nobody it is after, or
+exactly one: the player, or one other creature. Not a threat table, not a hate
+ranking, not "nearest of several". One target is what makes a pack of three behave
+like three things rather than like one swarm, and it is what makes the far end of a
+corridor readable: the one that noticed you is the one coming.
+
+**Being hit is what changes the target.** If a zombie swings at a skeleton because
+the skeleton happened to be in reach, the skeleton is now after the zombie. The same
+the other way round, and the same for whatever gets added later -- nothing in the
+rule knows which two kinds are involved. So mobs can hurt each other, and a fight
+between two of them is an outcome of the rule rather than a special case: a player
+who stands still while two mobs reach each other gets an answer they did not pay
+for.
+
+**Lava burns whoever is standing in it, creature or player, at the same rate.** One
+pair of numbers, not one per side. A player who can stand in a lava sea twice as
+long as a zombie is a rule nobody can see, only a rule they can fail to notice --
+and the Deep Mine's lakes are the one thing down there that takes health with
+nothing else involved.
+
+**This is what D-144 is for.** A mob that walks at you and hits you is a hazard, and
+a hazard is worth clearing without being worth farming. Aggression is the half that
+makes "they drop nothing you need" a design instead of a deprivation: the reason to
+kill the thing is that it is in the way of the ore.
+
+**What it does NOT mean**: no repopulation (D-146), so an aggressive mob is one you
+are meeting for the first and last time; no aggro in the overworld, because nothing
+hostile is generated there; and no target saved to the card -- a creature that comes
+back off it has nobody to be angry at, which is the honest answer.
+
 ### Death, and where you wake up (D-145)
 
 **Respawn is the overworld's.** There is one spawn point, not one per dimension,
@@ -2236,6 +2268,17 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   release every chunk, free the mesh cache, load the 3x3 -- rather than the
   respawn path `player.c` has today. This is the second place the switch exists,
   and the one nobody would have thought to check.
+
+- **THE SPAWN IS A CELL, NOT A COLUMN WITH A HEIGHT RE-DERIVED FROM IT.** The
+  bed is the thing that knows where the player actually stood, so the answer
+  to "where do I come back to" is the bed's own cell, and only a world with no
+  bed has to let the terrain answer for it. `worldstore_spawn()` is that one
+  answer, in the file that owns the bed and spawn fields, and both the respawn
+  and the compass's HOME read it. Re-deriving the height is what made this a
+  bug rather than a detail (F-159): the generator's estimate is the surface of
+  the UNDECORATED column, and `world_ground()` looks for the highest solid
+  block, which over a bed under a roof is the roof.
+
 - **What you lose is the walk, not the items.** The inventory is kept, and pairing
   is by column, so getting back to the same place means walking back to your own
   shaft's column in the overworld or building a second shaft. That is the real
@@ -2288,6 +2331,12 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   slow sweep is the only shape available to it.
 - **Which items a zombie or a skeleton drops**, as long as none of them is the
   only source of anything (D-144).
+- **How aggressive the cave is** (D-156), answered provisionally and to be re-measured
+  after playtesting like the rest of Part M: noticed at 16 blocks, forgotten past 26, a
+  swing reaches 1.7 and may be made once a second, a zombie takes 3 health a swing and a
+  skeleton 2, lava takes 2 every half second. The number to watch on the device is the
+  one a playtest answers and a check cannot: whether a 2-3 pack at 12% of chunks is a
+  threat you plan around or an accident you walk past.
 - **What happens when the mapped column has no room** is answered (D-154): the pad
   digs down into the rock, because a shaft that has to dig is still a shaft. Only a
   column whose roof is too low for a frame at all answers -1, and then the far end is
@@ -2395,7 +2444,7 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 | 10 | **Animals: pigs, cows, sheep and dogs; milk, cheese, sausages, wool, fences and a bed** | done | 2026-09-29, **built ahead of the stove on the user's instruction** and out of four questions they answered first (D-118 to D-121). **Five permanent block ids** (40-44): the cheese maker, the sausage maker, the fence and its gate open and shut; **seven items**: pork, beef, a milk bucket, cheese, two sausages and a bone. **The creatures are the new shape** (`game/mob.{c,h}`) and item_entity.h had promised it since step 4: a fixed pool of 48, a registry row per kind, no allocation, and every random number a hash of the tick and the creature's own id so a replay reproduces a whole farm. A pig differs from a dog in what it eats, what tames it and how fast it is -- and in nothing else. **They are saved with the chunk they stand in** (D-123), in the entities section the format has had a number for since step 1.3 and never written a byte into; safe because an unloaded chunk is solid (D-14), so nothing can wander off the edge of the resident world and be lost. **Herds are generated with the land** (D-121) and needed one new chunk flag -- `CF_GENERATED` could not say "made just now", because both the card and the generator set it. Measured: 96 chunks in 576 hold a herd, 272 animals over 384 x 384 blocks. **A cow with a bucket gives milk**, which D-100 had already paid for -- though milk is not a fluid in the world, so "is this a bucket" stopped being a test on the contents before it dipped a milk pail in a lake. **The fence is the part that makes them animals you keep** (D-122): a block and a half tall, which is the first height that is neither walkable (step-up is one) nor jumpable (the player reaches 1.33). That cost one rule in the collider and a new mesh kind; a gate is two block ids for the same reason farmland is, and lies across the way the player was facing when it went down. A host check walks a body into one for 40 ticks and demands it stay outside, then opens the gate and demands it get through. **The two machines are the furnace's trick a third time** (`game/maker.{c,h}`): one file, a row each, a day for the cheese and a playing minute for the sausage, never a tick of work, and what each can make is the RECIPE TABLE under a station of its own. The bucket comes back when the milk goes IN, not when the cheese comes out -- returning it at the end would lock a pail up for a day, which is the one thing the user said not to do. **The bone** (D-120) is one in six off a pork sausage, from the world's hash, in a second output slot for the same reason the composter has one. **And a voice each** (D-124), synthesised like every other sound here. 37 new strings x 32 languages. **Then the user asked for the texture cache to be made safe** (F-120, amended): the by-name half is now derived from the item table, so a new item moves the requirement by itself, worldcheck counts what the game really asks for, and the cache says how full it ended up -- which caught an open gate asking for an icon that does not exist and never could (F-121). **Then the user played it, and the round that followed was most of the work** (F-122 to F-124, D-125 to D-127): cows walked out of a pen over a fence (the step-up is a whole block here and a fence was only a block and a half, so anything to stand on was a stile -- and a shut GATE was one block tall to the collider while looking like part of the fence); animals passed through each other and the player, which is what `physics.h` says on its first line and cost nothing until there was more than one body; and feeding pigs did nothing, which was three problems at once -- two fed animals had to find each other by accident, a fed animal looked exactly like an unfed one, and a pig is 0.9 blocks tall against a cow's 1.4 so the crosshair went over its back at two paces. **Then the user added the rest of a farm**: the breeds (an Oxford Sandy and Black and an Ayrshire, which is what made the animals textured at all, D-125), **sheep** with shears, wool, mutton and two dishes (D-126) -- which finally answers where STRING comes from, open since the fishing rod was designed -- a **bed** that sets the spawn and sleeps the night away, and voices that get quieter with distance (D-127). **And a last round of polish on the user's eye** (F-127): the bone and the bed had a placeholder icon each and no held model at all -- a bone is not a tool, a block or a bucket, so it fell through to the coloured cube anything unrecognised gets, and a bed IS a block, so it got the textured cube every block gets. Both have icons that read at 16 px and models in the fist now. Not yet: eating any of it, which is now step 11. |
 | 11 | **Food, hunger, the kitchen stove, and the fall** | done | 2026-09-29, built from Part A and D-105/D-110, and it is mostly tables: **two permanent block ids** (47 and 48), **eleven items**, **thirteen stove recipes** and two new pure modules. The user's verdict on the alternative was blunt -- cooking on a crafting table or in a furnace *"makes absolutely no sense"* -- so food is made on a **stove that reads its ingredients out of the chest beside it**, and **the chest arrives with it**: the recipe includes its eight planks, the item puts down **two blocks**, chest on the left as the player sees it while placing, and breaking either takes both while only the stove half pays out. That kills "which chest?" by making it unaskable. **The pair needs no stored coordinates** (D-133): each half's state byte carries the direction of the other, which is the bed's trick with the sign taken out, so a pair that straddles a chunk border needs no repair pass -- a half whose partner is not resident simply finds something else in the cell. **The stove is the furnace's lazy clock with a recipe selector in place of the input slot** (`game/stove.{c,h}`): it never ticks, all of its work is `now - stamp`, and what it can cook is the RECIPE TABLE under RS_STOVE -- nothing in it knows what a pizza is. The selector stores the DISH'S OUTPUT ITEM by name, never a recipe index, or inserting a row in recipes.c would silently repoint every stove ever saved. Ingredients come out of the chest **when a dish finishes**, not when it starts, so a stove is never a thing that eats out of your chest and gives nothing back. **It says which of five ways it is idle** -- no dish, no chest, no fuel, a full pan, or short of two shrimp, named -- because the user asked for "an appropriate info message" and a machine that does nothing and says nothing reads as broken. **Neither half has a tool level** (D-134): a pair breaks as one thing and its two halves want different tools, so a level would mean breaking your kitchen from the wrong end destroys it. **Hunger is Minecraft's model**, which D-08 committed to on the first day (`game/food.{c,h}`): health, hunger, an invisible SATURATION reserve spent first, and EXHAUSTION that every step, jump and swing adds a little of. Measured on the host: **one drumstick every 93 seconds of walking**, healing at six exhaustion a heart-half, and an empty larder kills in 80 seconds. Eating is a TAP and not a held key -- this is a handheld whose Use key already means place, open and milk -- a full player refuses and says so, and **drinking the milk gives the pail straight back**, through a one-row table rather than a case, because a bottle will want the same answer. **Fall damage** is three blocks free and a point a block after, ROUNDED UP: a body rests a hair above what it landed on (PHYS_SKIN), so truncating made every whole-block drop one block shorter than it was. The tracker keeps a HEIGHT and not a velocity, so **a ledge half way down is two short falls** and water is a landing. It is pure, so the host check drives the shipped rule against a real body falling through a real world rather than against a copy of the arithmetic. **Death became reachable** and is the design's own answer (D-135): half health at the bed or the spawn, the inventory kept -- and hunger back to full, because waking up starving is a death loop rather than a penalty. **The checks found four things before a badge did.** The stove's crafting recipe is the book's first with three ingredients, which tightened the footer's share and failed thirteen languages over item names that were already there -- so the check now BUILDS THE REAL LINE instead of pairing the longest label in the game with the tightest division, two things that never meet (the same shape as F-129). `longest_item_label()` is scoped to what each screen can show. The stove picker's own footer was 675 px of a 626 px panel in Serbian, so the ingredients and the food value went onto two lines. And four translations were too wide for the item column. 38 new strings x 32 languages. Not yet: nothing eats you back -- that is step 13. |
 | 12 | **Fishing** | done | **Moved ahead of mobs on the user's instruction** (2026-09-29, D-109): *"i want to implement 'Fishing' before 'Mobs and Combat', so switch the order of those two."* Bait is **worms held in the inventory**, **one per cast and not per catch**, which is why the composter in step 9 has two output slots and why its 0-2 worms a day is the dial that sets how much fishing anyone does. The catch is sardines, salmon or shrimp, and three of the eleven dishes need them. The rod is **three sticks for now**, with the final recipe still the user's to give -- and the thing they have decided is that **string will not come from spiders**, which means this step never depended on step 13 in the first place. **No rod durability** either, their call and the right one: fishing is already paid for in worms, and charging twice for the same activity is how a system stops being worth using. **Built 2026-09-29 while the user play-tested step 10.** Four items (the rod and three fish) and one pure module, `game/fishing.{c,h}`: a state machine with no world in it at all -- the caller hands it the cell its ray found water in and whether a worm is carried, and it answers what happened. **Two taps, not one** (D-128): the line goes out, the float sits there, and a bite opens a window a second and a half wide that a second press has to hit. A cast that landed a fish with no second press would be a button that dispenses food, and the waiting is the only thing fishing has ever been. **A missed bite is not a lost worm** -- the worm buys the CAST, so the line stays out and another fish comes along; reeling in early forfeits it, which is the player's own choice. The wait is 4 to 14 seconds, the fish are weighted 5 sardine / 3 shrimp / 2 salmon (the one guess here, and shrimp beat salmon on purpose because the pizza wants two of them), and all three numbers come from the hash of where the float landed and when -- so a replay fishes the same river the same way, which the check proves by casting twice and demanding the same fish. The float is drawn on the water and **dips while something is biting**, which is the only warning the strike window gives; Fred holds a rod rather than a grey cube, because fishing is minutes of looking at it. **The rod is three sticks and two string** -- the user gave the final recipe the same day (2026-09-29), closing the last open question of the food chain. It means a rod costs a flock: string is wool, wool wants shears, shears want iron, so fishing is not something you do on your first morning. |
-| 13 | **Mobs: zombies and skeletons (only, for now); spawning, pathing, combat; beds and spawn; death keeps the inventory** | todo | Now after fishing (D-109), and **narrowed on 2026-10-10**: hostile mobs do not spawn in the overworld at all -- they live in the Deep Mine (Part M), and spiders are out until the rest are decided. Still the biggest single block left, and it is the first thing in the game that needs an entity with a mind rather than a record with a timer -- but it now has a prerequisite, because it cannot be played until the dimension and the shaft exist (steps 61-65). String is unaffected: it comes from sheep (D-126) and never did come from spiders. **Three more narrowings from the same day:** mobs drop nothing the game can obtain another way (D-144), the bed stays in the overworld (D-145), and mobs do not repopulate (D-146), so this step is population at generation time rather than a spawn rule. The bed and spawn half is only ever played up there, and dying in the Deep Mine respawns you there, which is a dimension switch, not a position change. **The bed half is enforced since 2026-10-12** (F-157): a bed offered to the Deep Mine is refused at the placement AND at the bed itself, and the HUD line says which of the three reasons it is.
+| 13 | **Mobs: zombies and skeletons (only, for now); spawning, pathing, combat; beds and spawn; death keeps the inventory** | todo | Now after fishing (D-109), and **narrowed on 2026-10-10**: hostile mobs do not spawn in the overworld at all -- they live in the Deep Mine (Part M), and spiders are out until the rest are decided. Still the biggest single block left, and it is the first thing in the game that needs an entity with a mind rather than a record with a timer -- but it now has a prerequisite, because it cannot be played until the dimension and the shaft exist (steps 61-65). String is unaffected: it comes from sheep (D-126) and never did come from spiders. **Three more narrowings from the same day:** mobs drop nothing the game can obtain another way (D-144), the bed stays in the overworld (D-145), and mobs do not repopulate (D-146), so this step is population at generation time rather than a spawn rule. The bed and spawn half is only ever played up there, and dying in the Deep Mine respawns you there, which is a dimension switch, not a position change. **The bed half is enforced since 2026-10-12** (F-157): a bed offered to the Deep Mine is refused at the placement AND at the bed itself, and the HUD line says which of the three reasons it is. **The combat half is in since 2026-10-13** (D-156, F-158): aggression, one target, melee swings, and lava that hurts -- recorded under step 65. **The respawn half is in the same day** (F-159): a death in the cave crosses you back to the cell of the bed you slept in, and the shaft you wake in has to be stepped out of before it fires again. What is still missing from this step's title is ranged attack and pathfinding around obstacles.
 | 14 | **Audio: sound effects, and music that is mostly silence** (D-82, D-83, D-84, D-85) | done | 2026-09-23: the mixer starts at boot. 21 effects as table rows (`audio/sfx.c`), and which one a block makes is its own registry row (`block_def_t.sound`), so a new block brings its sounds with it. Music is eleven public-domain MIDI files played by a ported sequencer and a six-shape synth: 72 KB for half an hour, against megabytes for the same music as MP3. `worldcheck`'s `check_midi` proves every shipped file parses, ends, rewinds identically and survives truncation at any length (F-72). The raw voice sum clipped, so the synth carries a master gain and a cubic soft limiter (F-73). **Three volume sliders** in Settings -> Audio (D-85): the badge's own, then how loudly the music and the effects are each mixed in. The effects turned out to be inaudible whenever the music was off -- the amplifier was asleep and eating them (F-75) -- which is why the engine is 2.2. Two checks came out of the round and stay behind: `tools/symcheck.sh`, after an unexported `strcasecmp` made the app link clean and then refuse to start with no message at all (F-74), and `check_label_widths()`, after the sliders' labels turned out to be the least of it -- three settings screens had been overlapping their own text in a dozen languages since the day the language count went to 32 (F-76). |
 | 15 | Block and sky lighting | done | 2026-09-22, asked for by the user (torches that light the area, computed when a block changes). Pulled forward from the end of the plan: a light plane per chunk (sky and block light, 0..15 each, D-69), flooded when a chunk arrives -- its own light on core 1, the border exchange on the main task (F-58) -- and updated with the two-queue flood on every block change. The mesher keys faces on light; a per-frame table turns light into brightness for the time of day, through the engine's new `SE_TRI_LIGHT`. Host-tested: fall-off, removal, a shaft opened and capped, across a chunk border and into a chunk arriving late. On the badge: a placed torch lights the ground at night. |
 | 16 | **Day and night; sun, moon, clouds, stars** | done | 2026-09-22, asked for by the user. `game/daytime.{c,h}`: a 20-minute day from the world's tick count -- sun direction, sky and fog colours with an orange band at sunrise and sunset, a daylight fraction, the light table. The showreel's blocky sun, moon and clouds (`voxel/voxel_sky.c`, clouds laid out in world coordinates) and its starfield. Night takes 9 light levels off the sky, not Minecraft's 11 (F-57). Clouds are a Graphics toggle; the title has none (they flew through its letters). |
@@ -2438,13 +2487,13 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 | 58 | **Water you can actually see through** | done, **default on** | 2026-09-29, the user, after being told partial heights were the expensive part: *"Currently we have fake transparency for water (like leaves). How much actual FPS impact would it be to have actual water transparency?"* The estimate said 5-20%, scaling with how much water fills the view. They asked for it behind a key so the two could be compared in one place, played it, and reported *"The new transparent water looked much better and framerates seems comparable."* Now a Graphics setting, **on by default and on for upgrades too** (D-103). `SE_TRI_BLEND` in the engine (2.5): a 50/50 RGB565 mix, and -- the part that matters -- blended triangles sorted after every opaque one and far-to-near among themselves, which cost **one bit of the existing depth key and no extra pass**, because a positive float never sets its sign bit and the top bit was always spare. D-86 is amended a second time: water is no longer only its surface's cut-out, it is a real mix, and `water_blend.png` is the same texture without its checkerboard. **The frame-rate claim is the user's, not the trace's**: their A/B in one spot is controlled and the trace was not, because nothing recorded which mode was running -- which is now fixed (`trace_event`, F-119). |
 | 59 | **Wood and flowers that come back** | done | 2026-09-30, the user, in one message: *"Logs (trees) and yellow flowers need to be renewable resources. So cutting trees should drop one or two seedlings that can be planted to grow into a new tree. And throwing compost onto the ground should grow a 3x3 grid of yellow flowers."* **Which closes the last hole in the economy.** Stone, ore, crops, wool, meat, milk and fish all come back; WOOD did not -- there is no recipe anywhere that makes a log, so a player who cleared the forest round their house had cleared it for good. Yellow flowers were the same and worse: a pork sausage needs one for its spice, so picking the meadow stopped the sausage maker. **Two permanent block ids** (49, 50) and **one new module** (`world/tree.{c,h}`). Felling leaves **one or two seedlings PER TREE, not per block** -- forty saplings off one oak would make the first tree the last one anybody had to plant -- rolled from the world's own hash so a replay reproduces a woodpile, and **of the species felled**, because a birch wood that grew back oak is not the wood anybody planted. **A SAPLING IS A CROP** and that is why it cost almost nothing: BF_CROP gives it stages in the state byte, the chunk's shared slow clock, the phase bits that stop a whole chunk ripening on one instant, the catch-up when a chunk returns after an hour away, and the compost that pushes any plant on a stage. None of that machinery had to learn the word sapling. The ONE difference is what happens at the last stage -- a wheat plant stops and waits to be cut, this turns into a tree -- and it is a **two-row table** in tree.c and not a block flag, because `flags2` has no bits left and because a flag would say only THAT a block is a sapling where every caller wants to know WHICH tree. One in-game day, which is wheat's; it plants on **grass or dirt and not a tilled field**, the only seed in the game that does, so it gets a refusal of its own rather than sending the player to look for a hoe. **The tree is the generator's own tree** (D-136): the canopy loop came out of `place_tree` into `worldgen_tree_shape`, emitted cell by cell to two writers that could not be less alike -- the generator stamps into ONE chunk on the core-1 worker and drops whatever falls outside, which is what makes a tree seamless at a border, while a sapling writes through `world_set` on the main task so the light flood, the mesher and the save all hear about it. One shape in the codebase instead of two that agree until somebody edits one. It takes the world seed, so a planted tree is the tree that spot would have grown. **A sapling with a ceiling over it waits** rather than growing half a tree, and the sweep asks again every pass and not only when a stage is owed -- without that, one planted in the wrong place would sit at its last stage for ever with nothing ever looking at it again. **Compost on bare grass raises a 3x3 of yellow flowers**, doing what it can: cells that are not grass or are not clear are skipped rather than refusing the lot, and it only refuses, and says so, when all nine are already done. Host-checked: which sapling comes off which trunk, 400 rolls of the one-or-two (210 singles, 190 pairs), planting refused on farmland and on stone, a seedling grown into a trunk-and-canopy that is GROWN and not PLACED so it fells like any other, the ceiling case both ways, and the flower bed on grass and on nothing else. Not renewable yet: **red flowers**, which the user did not ask for -- nothing is blocked, since the sausage maker takes either colour. |
 | 60 | **Grass that spreads, and grass that dies** | todo | 2026-10-01, the user asked whether placing a dirt block regrows the grass top and whether grass under a placed block goes away. **Both are no.** The only grass-to-dirt rule in the game runs once at GENERATION time and only for Far Lands columns (`farlands.c`, "id[y] == BLK_GRASS && id[y+1] != BLK_AIR"); nothing touches it in the live world. So a floor laid on a meadow keeps its green edges, and dirt is dirt for ever. **THE TWO HALVES SHIP TOGETHER, and that is the whole of why this is a step rather than a three-line fix.** Grass that dies under a block without grass that spreads back is a ratchet: every house, path and tilled field converts grass to dirt permanently and the world only ever gets browner, which is worse than the cosmetic bug it fixes. Death is a rule at the moment of placing (one test in `world_set`). Spreading needs a SLOW SWEEP, and the shape for it already exists -- `crops_tick()` visits one chunk slot a tick and walks a marked chunk column by column from the height summary (world/crops.h), which is exactly the budget a grass pass wants. The user: *"Let's leave the grass thing for another time, just make sure it's on our todo list."* |
-| **61+** | **The Deep Mine (Part M)** -- added 2026-10-10, **built 2026-10-11 apart from step 65's combat half**, **terrain and shafts rebuilt 2026-10-12** (D-154, D-155, F-154, F-155, F-156, F-157) | | |
+| **61+** | **The Deep Mine (Part M)** -- added 2026-10-10, **built 2026-10-11**, **terrain and shafts rebuilt 2026-10-12**, **the cave's mobs made hostile 2026-10-13**, **a death in the cave sends you home 2026-10-13** (D-154, D-155, D-156, F-154, F-155, F-156, F-157, F-158, F-159) | | |
 | 61 | **The second dimension**: per-dimension region directories, `level.smw`'s dimension and spawn fields, and the Deep Mine generator (sealed bedrock ceiling, one cave, stone, lava, richer iron, diamond clusters) | done | Part M, **built 2026-10-11, its terrain rebuilt 2026-10-12** (F-150, F-154). `world/dimension.{c,h}` is the current dimension as ONE global, because the ring is keyed by `(cx, cz)` alone and cannot hold both worlds at once; `world/deepmine.{c,h}` is the generator. `level.smw` gained one additive tag (`dimension`), so no migration and no major version (D-32), and the regions split by directory (D-143) with the overworld keeping the flat one -- a world already on the card still reads. **The shape was rebuilt once**: the cave is a shell -- a floor, and a roof that hangs off it by a room height that varies -- with four biomes, terraces for the cliffs, and one lava level for the whole dimension. Measured over 144 chunks: floor y 10..22, roof y 18..41, room -1..22 cells, 13 distinct floors and 24 distinct roofs, **35.5% of the columns a hall of 18 or more open cells, 15.4% a squeeze of 1-4, 1.8% solid rock**, 1919 of 4404 terrace seams a step of two blocks or more, **2.4% iron against the overworld's 0.8% on the same sample** and 0.06% diamond where the overworld has none, 1800 lava cells, and **95.8% of the cave walkable from one column** -- falling free, climbing capped at one block. **The lava behaves like water** (F-154, F-157): it flows, it is placed like a lake and not scattered, and it is quenched to stone wherever it meets water.
 | 62 | **Light and sky in the Deep Mine**: global illumination, no sun or moon, `voxel_sky`/`backdrop`/`horizon` suppressed, `daytime` frozen | done, **device test pending** | Part M, built 2026-10-11 (F-150). Global illumination as a number is `DM_SKY_LIGHT` 12, and it is a **constant on open cells rather than a flood**: the column pass and the sky half of the border join are skipped, and block light still floods, because a torch is what makes a patch brighter than the rest of the cave -- lighting is for seeing, not for safety (D-139). `daytime_deep_mine()` is the frozen pose, straight up, because a sealed cave has no horizon to point at. The three render-side suppressions are one guard each on `dimension_has_sky()`. **The picture itself is still unverified on the device** -- this environment has no riscv32-esp-elf toolchain, so `make check` is green and the bench flight is the outstanding half. |
 | 63 | **The mine shaft**: the recipe, the 3x3 frame with four corner columns and trusses at height 3, placement through `world_set`, the centre cell as the trigger, pairing by column | done | Part M, **built 2026-10-11, reworked 2026-10-12** (F-150, F-154). `world/mineshaft.{c,h}`: 12 posts and 4 braces, and 16 ingots in -- the recipe and the shape are the same number, which is why the shape is exactly this. **`item_block()` answers `BLK_AIR` for it**, so `player.c` needed a branch of its own -- a shaft places a shape, not a block -- and the cell it stands ON is the one the crosshair struck, not the empty cell in front of its face. The trigger is a shape test seen from the middle, so it needs no record and works in either dimension. **The station is still the user's open question**: the recipe row names the crafting table because the game's bench is the disassembly station. **What was removed on 2026-10-12: the generated shaft.** The generator stamped one per coarse grid square, and what the player met was shafts "randomly appearing that I didn't place" -- so `SHAFT_GRID`, `mineshaft_is_candidate()` and `mineshaft_shape()` are gone, because a shaft costs sixteen ingots and a cave full of free ones is a lottery (D-154). **What replaced the generator's pad**: `mineshaft_flatten()`, on arrival only and in the Deep Mine only -- a 5x5 slab at `mineshaft_pad_y()` plus three cells of clear air, the user's allowance to level the terrain after generation. all 9216 columns the check sampled hold a frame, pad y 13..20, 2685 of them dug down under their own floor; 8 frames built on arrival, all 16 cells read back whole. |
 | 63b | **What a shaft may be built into, in either dimension** | done | 2026-10-12 (F-155), from the device report "it sometimes says mineshaft would not open". The overworld arrival cell is `worldgen_height() + 1` -- one above the surface block, not inside it: **1.5% of columns buildable before, 75.1% after**. `mineshaft_open_near()` re-asks that estimate +/-3 once the chunks are resident (28 of 511 real columns needed a different height, worst 3). A crossing may trim natural terrain and never the bedrock ceiling, a liquid, or a block with `ST_PLACED`; all 16 cells are checked before any is written. The centre ends air -- a plant is cleared, water and lava refused by name -- and no frame is dug under `CH_SEA_LEVEL`. Over 512 dry columns of the real overworld: **511 hold a frame, 1 cannot (0.2%), 449 refused for being under the waterline**. |
-| 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | done | Part M, **built 2026-10-11** (F-150). `world/dimension_switch.{c,h}` does steps 1-4 and 6 and **refuses rather than clears**, Part P's rule: a chunk the card never took is something the player made, and a switch that dropped it is data loss. Step 5 is in `main.c` and cannot be anywhere else, because the entry sequence is the app's -- `check_crossing()` hands the nine chunks to `start_loading()` with physics frozen. **Step 2 is a drain, not a gate** (F-151): a live streamer is never quiet, and a ring during play is dirty almost everywhere, so requiring an idle worker refused on nearly every crossing. A queue is a wait, not a refusal; what genuinely cannot be saved is a chunk whose planes are still the worker's, and draining is what separates the two. **Two things the design did not have**: the trigger has to re-arm, because the pairing is stateless and the cell you arrive in is a trigger too, so without one flag the player bounces back for ever; and a crossing during a replay is refused until step 48 records them. **The arrival cell is a real position** (F-151): the crossing records the frame's centre, and settling has to use it -- a crossing that let `world_ground()` re-derive the height put the player on top of the world at y 64, because the highest solid block in a sealed cave is the roof. |
-| 65 | **Zombies and skeletons**, in the Deep Mine only | partly done -- **population only** | Built 2026-10-11 (F-150): two rows in `MOBS[]`, `PACKS[]` (60 zombie / 40 skeleton), one roll per chunk from the world's hash, a pack inside one chunk, and nothing that comes back (D-146). Measured over 10000 chunks: **1226 packs, 12.3% against the design's 12%**, 3066 members, 0.31 a chunk; a Far ring holds 61 of the pool's 128, 40 zombie and 21 skeleton, so `s_refused` reads 0 -- the check that says whether the numbers are right. **Fixed 2026-10-12** (F-154): both kinds were drawn with the quadruped numbers, which gave a 1.8-tall humanoid a zero-length body and left what the user called "a few small floating squares" -- `beast.c` has an `upright` shape now (torso stood on end, two legs, two arms, head on top), and a pack is never placed on a lava lake. **Combat and pathing are not built**: `hostile` is a column of the row that nothing reads yet. Drops are empty on purpose (D-144). |
+| 64 | **The switch**: save every dirty chunk, drain the worker, release the whole store through `chunk_release()`, free the mesh cache, load the 3x3 synchronously, record the event | done | Part M, **built 2026-10-11** (F-150). `world/dimension_switch.{c,h}` does steps 1-4 and 6 and **refuses rather than clears**, Part P's rule: a chunk the card never took is something the player made, and a switch that dropped it is data loss. Step 5 is in `main.c` and cannot be anywhere else, because the entry sequence is the app's -- `check_crossing()` hands the nine chunks to `start_loading()` with physics frozen. **Step 2 is a drain, not a gate** (F-151): a live streamer is never quiet, and a ring during play is dirty almost everywhere, so requiring an idle worker refused on nearly every crossing. A queue is a wait, not a refusal; what genuinely cannot be saved is a chunk whose planes are still the worker's, and draining is what separates the two. **Two things the design did not have**: the trigger has to re-arm, because the pairing is stateless and the cell you arrive in is a trigger too, so without one flag the player bounces back for ever; and a crossing during a replay is refused until step 48 records them. **The arrival cell is a real position** (F-151): the crossing records the frame's centre, and settling has to use it -- a crossing that let `world_ground()` re-derive the height put the player on top of the world at y 64, because the highest solid block in a sealed cave is the roof. **A DEATH IN THE CAVE IS THE SECOND CROSSING** (F-159, 2026-10-13): `player_died()` calls `cross_to(DIM_OVERWORLD, ...)`, and the arrival cell comes from `worldstore_spawn()` -- the bed's own cell -- rather than from the generator's estimate. The trigger is now released INSIDE `cross_to()`, so every crossing has to be stepped out of, not only the one that was walked into. |
+| 65 | **Zombies and skeletons**, in the Deep Mine only | partly done -- **population, pathing and aggression** | Built 2026-10-11 (F-150): two rows in `MOBS[]`, `PACKS[]` (60 zombie / 40 skeleton), one roll per chunk from the world's hash, a pack inside one chunk, and nothing that comes back (D-146). Measured over 10000 chunks: **1226 packs, 12.3% against the design's 12%**, 3066 members, 0.31 a chunk; a Far ring holds 61 of the pool's 128, 40 zombie and 21 skeleton, so `s_refused` reads 0 -- the check that says whether the numbers are right. **Fixed 2026-10-12** (F-154): both kinds were drawn with the quadruped numbers, which gave a 1.8-tall humanoid a zero-length body and left what the user called "a few small floating squares" -- `beast.c` has an `upright` shape now (torso stood on end, two legs, two arms, head on top), and a pack is never placed on a lava lake. **Aggression is built since 2026-10-13** (D-156, F-158): `hostile` is a column something finally reads -- a fifth intent, `MOB_HUNT`, one target per creature, a swing worth 3 (zombie) or 2 (skeleton) health, friendly fire that turns the victim against its attacker, and lava that burns a mob and the player at the same rate. **What is not built**: ranged attack (a skeleton walks and swings like a zombie), pathfinding around obstacles rather than steering at a target, and any third kind. Drops are empty on purpose (D-144). |
 | 66 | **The optional external VFD** (from synthracer): the item in hand in a world, the game's name in a menu, powered down on exit | done, **device test pending** | 2026-10-12, the user: *"Port that over here ... The VFD should display the name of the current item held in hand (or be blank otherwise). In the Menu, it should display "SynthMiner". Make sure the VFD is powered off when exiting the app."* `main/vfd.{c,h}`, D-152 and F-152. Costs 9.7 KiB of text and does nothing at all on a badge that has no tube. **Unverified here**: the probe, the scrolled names and the power-down all need a device with the display fitted. |
 | 67 | **Saving a world is a round a frame, and a refusal is on the screen** | done, **device test pending** | 2026-10-12 (D-153, F-153). `save_pass(&p, max_ask)` bounds a round and reports `saved` from the worker's own counter; `saving_step()` runs **one round per frame at 8 writes in flight**, so the bar fills as the chunks go out; `save_dirty_chunks()` stops after a round that saved nothing; `draw_saving()` prints `loading.saving_refused` under the bar and holds the screen 2 s when it has to say it. The measurement behind it: **~520 ms per refused chunk** (the loader's 5 tries + 372 ms of backoff + this file's 100 ms pace) x 49 chunks x 8 sweeps = **200 s of a screen drawn once**. **The other half of this is not in this repo**: the badge is still running graceloader 2.6.x, whose disk layer retries `ESP_ERR_NOT_SUPPORTED` five times instead of bouncing the buffer (F-147, F-148) -- `cd ../tanmatsu-graceloader && make install`. This is the hardening around that, not the fix for it. |
 
@@ -8706,6 +8755,194 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   water the way they should. And the price of stone instead of obsidian, said plainly: **a
   lava lake is one bucket from being gone.** That is fine while nothing in the game wants
   obsidian, and is D-155's decision to revisit the day something does.
+
+- **D-156** 2026-10-13, **the user**: **a hostile mob has one target, and lava burns
+  anybody standing in it.**
+
+  *"Let's implement aggression. When the player gets near them, they target the player,
+  walk towards him and start attacking. Each hostile mob has zero or one target they are
+  aggressive against. If a Zombie hits a skeleton or vice versa by accident, the attacked
+  mob sets its agression target to that attacker instead. Mobs can hurt each other."*
+  and, in the next message: *"Mobs and the player also get hurt in contact with lava."*
+
+  **ZERO OR ONE TARGET, AND IT IS A CREATURE, NOT A SLOT.** The user's sentence is the
+  whole design: no threat list, no hate ranking, no "nearest of several". A hostile mob
+  is after nobody, or after exactly one thing -- the player, or one other creature. What
+  the design does not say and the build has to answer is *which* other creature, because
+  the pool is an array and its slots are reused: a zombie chasing "slot 7" ends up
+  chasing whatever was born into it after the thing it hated died. The target is stored
+  as the creature's **id**, which is unique while a world is open, and turned back into
+  an index every tick.
+
+  **THE VICTIM DECIDES WHO IT IS AFTER NOW.** *"the attacked mob sets its aggression
+  target to that attacker instead"* is stated as an outcome, so it is built as one:
+  whoever a swing lands on is now aggressive against whoever landed it, zombie to
+  skeleton and skeleton to zombie alike, and a mob hit by the player is aggressive
+  against the player instead of running. Nothing in the rule names a kind, which is what
+  makes it one rule -- the day a third hostile mob is added it is already covered. It
+  also means **mobs can hurt each other** is not a feature to add on top of aggression;
+  it is what a swing does when something else happens to be in reach, which is exactly
+  the user's "by accident".
+
+  **ONE BURN, ASKED ONCE, FOR BOTH SIDES.** Lava takes health from a creature and from
+  the player at the same rate, from the same predicate, on the same beat. Two numbers in
+  `physics.h` rather than one in `game/mob.c` and one in `game/player.c`, because the
+  alternative is a rule nobody can see and can only notice by being wrong: a player who
+  can stand in a lava sea twice as long as a zombie is not a balance decision, it is an
+  accident with a name.
+
+  **What this does NOT say, and what the build therefore did not invent**: no ranged
+  attack -- a skeleton walks up and swings like a zombie, because "start attacking" is
+  all the design gives, and a bow is a decision rather than an implication of it. No
+  pathfinding around obstacles, only the steering that already exists aimed at a target
+  instead of at a wander. No aggro in the overworld, because nothing hostile is generated
+  there (D-146, step 65). No repopulation, so an aggressive mob is one you meet once.
+  And no target on the card: a creature that comes back off it has nobody to be angry at,
+  which is the honest answer and needs no new tag in the entity record.
+
+- **F-158** 2026-10-13, measured and built: **the `hostile` column finally has something
+  that reads it -- and a fall has been saying "You are starving" since it was written.**
+
+  **WHAT IS IN THE CODE.** A fifth intent, `MOB_HUNT`, and the first thing that reads
+  `mob_def_t::hostile` anywhere. A `uint8_t attack` on the row (zombie 3, skeleton 2)
+  rather than a rule about hostile kinds, because "it is hostile" and "it hurts you for
+  three" are two questions. `target_kind` / `target_id` on the creature, transient like
+  `turn_cd`. `choose_target()` runs before the animal half of the tick, so a mob that has
+  picked somebody does not amble, is not lured by what is in your hand, is not looking for
+  a mate and does not run away. `swing_target()` picks the nearest body in reach **and**
+  inside a 60-degree arc -- nearest, not "the one it is chasing", and that one word is
+  the whole of the user's "by accident". Lava is one predicate, `phys_in_lava()`, asked
+  for a mob at the end of its tick and for the player in `survival()`, both through
+  `player_hurt()` / `damage_mob()`. `mob_tick` now returns the damage the pool did, and
+  `main.c` applies it: `game/mob.c` has no business knowing what health is, the same
+  split as `used_block`.
+
+  **CAUSE 1, AND THE ONE THAT MATTERS: `block_liquid()` ANSWERED FOR LAVA WHAT ONLY
+  WATER DOES.** `in_water()` and `afloat()` asked "is this a liquid?", which is true of
+  lava, so a creature standing in a lava sea was buoyant, kicked a swim stroke, and swam
+  for the nearest shore -- including away from the player it was supposed to be hunting.
+  Those two now ask `== BLK_WATER` by name. `hazard_ahead()` deliberately still asks
+  `block_liquid()`, because its question is "should it not go there" and a lava sea is the
+  loudest possible answer: a zombie will not walk into one, so the cave's own lakes are
+  walls a player can use. **This is F-157's bug in a different file** -- there it was
+  `accepts()` reading `BF_REPLACEABLE` as "may this fluid go here"; here it was
+  `block_liquid()` reading `BF_LIQUID` as "is this water". One predicate, two questions,
+  twice.
+
+  **CAUSE 2: A COOLDOWN TICKED TWICE IS HALF A COOLDOWN.** `lava_cd` was decremented in
+  the cooldown group at the top of the pool loop *and* again in the lava block, so the
+  burn landed every 5 ticks instead of every 10. Nothing looks wrong from outside -- the
+  burn is the same size and the mob still dies -- so what caught it is that the check asks
+  **how long the creature lasted** rather than how much it lost. As built: **9 burns of 2
+  in 91 ticks**. With the second decrement put back, the same check reads **46 ticks** and
+  fails by name: `FAIL: a zombie only lasted 46 ticks in lava, which is faster than one
+  burn every 10 ticks`. A check that measures the thing the design promised, instead of
+  the number the code computes, is the only thing that catches a halved beat.
+
+  **CAUSE 3: A FALL HAS BEEN SAYING THE WRONG WORD SINCE IT WAS WRITTEN.** `food_hurt()`
+  has one enum for two questions and returns `FOOD_STARVED` for **any** damage that is not
+  the last of the health. So a four-block landing has printed *"You are starving"* on the
+  HUD since step 22, and a zombie would have printed it too. Health stays in `food`; the
+  reason moves to `player_hurt_t` (`FALL` / `LAVA` / `MOB`) with a HUD line of its own,
+  above the hunger line. The fall also plays `SFX_HURT` now instead of `SFX_HIT`, which
+  was the sound of a pick striking stone.
+
+  **CAUSE 4: THE HUD LINE NAMED AN ATTACKER THAT WAS NO LONGER THERE.** `mob_attacker_kind()`
+  is re-set by every `mob_tick`, so a hit whose message is still on screen two ticks later
+  has no name left to fill `%s` with -- and printing a format string with nothing to fill
+  it is worse than printing nothing. The line is suppressed in that case. Same family as
+  F-155's shaft refusal that came out as *"want tilled soil"*: a message with no case is
+  a message that lies.
+
+  **CAUSE 5 AND 6, the two that only a check would catch.** `mob_at()` answers the SLOT,
+  which stays readable after the creature in it dies, so every "is it still alive"
+  question in the new code has to ask the `alive` flag. And `mob_gap()` was passed a
+  `phys_body_t*` where it wanted a `mob_t*`: it compiles, and returns a distance out of
+  the wrong struct. Both were found by numbers that did not make sense, not by reading.
+
+  **THE TEXT, AND WHY IT NEEDED A NEW SCOPE.** Three lines -- `hurt.fall`, `hurt.lava`,
+  `hurt.mob = %s hits you`. That `%s` is filled from the **mob** table, not the item
+  table, so the width check needed an `ITEMS_MOB` scope to measure the longest mob name
+  in each language; without it the check passes by accident, which is the kind of green
+  that hides a language. **112 lines x 32 languages, tightest 3 px to spare.**
+
+  **A VOICE, because a zombie was using the dog's bark.** `SFX_GROWL`: the low saw with
+  more rasp than vowel, a filter shut down over it, a pitch that falls. Chosen off the
+  row's `hostile` column, so a third hostile mob is heard before it is seen with no edit
+  in `audio.c`. The dog keeps its bark.
+
+  **THE CHECKS, AND WHAT THEY MEASURE.** `check_hostile_aggression()` and
+  `check_lava_burn()`, both driving the real pool through `mob_tick`:
+  - the player 9 blocks away: **hunted in 60 of 60 ticks**; 24 blocks away: **0 of 60** --
+    the aggro range is a door, not a suggestion.
+  - nine blocks away: **closed to 1.69, first hit after 86 ticks, 16 swings in 20 s**, and
+    the HUD name it produces is `zombie`.
+  - a pig, a cow and a sheep three blocks away: **0 ticks hunted, 0 damage** each. Hostility
+    is a column, and the column is what decides.
+  - a zombie swings at a skeleton standing in its way: **the skeleton is now after the
+    zombie**; the same the other way round. Left alone together, **1 of the two is alive
+    after 100 ticks** and it is the zombie, which is what 3 against 2 with 20 against 16
+    health says it should be.
+  - a zombie the player hit: **intent hunt, target the player** -- it does not flee.
+  - a zombie in a lava pool: **9 burns of 2 in 91 ticks, 0 of the wrong size**; the same
+    zombie in a water pool and one block off the lava both keep **20 of 20**.
+
+  **What is still outstanding.** **The player half is not host-testable**: `main/game/player.c`
+  is not in `PURE_SRCS`, so `worldcheck` can drive a mob into lava but cannot drive
+  `player_hurt()` or the lava branch of `survival()`. Those two are verified by reading and
+  by the device. On the device as well: whether the growl is audible over the cave, whether
+  a 2-3 pack at 12% of chunks is a threat you plan around or an accident you walk past, and
+  whether a zombie that walks at you at 1.4x its amble is beatable by backing up -- which is
+  the number the steering cannot answer from a host. And the standing Part M rule applies
+  to every number in here: **all of them are provisional, and they get tuned after playing.**
+
+- **F-159** 2026-10-13, measured and fixed: **a death in the cave woke the player on the
+  roof of their own house, and armed the shaft that sent them straight back down.**
+
+  D-145 has said since 2026-10-10 what dying in the Deep Mine does -- cross the player
+  back to the overworld's one spawn point -- and `player_died()` has called `cross_to()`
+  since the crossing was built. What was wrong is not the crossing. It is the two things
+  around it, and neither shows up unless somebody actually dies at a bed.
+
+  **CAUSE 1: THE HEIGHT WAS RE-DERIVED, AND THE TWO ESTIMATES DISAGREE WITH THE BED.**
+  `home_column()` answered x and z only. `cross_to()` then filled the height in from
+  `mineshaft_arrival_y()`, which is `worldgen_height() + 1` up here -- the surface of the
+  UNDECORATED column, because it has to be answerable before the chunk exists. A bed on a
+  platform, on a roof, or in a house is not that. The arrival cell then either lands in
+  the turf beside the bed, or `player_place()` refuses it and `settle_player()` falls back
+  to `player_spawn()`, which asks `world_ground()` -- and `world_ground()` looks for the
+  HIGHEST SOLID BLOCK IN THE COLUMN, which over a bed under a roof is the roof. Waking up
+  on top of your own house is not waking up at your spawn.
+  **THE FIX IS ONE ANSWER, IN THE FILE THAT OWNS THE FIELDS.** `worldstore_spawn()`
+  (`world/worldstore.c`, in `PURE_SRCS` so a host check can drive it) returns the bed's own
+  cell when there is one, and says so when there is not: `meta->spawn_y` is a placeholder
+  `create_at()` writes once and never revisits -- the real spawn height is settled by
+  putting the player on the ground once the terrain around it exists -- so a world with no
+  bed gets its COLUMN from the resolver and its height from the terrain, which is the
+  honest split. `home_column()` is now a call to it with the height dropped, because a
+  compass only needs the column, and the respawn and the compass cannot drift apart.
+  Measured in `check_bed()`: bed at **(12,20,12)**, `world_ground()` over the same column
+  with a roof two cells above it says **23**.
+
+  **CAUSE 2: THE TRIGGER WAS RELEASED BY THE CALLER THAT FIRED IT.** The pairing is
+  stateless, so the cell a crossing arrives in is a shaft too, and one flag stops the
+  bounce: `s_cross_armed`. It was cleared at the end of `check_crossing()` -- which is the
+  shaft path. A DEATH calls `cross_to()` directly, and while the player was walking about
+  the cave the flag was armed. So a player whose home column happens to hold a shaft --
+  the obvious thing to build next to your bed -- woke up standing in a trigger cell with
+  the trigger armed, and went straight back down. One death, one loop.
+  **Moved into `cross_to()`**, after the switch has committed and before anything is
+  reported: releasing the trigger belongs to the crossing, not to whichever caller caused
+  one. `check_crossing()` no longer touches it.
+
+  **What is still outstanding.** Both halves are in `main/main.c`, which is not in
+  `PURE_SRCS`, so the host check can only drive the resolver -- that a bed's cell is used,
+  that a world with no bed is asked of the terrain, and that the two answers differ by
+  three cells in a house. Whether a death in the cave actually lands in the bed, and
+  whether waking in a shaft now requires stepping out of it before it can be used again,
+  are device questions. So is the case the resolver cannot see: a bed that was broken or
+  built over while the player was down in the cave, where `player_place()` refuses the
+  saved cell and the fallback stands them on the ground at that column instead.
 
 ## Verification
 

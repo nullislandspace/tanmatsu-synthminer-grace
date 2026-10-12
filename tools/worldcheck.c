@@ -4419,6 +4419,408 @@ static void check_mob_steering(void) {
     mob_reset();
 }
 
+// --- Aggression and lava (D-156) ---------------------------------------
+//
+// THE PLAYER HALF IS NOT HERE. game/player.c is not in PURE_SRCS, so this
+// host build cannot drive player_hurt, the burn it takes or the HUD line
+// it sets. What CAN be driven is the half main.c depends on: that
+// mob_tick REPORTS damage and names who dealt it, and that the lava
+// predicate physics.h gives the player is the same one the mobs burn on.
+
+// The stage both checks need: a flat stone floor at y=20, an empty pool,
+// an empty fluid queue. Every mob check builds this by hand; two new
+// checks building it a third time in four lines each was the point at
+// which writing it down was cheaper than repeating it.
+static bool flat_stage(void) {
+    chunk_store_clear();
+    blockupdate_clear();
+    mob_reset();
+    return flat_world(20) != NULL;
+}
+
+static char const* intent_name(int intent) {
+    switch (intent) {
+        case MOB_STAND:  return "stand";
+        case MOB_WANDER: return "wander";
+        case MOB_FLEE:   return "flee";
+        case MOB_FOLLOW: return "follow";
+        case MOB_SEEK:   return "seek";
+        case MOB_HUNT:   return "hunt";
+        default:         return "?";
+    }
+}
+
+// How far a creature is from the player's BODY, which is not in the pool
+// and has no `body` member of its own.
+static double body_gap(mob_t const* a, phys_body_t const* b) {
+    double const dx = b->x - a->body.x, dz = b->z - a->body.z;
+    return sqrt(dx * dx + dz * dz);
+}
+
+// The creature at that index, or NULL when it is not one any more.
+// mob_at() answers for the SLOT, which stays put after a death, so every
+// check below that asks "is it still alive" has to ask it of the creature
+// rather than of the index.
+static mob_t const* live_at(int i) {
+    mob_t const* const m = mob_at(i);
+    return (m != NULL && m->alive) ? m : NULL;
+}
+
+// Hold a creature still, so a check about lava is about lava and not about
+// where an ambling animal wandered to. The same trick check_shoving uses.
+static void pin_mob(int i) {
+    mob_at_mut(i)->intent     = MOB_STAND;
+    mob_at_mut(i)->intent_for = 10000;
+}
+
+static void check_hostile_aggression(void) {
+    printf("aggression: a hostile mob picks one target and comes for it (D-156)\n");
+    uint32_t clk = 9000;
+
+    // --- NEAR IT NOTICES, FAR IT DOES NOT -------------------------------
+    //
+    // Both sides of MOB_AGGRO_RANGE, because a range is only a rule if it
+    // can be failed: a zombie that hunts from 40 blocks away makes the
+    // Deep Mine unexplorable, and one that never hunts is the old behaviour
+    // wearing a new name.
+    double const away[] = {9.0, 24.0};
+    for (int c = 0; c < 2; c++) {
+        CHECK(flat_stage(), "the aggression world would not become resident");
+        int const zi = mob_spawn(MOB_ZOMBIE, 2.5, 20.0, 8.5, false);
+        CHECK(zi >= 0, "the pool would not take a zombie");
+        if (zi < 0) continue;
+
+        phys_body_t me;
+        phys_body_init(&me, 2.5 + away[c], 20.0, 8.5);
+        int hunted = 0, dealt = 0;
+        for (int t = 0; t < 60; t++) {
+            dealt += mob_tick(clk++, &me, 0);
+            mob_t const* m = live_at(zi);
+            if (m == NULL) break;
+            if (m->intent == MOB_HUNT) hunted++;
+        }
+        bool const expect = away[c] < (double)MOB_AGGRO_RANGE;
+        printf("  the player %.0f blocks away: hunted in %d of 60 ticks, dealt %d damage\n", away[c], hunted,
+               dealt);
+        CHECK((hunted > 0) == expect, "a zombie %.0f blocks away %s -- the aggro range is %.0f", away[c],
+              expect ? "never hunted" : "hunted anyway", (double)MOB_AGGRO_RANGE);
+        if (!expect) CHECK(dealt == 0, "it dealt %d damage from %.0f blocks away", dealt, away[c]);
+    }
+
+    // --- IT COMES, AND THEN IT HITS -------------------------------------
+    CHECK(flat_stage(), "the chase world would not become resident");
+    {
+        int const zi = mob_spawn(MOB_ZOMBIE, 2.5, 20.0, 8.5, false);
+        CHECK(zi >= 0, "the pool would not take a chasing zombie");
+        phys_body_t me;
+        phys_body_init(&me, 11.5, 20.0, 8.5);  // nine blocks away, holding nothing
+        double   closest = 1e9;
+        int      dealt = 0, swings = 0, ticks_to_first_hit = -1;
+        uint8_t  who = MOB_NONE;
+        for (int t = 0; t < 400; t++) {
+            int const d = mob_tick(clk++, &me, 0);
+            mob_t const* m = live_at(zi);
+            if (m == NULL) break;
+            double const gap = body_gap(m, &me);
+            if (gap < closest) closest = gap;
+            if (d > 0) {
+                dealt += d;
+                swings += d / (mob_def(MOB_ZOMBIE)->attack > 0 ? mob_def(MOB_ZOMBIE)->attack : 1);
+                if (ticks_to_first_hit < 0) {
+                    ticks_to_first_hit = t;
+                    who                = mob_attacker_kind();
+                }
+            }
+        }
+        printf("  nine blocks away: closed to %.2f, first hit after %d ticks, %d swing(s) in 20 s, named %s\n",
+               closest, ticks_to_first_hit, swings, mob_def(who)->name);
+        CHECK(closest < (double)MOB_ATTACK_RANGE, "a zombie nine blocks away never got closer than %.2f -- it does not come for you",
+              closest);
+        CHECK(ticks_to_first_hit >= 0, "a zombie standing on top of me never swung");
+        CHECK(who == MOB_ZOMBIE, "the damage came from a %s", mob_def(who)->name);
+        // ONE SWING A SECOND, which is what MOB_ATTACK_COOLDOWN is for: a
+        // mob that could swing every tick takes 60 health a second, and
+        // there are only 20.
+        CHECK(swings <= 400 / (int)MOB_ATTACK_COOLDOWN + 1, "it swung %d times in 20 s -- more than one a second",
+              swings);
+        CHECK(dealt == swings * mob_def(MOB_ZOMBIE)->attack, "%d damage from %d swings of %d", dealt, swings,
+              (int)mob_def(MOB_ZOMBIE)->attack);
+    }
+
+    // --- ANIMALS ARE NOT IN THIS ----------------------------------------
+    //
+    // The rule is about HOSTILE ones. A pig that hunts the player would be
+    // the farm becoming a threat, and a dog that hunts its owner would be
+    // a dog that has to be put down.
+    for (int kind = MOB_PIG; kind <= MOB_SHEEP; kind++) {
+        if (kind == MOB_DOG) continue;
+        CHECK(flat_stage(), "the animal world would not become resident");
+        int const mi = mob_spawn((uint8_t)kind, 2.5, 20.0, 8.5, false);
+        CHECK(mi >= 0, "the pool would not take a %s", mob_def((uint8_t)kind)->name);
+        if (mi < 0) continue;
+        phys_body_t me;
+        phys_body_init(&me, 5.5, 20.0, 8.5);  // three blocks away: well inside the aggro range
+        int hunted = 0, dealt = 0;
+        for (int t = 0; t < 100; t++) {
+            dealt += mob_tick(clk++, &me, 0);
+            mob_t const* m = live_at(mi);
+            if (m == NULL) break;
+            if (m->intent == MOB_HUNT || m->target_kind != MOB_TARGET_NONE) hunted++;
+        }
+        printf("  a %-5s three blocks away: hunted %d tick(s), dealt %d damage\n", mob_def((uint8_t)kind)->name,
+               hunted, dealt);
+        CHECK(hunted == 0, "a %s three blocks away was aggressive to the player", mob_def((uint8_t)kind)->name);
+        CHECK(dealt == 0, "a %s dealt %d damage", mob_def((uint8_t)kind)->name, dealt);
+    }
+
+    // --- A SWING THAT HITS THE WRONG ONE (the user's "by accident") -----
+    //
+    // A zombie after the player, a skeleton standing between it and the
+    // player. The swing takes whatever is NEAREST in front of it, so the
+    // skeleton is what gets hit -- and then the skeleton is after the
+    // ZOMBIE, which is the whole rule stated as an outcome.
+    for (int swap = 0; swap < 2; swap++) {
+        uint8_t const hitter  = swap ? MOB_SKELETON : MOB_ZOMBIE;
+        uint8_t const victim  = swap ? MOB_ZOMBIE : MOB_SKELETON;
+        CHECK(flat_stage(), "the two-creature world would not become resident");
+        int const hi = mob_spawn(hitter, 2.5, 20.0, 8.5, false);
+        int const vi = mob_spawn(victim, 3.5, 20.0, 8.5, false);
+        CHECK(hi >= 0 && vi >= 0, "the pool would not take the pair");
+        if (hi < 0 || vi < 0) continue;
+
+        phys_body_t me;
+        phys_body_init(&me, 11.5, 20.0, 8.5);
+        int   found = -1;
+        for (int t = 0; t < 40; t++) {
+            (void)mob_tick(clk++, &me, 0);
+            mob_t const* v = live_at(vi);
+            if (v == NULL) continue;
+            if (v->target_kind == MOB_TARGET_MOB) { found = t; break; }
+        }
+        mob_t const* v = live_at(vi);
+        mob_t const* h = live_at(hi);
+        CHECK(found >= 0, "a %s hit by a %s never turned on its attacker", mob_def(victim)->name,
+              mob_def(hitter)->name);
+        if (found >= 0 && v != NULL && h != NULL) {
+            printf("  a %s swung at a %s standing in its way; the %s is now after the %s (id %u)\n",
+                   mob_def(hitter)->name, mob_def(victim)->name, mob_def(victim)->name, mob_def(hitter)->name,
+                   h->id);
+            CHECK(v->target_id == h->id, "the %s is angry at id %u, and the attacker is id %u",
+                  mob_def(victim)->name, v->target_id, h->id);
+        }
+    }
+
+    // --- ... AND THEY CAN KILL EACH OTHER -------------------------------
+    //
+    // Nobody about, so nothing else decides what they are after; the two
+    // targets are set by hand, which is the duel the user described.
+    CHECK(flat_stage(), "the duel world would not become resident");
+    {
+        int const zi = mob_spawn(MOB_ZOMBIE, 2.5, 20.0, 8.5, false);
+        int const si = mob_spawn(MOB_SKELETON, 3.5, 20.0, 8.5, false);
+        CHECK(zi >= 0 && si >= 0, "the pool would not take the duelists");
+        mob_at_mut(zi)->target_kind = MOB_TARGET_MOB;
+        mob_at_mut(zi)->target_id   = live_at(si)->id;
+        mob_at_mut(si)->target_kind = MOB_TARGET_MOB;
+        mob_at_mut(si)->target_id   = live_at(zi)->id;
+
+        phys_body_t me;
+        phys_body_init(&me, 40.5, 20.0, 40.5);  // nowhere near either of them
+        int t = 0;
+        for (; t < 2000; t++) {
+            int const dealt = mob_tick(clk++, &me, 0);
+            CHECK(dealt == 0, "the duel dealt %d damage to a player who is 50 blocks away", dealt);
+            if (mob_live() < 2) break;
+        }
+        mob_t const* z = live_at(zi);
+        mob_t const* s = live_at(si);
+        printf("  a zombie and a skeleton left alone together: %d live after %d ticks (%s left)\n", mob_live(), t,
+               z != NULL ? "zombie" : s != NULL ? "skeleton" : "nobody");
+        CHECK(mob_live() == 1, "the duel ended with %d of 2 standing after %d ticks", mob_live(), t);
+        CHECK(z != NULL, "the %s killed the %s: 20 health and a 3-point swing should not lose to 16 and a 2",
+              mob_def(MOB_SKELETON)->name, mob_def(MOB_ZOMBIE)->name);
+    }
+
+    // --- BEING HIT MAKES A HOSTILE ONE HUNT, NOT RUN --------------------
+    //
+    // The old behaviour was MOB_FLEE for everything. For a zombie that is
+    // the exploit the user would have found within a minute: throw one
+    // stone and the room clears itself.
+    CHECK(flat_stage(), "the retaliation world would not become resident");
+    {
+        int const zi = mob_spawn(MOB_ZOMBIE, 8.5, 20.0, 8.5, false);
+        CHECK(zi >= 0, "the pool would not take a hit zombie");
+        phys_body_t me;
+        phys_body_init(&me, 30.5, 20.0, 8.5);  // out of aggro range, so the hit is the only cause
+        bool const died = mob_hit(zi, 1, 8.0, 8.5);
+        mob_t const* m = live_at(zi);
+        CHECK(!died && m != NULL, "one point killed a fresh zombie");
+        if (m != NULL) {
+            printf("  a hit zombie: intent %s, target kind %d\n", intent_name(m->intent), (int)m->target_kind);
+            CHECK(m->intent == MOB_HUNT, "a hit zombie is doing %s -- it should be after who hit it",
+                  intent_name(m->intent));
+            CHECK(m->target_kind == MOB_TARGET_PLAYER, "a hit zombie is after %d, not the player",
+                  (int)m->target_kind);
+        }
+
+        CHECK(flat_stage(), "the animal retaliation world would not become resident");
+        int const pi = mob_spawn(MOB_PIG, 8.5, 20.0, 8.5, false);
+        CHECK(pi >= 0, "the pool would not take a hit pig");
+        (void)mob_hit(pi, 1, 8.0, 8.5);
+        mob_t const* p = live_at(pi);
+        CHECK(p != NULL && p->intent == MOB_FLEE, "a hit pig is doing %s -- an animal still runs",
+              p != NULL ? intent_name(p->intent) : "nothing");
+        CHECK(p != NULL && p->target_kind == MOB_TARGET_NONE, "a hit pig acquired a target");
+    }
+
+    chunk_store_clear();
+    blockupdate_clear();
+    mob_reset();
+}
+
+static void check_lava_burn(void) {
+    printf("lava: it burns whoever stands in it, creature or player (D-156)\n");
+    uint32_t clk = 12000;
+
+    // --- THE PREDICATE, BOTH HALVES -------------------------------------
+    //
+    // phys_in_lava asks at the FEET and at the MIDDLE. The two are
+    // different cases and both happen, and only the second one is easy to
+    // get wrong: a body that fell INTO a lava sea floats somewhere in the
+    // middle of it, with its feet below the surface.
+    CHECK(flat_stage(), "the lava world would not become resident");
+    {
+        phys_body_t me;
+        phys_body_init(&me, 4.5, 20.0, 4.5);
+        CHECK(!phys_in_lava(&me), "a body on a stone floor is standing in lava");
+
+        world_set(4, 20, 4, BLK_LAVA, ST_PLACED);
+        CHECK(phys_in_lava(&me), "feet in a lava cell did not count");
+
+        // ... and the MIDDLE probe, on its own: air at the feet, lava at
+        // head height, the body lifted just far enough that only the
+        // mid-height cell lands in it.
+        world_set(4, 20, 4, BLK_AIR, 0);
+        world_set(4, 21, 4, BLK_LAVA, ST_PLACED);
+        phys_body_t low, high;
+        phys_body_init(&low, 4.5, 20.0, 4.5);   // mid at 20.9: still the air cell
+        phys_body_init(&high, 4.5, 20.2, 4.5);  // mid at 21.1: in the lava
+        CHECK(!phys_in_lava(&low), "a body under a lava cell burned with nothing touching it");
+        CHECK(phys_in_lava(&high), "a body with lava at its middle did not burn");
+        CHECK(!phys_in_lava(NULL), "phys_in_lava(NULL) is not false");
+    }
+
+    // --- IT BURNS ON A BEAT, AND IT KILLS -------------------------------
+    //
+    // A pool of source lava, a zombie dropped in the middle of it. Twenty
+    // health at two points every ten ticks is ten burns, so it has to be
+    // dead well inside 200 ticks -- and the burns have to be ON the beat,
+    // because a per-tick burn is a mob that dies in half a second and a
+    // burn that never repeats is a mob that survives a lava sea.
+    CHECK(flat_stage(), "the lava pool would not become resident");
+    {
+        for (int x = 2; x <= 6; x++)
+            for (int z = 6; z <= 10; z++) world_set(x, 20, z, BLK_LAVA, ST_PLACED);
+        int const zi = mob_spawn(MOB_ZOMBIE, 4.5, 20.0, 8.5, false);
+        CHECK(zi >= 0, "the pool would not take a zombie");
+        pin_mob(zi);
+        phys_body_t nobody;
+        phys_body_init(&nobody, 40.5, 20.0, 40.5);
+
+        int prev = mob_def(MOB_ZOMBIE)->health_max, beats = 0, off_beat = 0, ticks = 0;
+        for (int t = 0; t < 200; t++) {
+            (void)mob_tick(clk++, &nobody, 0);
+            ticks = t + 1;
+            mob_t const* m = live_at(zi);
+            if (m == NULL) break;
+            int const lost = prev - m->health;
+            if (lost > 0) {
+                beats++;
+                if (lost != LAVA_DAMAGE) off_beat++;
+                prev = m->health;
+            }
+        }
+        printf("  a zombie in a lava pool: %d burn(s) of %d in %d ticks, %d of the wrong size\n", beats,
+               LAVA_DAMAGE, ticks, off_beat);
+        CHECK(live_at(zi) == NULL, "a zombie in a lava pool was still alive after %d ticks (%d burn(s))", ticks,
+              beats);
+        CHECK(beats >= 2, "it died after %d burn(s) -- the burn is not repeating", beats);
+        CHECK(off_beat == 0, "%d of the %d burns were not %d points", off_beat, beats, LAVA_DAMAGE);
+        // THE BEAT: the first burn is free, and every one after it is
+        // LAVA_BURN_TICKS later. Anything faster is a per-tick burn.
+        CHECK(ticks >= (mob_def(MOB_ZOMBIE)->health_max / LAVA_DAMAGE - 1) * (int)LAVA_BURN_TICKS,
+              "a zombie only lasted %d ticks in lava, which is faster than one burn every %d ticks", ticks,
+              (int)LAVA_BURN_TICKS);
+    }
+
+    // --- WATER IS NOT LAVA ----------------------------------------------
+    //
+    // The two share BF_LIQUID, and every test written before this one
+    // asked `block_liquid()`. That is why a creature used to float on a
+    // lava sea like a cow in a pond while the code next door was about to
+    // start burning it.
+    CHECK(flat_stage(), "the water pool would not become resident");
+    {
+        for (int x = 2; x <= 6; x++)
+            for (int z = 6; z <= 10; z++) world_set(x, 20, z, BLK_WATER, ST_PLACED);
+        int const zi = mob_spawn(MOB_ZOMBIE, 4.5, 20.0, 8.5, false);
+        CHECK(zi >= 0, "the pool would not take a swimming zombie");
+        pin_mob(zi);
+        phys_body_t nobody;
+        phys_body_init(&nobody, 40.5, 20.0, 40.5);
+        for (int t = 0; t < 200; t++) (void)mob_tick(clk++, &nobody, 0);
+        mob_t const* m = live_at(zi);
+        printf("  the same zombie in a water pool: %d health left of %d\n", m != NULL ? m->health : 0,
+               mob_def(MOB_ZOMBIE)->health_max);
+        CHECK(m != NULL, "water killed a zombie -- water does not burn");
+        CHECK(m != NULL && m->health == mob_def(MOB_ZOMBIE)->health_max, "water took %d health off a zombie",
+              mob_def(MOB_ZOMBIE)->health_max - (m != NULL ? m->health : 0));
+    }
+
+    // --- NEXT TO IT IS NOT IN IT ----------------------------------------
+    //
+    // The shoreline of every lava lake in the Deep Mine. A predicate that
+    // reached one cell too far would make the lakes radioactive rings and
+    // the player could not stand on a bank at all.
+    CHECK(flat_stage(), "the shoreline world would not become resident");
+    {
+        for (int x = 2; x <= 6; x++)
+            for (int z = 6; z <= 10; z++) world_set(x, 20, z, BLK_LAVA, ST_PLACED);
+        int const zi = mob_spawn(MOB_ZOMBIE, 7.5, 20.0, 8.5, false);  // one block off the edge
+        CHECK(zi >= 0, "the pool would not take a zombie at the shore");
+        pin_mob(zi);
+        phys_body_t nobody;
+        phys_body_init(&nobody, 40.5, 20.0, 40.5);
+        for (int t = 0; t < 200; t++) (void)mob_tick(clk++, &nobody, 0);
+        mob_t const* m = live_at(zi);
+        printf("  the same zombie one block off the lava: %d health left of %d\n", m != NULL ? m->health : 0,
+               mob_def(MOB_ZOMBIE)->health_max);
+        CHECK(m != NULL && m->health == mob_def(MOB_ZOMBIE)->health_max,
+              "a zombie one block from lava lost %d health",
+              m != NULL ? mob_def(MOB_ZOMBIE)->health_max - m->health : mob_def(MOB_ZOMBIE)->health_max);
+    }
+
+    // --- ONE PAIR OF NUMBERS --------------------------------------------
+    //
+    // The player burns on the same two constants, from the same predicate.
+    // player.c is not in this build, so what can be said here is that the
+    // numbers exist once, in physics.h, and that a player-sized body gets
+    // the same answer a zombie-sized one does.
+    printf("  one pair of numbers for both: %d points every %d ticks (physics.h)\n", LAVA_DAMAGE,
+           (int)LAVA_BURN_TICKS);
+    CHECK(flat_stage(), "the shared-predicate world would not become resident");
+    {
+        world_set(4, 20, 4, BLK_LAVA, ST_PLACED);
+        phys_body_t player_body;
+        phys_body_init(&player_body, 4.5, 20.0, 4.5);  // the PLAYER's dimensions, by definition
+        CHECK(phys_in_lava(&player_body), "the player's own body is not in the lava a zombie is in");
+    }
+
+    chunk_store_clear();
+    blockupdate_clear();
+    mob_reset();
+}
+
 static void check_breeding(void) {
     printf("breeding: two fed animals find each other (F-124)\n");
     chunk_store_clear();
@@ -6312,6 +6714,38 @@ static void check_bed(void) {
     CHECK(interact_place_dir(&h3, BLK_BED_FOOT, NULL, 0.0f, 1.0f), "the overworld refused the same bed");
     CHECK(world_block(12, 20, 12) == BLK_BED_FOOT && world_block(12, 20, 13) == BLK_BED_HEAD,
           "the bed the overworld allowed came down as less than two cells");
+
+    // THE BED IS ALSO THE SPAWN POINT, and the answer has to be the CELL it
+    // occupies, not the column with a height re-derived from it (F-159). A
+    // roof is what shows the difference: `world_ground()` looks for the
+    // highest solid block in the column, and over a bed under a roof that is
+    // the roof -- so a death up here would wake the player on their own house.
+    {
+        world_meta_t meta = {0};
+        meta.spawn_x = 3;
+        meta.spawn_y = CH_SEA_LEVEL + 2;  // what create_at writes, and nothing better
+        meta.spawn_z = 4;
+        player_state_t p;
+        player_state_defaults(&p, &meta);
+
+        int32_t sx = -999, sy = -999, sz = -999;
+        CHECK(!worldstore_spawn(&meta, &p, &sx, &sy, &sz), "a player with no bed claimed to know a height");
+        CHECK(sx == 3 && sz == 4, "the world's own spawn column moved to (%d,%d)", sx, sz);
+        CHECK(!worldstore_spawn(&meta, NULL, &sx, &sy, &sz), "no saved player somehow had a bed");
+
+        p.has_bed = true;
+        p.bed_x   = 12;
+        p.bed_y   = 20;
+        p.bed_z   = 12;
+        CHECK(worldstore_spawn(&meta, &p, &sx, &sy, &sz), "a slept-in bed did not know its height");
+        CHECK(sx == 12 && sy == 20 && sz == 12, "the bed woke the player at (%d,%d,%d)", sx, sy, sz);
+
+        set_block(12, 22, 12, BLK_STONE, ST_PLACED);  // the roof, two cells over the bed
+        int const roof = world_ground(12, 12);
+        CHECK(roof > sy, "world_ground said %d over a bed at %d, which is not the roof case", roof, sy);
+        printf("  spawn: no bed -> column (%d,%d) with no height; bed -> cell (%d,%d,%d) where world_ground says %d\n",
+               3, 4, sx, sy, sz, roof);
+    }
 
     // BREAKING EITHER HALF TAKES BOTH, and only the foot pays out.
     item_entity_reset();
@@ -9799,6 +10233,13 @@ static float text_width_at(char const* s, float h) {
 typedef enum {
     ITEMS_ANY = 0,   // anything the player can be carrying
     ITEMS_BOOK,      // only what the crafting book can put on a line
+    // ... or a CREATURE, which is a different table entirely. A line that
+    // names what hit you is filled from game/mob.c, not from items.c, and
+    // filling it with item labels would be right by accident today and
+    // wrong the day a language names a skeleton longer than its longest
+    // dish -- which is the kind of thing this table exists to catch rather
+    // than assume.
+    ITEMS_MOB,
 } item_scope_t;
 
 // Can `id` appear in the crafting book at all -- as a row's output or
@@ -9830,6 +10271,17 @@ static bool in_book(uint16_t id) {
 static char const* longest_item_label(item_scope_t scope) {
     char const* worst = "";
     float       wmax  = 0.0f;
+    if (scope == ITEMS_MOB) {
+        for (int k = 1; k < MOB_KIND_COUNT; k++) {
+            char const* const t = i18n_text(mob_def((uint8_t)k)->label);
+            float const       w = text_width_at(t, 28.0f);
+            if (w > wmax) {
+                wmax  = w;
+                worst = t;
+            }
+        }
+        return worst;
+    }
     for (uint16_t id = 1; id < ITEM_COUNT; id++) {
         if (id == BLK_AIR || id == BLK_BARRIER) continue;
         if (scope == ITEMS_BOOK && !in_book(id)) continue;
@@ -10068,6 +10520,13 @@ static struct {
     {.key = "food.starving", .h = 16.0f, .px = 800.0f - 32.0f},
     {.key = "food.died", .h = 16.0f, .px = 800.0f - 32.0f},
     {.key = "food.respawn", .h = 16.0f, .px = 800.0f - 32.0f},
+    // ... and the three lines that say what took the health (D-156). Same
+    // line, same room. `hurt.mob` names a CREATURE, and its %s is filled
+    // here with the longest creature name in that language, from the same
+    // table the game fills it from.
+    {.key = "hurt.fall", .h = 16.0f, .px = 800.0f - 32.0f},
+    {.key = "hurt.lava", .h = 16.0f, .px = 800.0f - 32.0f},
+    {.key = "hurt.mob", .h = 16.0f, .px = 800.0f - 32.0f, .scope = ITEMS_MOB},
 };
 
 static void check_text_fits(void) {
@@ -10852,6 +11311,8 @@ int main(void) {
     check_pens();
     check_shoving();
     check_mob_steering();
+    check_hostile_aggression();
+    check_lava_burn();
     check_mesh_budget();
     check_border_faces();
     check_eviction_releases();

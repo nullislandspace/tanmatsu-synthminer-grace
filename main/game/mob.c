@@ -101,6 +101,12 @@ mob_def_t const MOBS[MOB_KIND_COUNT] = {
     // and which ones to add is still the user's open question -- so the
     // honest row is an empty one, and an item added later can be taken
     // back out without breaking anything.
+    //
+    // WHAT THEY TAKE OFF YOU (D-156), which is the other half of D-144:
+    // killing them is not how you get anything, and being killed by them
+    // is the only thing they are good at. A zombie is the slower one with
+    // the harder hit; a skeleton is quicker to shrug off and dies sooner,
+    // so the two are a choice rather than two sizes of the same threat.
     [MOB_ZOMBIE] = {.name       = "zombie",
                     .label      = SM_STR_MOB_ZOMBIE,
                     .w          = 0.6f,
@@ -109,6 +115,7 @@ mob_def_t const MOBS[MOB_KIND_COUNT] = {
                     .speed      = 0.06f,
                     .drop_item  = ITEM_NONE,
                     .hostile    = true,
+                    .attack     = 3,
                     .argb       = 0xFF6E8A5Cu},
 
     [MOB_SKELETON] = {.name       = "skeleton",
@@ -119,6 +126,7 @@ mob_def_t const MOBS[MOB_KIND_COUNT] = {
                       .speed      = 0.055f,
                       .drop_item  = ITEM_NONE,
                       .hostile    = true,
+                      .attack     = 2,
                       .argb       = 0xFFD8D4C8u},
 };
 
@@ -149,6 +157,10 @@ static int      s_live;
 // first boot instead of after an afternoon's walking: a full pool stops
 // the world QUIETLY, and quiet is the problem.
 static uint32_t s_refused;
+// WHICH KIND hit the player during the last mob_tick (D-156), for the
+// HUD. Held here for the same reason the damage is reported rather than
+// applied: mob.c does not know what a screen is.
+static uint8_t s_attacker_kind;
 // Ids are handed out in order and never reused while a world is open:
 // they are what a creature's own randomness is seeded from, so two
 // animals standing in the same place still behave differently.
@@ -159,6 +171,7 @@ void mob_reset(void) {
     s_live    = 0;
     s_next_id = 1;
     s_refused = 0;
+    s_attacker_kind = MOB_NONE;
 }
 
 int mob_live(void) {
@@ -294,10 +307,16 @@ static bool face(mob_t* m, float yaw) {
 // other tick and leaves it turning in circles in the middle of a lake.
 #define MOB_WET_UP   0.25
 #define MOB_WET_DOWN 0.15
+// WATER, AND NOT ANY LIQUID (D-156). These two asked `block_liquid()`,
+// which is true of lava too, so a creature standing in a lava sea was
+// buoyant, swam a stroke, and floated on it like a cow in a pond --
+// while the code two screens away was about to start burning it. The
+// float, the swim stroke and the swim-for-the-shore steering are what
+// water does; lava is what the hazard test below is for.
 static bool in_water(mob_t const* m) {
     int32_t const x = (int32_t)floor(m->body.x), z = (int32_t)floor(m->body.z);
-    if (block_liquid(world_block(x, (int32_t)floor(m->body.y + MOB_WET_UP), z))) return true;
-    return block_liquid(world_block(x, (int32_t)floor(m->body.y - MOB_WET_DOWN), z));
+    if (world_block(x, (int32_t)floor(m->body.y + MOB_WET_UP), z) == BLK_WATER) return true;
+    return world_block(x, (int32_t)floor(m->body.y - MOB_WET_DOWN), z) == BLK_WATER;
 }
 
 // IS IT IN THE WATER OR ON IT? A swimming body BOBS: MOB_SWIM_UP lifts
@@ -317,7 +336,7 @@ static bool in_water(mob_t const* m) {
 static bool afloat(mob_t const* m) {
     if (in_water(m)) return true;
     int32_t const x = (int32_t)floor(m->body.x), z = (int32_t)floor(m->body.z);
-    return block_liquid(world_block(x, (int32_t)floor(m->body.y) - 1, z));
+    return world_block(x, (int32_t)floor(m->body.y) - 1, z) == BLK_WATER;
 }
 
 // IS THE THING IN FRONT A FENCE? A creature hops over a one-block step
@@ -381,6 +400,13 @@ static bool fence_ahead(mob_t const* m) {
 // was wrong twice over: an animal on a BANK has air at its feet and a
 // pond below, and an animal at a shore has the lake bed below it, which
 // says nothing about how deep the water over it is.
+//
+// LAVA IS IN HERE ON PURPOSE, WATER IS NOT (D-156). This is the one
+// liquid test that still asks `block_liquid()`, because the question is
+// "should it not go there" and a lava sea is the loudest possible answer
+// to it. It is what makes the Deep Mine's lakes a barrier a player can
+// use: a zombie will not walk into one, so a lake is a wall that the
+// cave's own terrain built.
 #define MOB_WADE_DEPTH 1  // cells of water it will walk through
 
 static bool hazard_ahead(mob_t const* m, float dx, float dz) {
@@ -587,9 +613,171 @@ static void breed_pass(mob_t* m, uint32_t now) {
     }
 }
 
-void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
+// --- Aggression (D-156) -------------------------------------------------
+//
+// THE USER'S RULE, whole: *"Each hostile mob has zero or one target they
+// are aggressive against. If a Zombie hits a skeleton or vice versa by
+// accident, the attacked mob sets its agression target to that attacker
+// instead. Mobs can hurt each other."*
+//
+// That is three things, and the third is what makes the second need no
+// bookkeeping: a target, a way to reach it, and a swing that hits
+// whatever is nearest in front of the thing swinging. Nothing has to
+// notice that a zombie happened to be in the way of a skeleton's swing,
+// because the swing was never aimed at a skeleton in the first place --
+// it was aimed at whatever was nearest.
+
+// The creature with this id, or NULL when it is not in the pool any more.
+// Ids are never reused while a world is open, so "not found" means it
+// died or its chunk was evicted, and both are a reason to stop being
+// angry at it.
+static mob_t* find_by_id(uint32_t id) {
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_t* o = &s_pool[i];
+        if (o->alive && o->id == id) return o;
+    }
+    return NULL;
+}
+
+// Horizontal distance, which is the distance that matters for noticing
+// somebody: two creatures on different floors of the cave are not near
+// each other no matter what x and z say.
+static double gap(mob_t const* a, mob_t const* b) {
+    double const dx = b->body.x - a->body.x, dz = b->body.z - a->body.z;
+    return sqrt(dx * dx + dz * dz);
+}
+
+// WHO IT IS AFTER, decided afresh every tick.
+//
+// THE NEARER THING WINS. Somebody already being chased is only worth
+// chasing while nothing closer has walked into range -- otherwise a
+// zombie that lost an argument with a skeleton three rooms away goes on
+// ignoring the player standing in front of it, which reads as a mob that
+// has decided to be useless.
+//
+// Returns the creature it is after, or NULL when the target is the player
+// (who is not in the pool) or nobody.
+static mob_t* choose_target(mob_t* m, mob_def_t const* d, phys_body_t const* player, double to_you) {
+    if (!d->hostile) {
+        m->target_kind = MOB_TARGET_NONE;
+        return NULL;
+    }
+
+    mob_t* rival = (m->target_kind == MOB_TARGET_MOB) ? find_by_id(m->target_id) : NULL;
+    if (m->target_kind == MOB_TARGET_MOB && rival == NULL) m->target_kind = MOB_TARGET_NONE;  // it died
+    if (m->target_kind == MOB_TARGET_PLAYER && (player == NULL || to_you > (double)MOB_FORGET_RANGE)) m->target_kind = MOB_TARGET_NONE;
+    if (rival != NULL && gap(m, rival) > (double)MOB_FORGET_RANGE) {
+        m->target_kind = MOB_TARGET_NONE;
+        rival          = NULL;
+    }
+
+    double const to_rival = rival != NULL ? gap(m, rival) : 1e9;
+    if (player != NULL && to_you < (double)MOB_AGGRO_RANGE && to_you < to_rival) {
+        m->target_kind = MOB_TARGET_PLAYER;
+        m->target_id   = 0;
+    }
+    return m->target_kind == MOB_TARGET_MOB ? rival : NULL;
+}
+
+// IS IT IN REACH, AND IN FRONT OF IT? Both halves matter: range without
+// an arc means a mob damages you from behind, and an arc without range
+// means it hits the far end of the room.
+static bool in_reach_and_in_front(mob_t const* m, double dx, double dz, double d) {
+    if (d >= (double)MOB_ATTACK_RANGE) return false;
+    if (d < 1e-4) return true;  // on top of it: there is no direction to check
+    float const fx = sinf(m->yaw), fz = cosf(m->yaw);
+    return ((dx / d) * (double)fx + (dz / d) * (double)fz) >= (double)MOB_ATTACK_ARC;
+}
+
+// WHAT A SWING HITS: the nearest body within reach and inside the arc --
+// the player or another creature, whichever is nearer. `hit_player` says
+// which of the two it was.
+//
+// Nearest, not "the one it is chasing", and that single word is the
+// whole of the user's "by accident".
+static mob_t* swing_target(mob_t const* m, phys_body_t const* player, bool* hit_player) {
+    *hit_player = false;
+    double best = (double)MOB_ATTACK_RANGE;
+    mob_t* best_mob = NULL;
+
+    if (player != NULL) {
+        double const dx = player->x - m->body.x, dz = player->z - m->body.z;
+        double const dy = player->y - m->body.y;
+        double const d  = sqrt(dx * dx + dz * dz);
+        // Different floors: a creature three blocks below the lip of a
+        // shaft is not within a swing, whatever its x and z say. Same
+        // test the shove pass uses, for the same reason.
+        if (dy <= (double)m->body.h && -dy <= (double)player->h && in_reach_and_in_front(m, dx, dz, d)) {
+            best        = d;
+            *hit_player = true;
+        }
+    }
+
+    for (int i = 0; i < MOB_MAX; i++) {
+        mob_t* o = &s_pool[i];
+        if (!o->alive || o == m) continue;
+        double const dx = o->body.x - m->body.x, dz = o->body.z - m->body.z;
+        double const dy = o->body.y - m->body.y;
+        double const d  = sqrt(dx * dx + dz * dz);
+        if (d >= best) continue;
+        if (dy > (double)m->body.h || -dy > (double)o->body.h) continue;
+        if (!in_reach_and_in_front(m, dx, dz, d)) continue;
+        best        = d;
+        best_mob    = o;
+        *hit_player = false;
+    }
+    return best_mob;
+}
+
+// TAKE THE HEALTH, and if that was the last of it, leave what it drops.
+//
+// Split out of mob_hit because a player's swing, another creature's swing
+// and a lava pool are three different events, and only the health and the
+// corpse are the same in all three. The flinch, the knockback and who it
+// is now angry at belong to the caller: lava does none of them, and a
+// creature shoved out of a lava pool by the knockback of its own burning
+// would be a mob that cannot die in one.
+static bool damage_mob(mob_t* m, int damage) {
+    m->health = (int16_t)(m->health - (damage < 1 ? 1 : damage));
+    m->say    = MOB_SAY_HURT;
+    if (m->health > 0) return false;
+
+    // DEAD, and what it leaves is rolled here rather than stored: the
+    // count varies per kill, the way a harvest does (D-117), and it
+    // comes from the world's hash so a replay agrees.
+    mob_def_t const* d = mob_def(m->kind);
+    int32_t const    cx = (int32_t)floor(m->body.x), cy = (int32_t)floor(m->body.y), cz = (int32_t)floor(m->body.z);
+    // A CALF DROPS NOTHING. Otherwise the cheapest way to farm meat is
+    // to breed and immediately butcher, which is not husbandry.
+    if (!m->baby && d->drop_item != ITEM_NONE && d->drop_max > 0) {
+        int const span = d->drop_max - d->drop_min + 1;
+        int const n    = d->drop_min + (int)(sm_hash3(cx, cy, cz, 0xB1FF00Du ^ m->id) % (uint32_t)(span > 0 ? span : 1));
+        item_entity_spawn(cx, cy, cz, d->drop_item, n, 0);
+    }
+    m->say = MOB_SAY_DIE;
+    kill(m);
+    return true;
+}
+
+// Knocked back from (fx, fz), and off the ground a little.
+static void knock_back(mob_t* m, double fx, double fz) {
+    double const dx  = m->body.x - fx, dz = m->body.z - fz;
+    double const len = sqrt(dx * dx + dz * dz);
+    m->flee_x        = len > 1e-6 ? (float)(dx / len) : 1.0f;
+    m->flee_z        = len > 1e-6 ? (float)(dz / len) : 0.0f;
+    m->body.vx       = m->flee_x * 0.25f;
+    m->body.vz       = m->flee_z * 0.25f;
+    if (m->body.on_ground) m->body.vy = 0.18f;
+}
+
+int mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
     watcher_t const you = {player != NULL ? player->x : 0.0, player != NULL ? player->y : 0.0,
                            player != NULL ? player->z : 0.0, held};
+    // WHAT IT DID TO THE PLAYER (D-156), added up over the whole pool and
+    // reported once: two zombies hitting you in the same tick is one event
+    // as far as a health bar is concerned, and one line on the HUD.
+    int dealt = 0;
+    s_attacker_kind = MOB_NONE;
 
     for (int i = 0; i < MOB_MAX; i++) {
         mob_t* m = &s_pool[i];
@@ -604,6 +792,8 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         if (m->turn_cd > 0) m->turn_cd--;
         if (m->love > 0) m->love--;
         if (m->breed_cd > 0) m->breed_cd--;
+        if (m->attack_cd > 0) m->attack_cd--;
+        if (m->lava_cd > 0) m->lava_cd--;
 
         // THE FLEECE GROWS BACK, on ticks elapsed like everything else
         // here: a flock in a chunk nobody has visited grows no wool
@@ -635,6 +825,14 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         bool const   lured  = !busy && wants(m, you.held) && to_you < (double)MOB_FOLLOW_RANGE;
         bool const   heel   = m->tame && !m->sitting && to_you > 4.0;
 
+        // WHO IT IS AGGRESSIVE AGAINST (D-156), settled before anything
+        // else gets to decide what it wants: a hostile creature that has
+        // picked somebody does not amble, is not lured by what is in
+        // their hand, is not looking for a mate and does not run away.
+        mob_t* const rival   = choose_target(m, d, player, to_you);
+        bool const   hunting = d->hostile && m->target_kind != MOB_TARGET_NONE;
+        double const to_foe  = rival != NULL ? gap(m, rival) : to_you;
+
         if (m->intent == MOB_FLEE && m->intent_for == 0) m->intent = MOB_STAND;
         // IN THE MOOD BEATS EVERYTHING BUT FEAR. Two fed animals walk
         // to each other rather than waiting to be herded together,
@@ -643,7 +841,13 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         // they have to be within two and a half blocks of each other
         // while it lasts.
         mob_t const* mate = (!m->baby && m->love > 0 && m->breed_cd == 0) ? partner_for(m) : NULL;
-        if (m->sitting) {
+        if (hunting) {
+            // REACHING THEM IS THE JOB (D-156). It faces who it is after
+            // and walks at them; the swing is what the walking buys.
+            m->intent = MOB_HUNT;
+            face(m, rival != NULL ? (float)atan2(rival->body.x - m->body.x, rival->body.z - m->body.z)
+                                  : (float)atan2(dx, dz));
+        } else if (m->sitting) {
             m->intent = MOB_STAND;
         } else if (m->intent != MOB_FLEE && mate != NULL) {
             m->intent = MOB_SEEK;
@@ -678,7 +882,11 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
         // and plenty of things put an animal in a lake without it
         // choosing anything.
         bool const swimming = in_water(m);
-        if (afloat(m) && m->intent != MOB_FOLLOW) {
+        // A creature that is chasing somebody keeps chasing them through
+        // water: the shore is the thing an animal is saved by, and a mob
+        // that swam off to the bank the moment you stepped into a stream
+        // would be a mob that cannot be followed down one.
+        if (afloat(m) && m->intent != MOB_FOLLOW && m->intent != MOB_HUNT) {
             float const to_land = shore_dir(m);
             if (to_land >= 0.0f) {
                 // THE TURN IS RATIONED and the swim is not: if it may not
@@ -713,6 +921,16 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
                 speed = to_you > (double)MOB_FOLLOW_STANDOFF ? d->speed * 1.4f : 0.0f;
                 break;
             case MOB_SEEK: speed = d->speed * 1.4f; break;
+            // IT COMES TO YOU, and stops within a swing. 1.4x is the same
+            // multiplier a lured animal gets, which is the deliberate
+            // half of this: a zombie is faster than it ambles and slower
+            // than a player walks, so the answer to a pack you cannot
+            // beat is to leave, and the answer to being in a room with
+            // one is to hit it. 2.0x -- what a frightened animal gets --
+            // would make every encounter unwinnable by running.
+            case MOB_HUNT:
+                speed = to_foe > (double)MOB_ATTACK_RANGE ? d->speed * 1.4f : 0.0f;
+                break;
             case MOB_FLEE:
                 speed = d->speed * 2.0f;
                 yaw   = (float)atan2(m->flee_x, m->flee_z);
@@ -737,6 +955,14 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
             // AFLOAT, not merely submerged: a body bobbing at the surface
             // is still at sea (afloat(), F-139).
             bool const reckless = m->intent == MOB_FOLLOW || afloat(m);
+            // MOB_HUNT IS NOT ON THAT LIST (D-156). A hostile creature
+            // will walk to you across a room, down a ledge it can step
+            // down, and into a pool it can wade; what it will not do is
+            // walk off a cliff or into a lava sea, because `hazard_ahead`
+            // counts both. That is not caution for its own sake: it is
+            // what makes the Deep Mine's lakes walls, and a player who
+            // can lead a pack to the edge of one and stand on the far
+            // side of it has a plan that does not need a sword.
             if (!reckless && hazard_ahead(m, sx, sz)) {
                 // Turn away -- but only if it is allowed to turn. Without
                 // the ration this fired every tick at the lip of a drop
@@ -780,12 +1006,62 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
             phys_gravity(&m->body, MOB_GRAVITY, MOB_DRAG, MOB_TERMINAL);
         }
 
+        // --- The swing (D-156) ------------------------------------------
+        //
+        // AFTER the move, because what it can hit depends on where it got
+        // to, and before anything that reads the creature afterwards,
+        // because a swing can kill one.
+        if (hunting && d->attack > 0 && m->attack_cd == 0) {
+            bool   on_the_player = false;
+            mob_t* foe           = swing_target(m, player, &on_the_player);
+            if (on_the_player) {
+                dealt += d->attack;
+                s_attacker_kind = m->kind;
+                m->attack_cd    = (uint8_t)MOB_ATTACK_COOLDOWN;
+            } else if (foe != NULL) {
+                m->attack_cd = (uint8_t)MOB_ATTACK_COOLDOWN;
+                foe->hurt    = (uint8_t)MOB_HURT_TICKS;
+                knock_back(foe, m->body.x, m->body.z);
+                // THE ATTACKED ONE IS NOW ANGRY AT THE ATTACKER, which is
+                // the user's rule stated as an outcome instead of as a
+                // special case: whoever it hit is whoever it is after now,
+                // zombie to skeleton and skeleton to zombie alike. Nothing
+                // here knows which two kinds are fighting.
+                if (mob_def(foe->kind)->hostile) {
+                    foe->target_kind = MOB_TARGET_MOB;
+                    foe->target_id   = m->id;
+                    foe->sitting     = false;
+                }
+                (void)damage_mob(foe, d->attack);
+            }
+        }
+
         // --- Breeding, and being heard --------------------------------
         if (m->love > 0 && m->breed_cd == 0) breed_pass(m, now);
 
         // A voice now and then, and only when there is somebody near
         // enough to hear it: about once every twenty seconds each.
         if (m->say == MOB_SAY_NONE && to_you < 20.0 && (roll(m, now, 0x77u) % 400u) == 0u) m->say = MOB_SAY_IDLE;
+
+        // --- Lava (D-156) -----------------------------------------------
+        //
+        // LAST, because it can be the thing that kills this one, and
+        // nothing above should run on a creature that just died.
+        //
+        // The same burn a player takes, from the same predicate
+        // (physics.h, phys_in_lava) and on the same beat. No knockback and
+        // no new target: lava is not something to be angry at, and a
+        // creature flung out of a lava sea by the knockback of its own
+        // burning would be a mob that cannot die in one.
+        // THE COOLDOWN IS TICKED ONCE, with the others at the top of this
+        // loop. Ticking it here as well halves the beat: the check's zombie
+        // lasts 91 ticks in a lava pool, and 46 with a second decrement --
+        // the sort of number nobody notices until a check asks how long it
+        // lasted and gets half of what was designed.
+        if (m->lava_cd == 0 && phys_in_lava(&m->body)) {
+            m->lava_cd = (uint8_t)LAVA_BURN_TICKS;
+            (void)damage_mob(m, LAVA_DAMAGE);
+        }
     }
 
     // --- Nobody shares a space ------------------------------------------
@@ -811,6 +1087,7 @@ void mob_tick(uint32_t now, phys_body_t* player, uint16_t held) {
             shove(&a->body, &b->body, a->sitting ? 0.0f : 0.5f, b->sitting ? 0.0f : 0.5f, a->id * 31u + b->id);
         }
     }
+    return dealt;
 }
 
 // --- Being hit ----------------------------------------------------------
@@ -866,41 +1143,37 @@ bool mob_hit(int i, int damage, double fx, double fz) {
     mob_t* m = mob_at_mut(i);
     if (m == NULL || !m->alive || m->hurt > 0) return false;
 
-    m->health = (int16_t)(m->health - (damage < 1 ? 1 : damage));
-    m->hurt   = (uint8_t)MOB_HURT_TICKS;
-    m->say    = MOB_SAY_HURT;
-    // Knocked back, and then it runs -- away from whoever hit it, and
-    // a tamed dog runs too, because a dog that stands and takes it
-    // reads as broken rather than as loyal.
-    double const dx = m->body.x - fx, dz = m->body.z - fz;
-    double const len = sqrt(dx * dx + dz * dz);
-    m->flee_x        = len > 1e-6 ? (float)(dx / len) : 1.0f;
-    m->flee_z        = len > 1e-6 ? (float)(dz / len) : 0.0f;
-    m->body.vx       = m->flee_x * 0.25f;
-    m->body.vz       = m->flee_z * 0.25f;
-    if (m->body.on_ground) m->body.vy = 0.18f;
-    m->intent     = MOB_FLEE;
-    m->intent_for = 45;
-    m->sitting    = false;
-    m->love       = 0;
+    m->hurt = (uint8_t)MOB_HURT_TICKS;
+    // Knocked back, and then what it does about it depends on what it is.
+    knock_back(m, fx, fz);
+    m->sitting = false;
+    m->love    = 0;
 
-    if (m->health > 0) return false;
+    if (damage_mob(m, damage)) return true;
 
-    // DEAD, and what it leaves is rolled here rather than stored: the
-    // count varies per kill, the way a harvest does (D-117), and it
-    // comes from the world's hash so a replay agrees.
-    mob_def_t const* d = mob_def(m->kind);
-    int32_t const    cx = (int32_t)floor(m->body.x), cy = (int32_t)floor(m->body.y), cz = (int32_t)floor(m->body.z);
-    // A CALF DROPS NOTHING. Otherwise the cheapest way to farm meat is
-    // to breed and immediately butcher, which is not husbandry.
-    if (!m->baby && d->drop_item != ITEM_NONE && d->drop_max > 0) {
-        int const span = d->drop_max - d->drop_min + 1;
-        int const n    = d->drop_min + (int)(sm_hash3(cx, cy, cz, 0xB1FF00Du ^ m->id) % (uint32_t)(span > 0 ? span : 1));
-        item_entity_spawn(cx, cy, cz, d->drop_item, n, 0);
+    if (mob_def(m->kind)->hostile) {
+        // A HOSTILE ONE DOES NOT RUN FROM THIS (D-156). The player hit it,
+        // so the player is what it is after. The knockback still applies,
+        // because a swing has to move something or it looks like it missed
+        // -- but MOB_FLEE would send a zombie away from the only thing it
+        // wants to reach, and a mob that runs from being hit is a mob you
+        // clear a room from by throwing one stone at it.
+        m->target_kind = MOB_TARGET_PLAYER;
+        m->target_id   = 0;
+        m->intent      = MOB_HUNT;
+        m->intent_for  = 0;
+    } else {
+        // ... and an animal runs -- away from whoever hit it, and a tamed
+        // dog runs too, because a dog that stands and takes it reads as
+        // broken rather than as loyal.
+        m->intent     = MOB_FLEE;
+        m->intent_for = 45;
     }
-    m->say = MOB_SAY_DIE;
-    kill(m);
-    return true;
+    return false;
+}
+
+uint8_t mob_attacker_kind(void) {
+    return s_attacker_kind;
 }
 
 mob_use_result_t mob_use(int i, uint16_t item) {

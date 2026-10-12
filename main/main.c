@@ -220,7 +220,12 @@ static void start_loading(double wx, double wz, app_state_t next, char const* wh
 // meshes, record -- belongs to world/dimension_switch.h; what is here is
 // the part only the app can do: the arrival point and the nine chunks
 // around it.
-static bool cross_to(dimension_t to, double wx, double wz, bool far_end);
+//
+// `known_y` is an arrival height the caller already KNOWS -- the cell of
+// the bed a death sends the player back to -- or ARRIVAL_Y_UNKNOWN to let
+// the terrain answer for itself.
+#define ARRIVAL_Y_UNKNOWN (-1)
+static bool cross_to(dimension_t to, double wx, double wz, bool far_end, int known_y);
 static bool check_crossing(void);
 
 // Whether the shaft the player is standing in may be crossed again. It
@@ -1821,8 +1826,10 @@ static void hud_say(char const* text) {
 // HOME (render()), because they are the same answer to the same
 // question and two of them would eventually disagree.
 static void home_column(double* x, double* z) {
-    *x = (double)(s_saved.has_bed ? s_saved.bed_x : s_meta.spawn_x) + 0.5;
-    *z = (double)(s_saved.has_bed ? s_saved.bed_z : s_meta.spawn_z) + 0.5;
+    int32_t hx, hy, hz;
+    worldstore_spawn(&s_meta, &s_saved, &hx, &hy, &hz);
+    *x = (double)hx + 0.5;
+    *z = (double)hz + 0.5;
 }
 
 // DEATH, which fall damage and starvation made reachable in step 11.
@@ -1837,8 +1844,13 @@ static void home_column(double* x, double* z) {
 // it is a bug with a story.
 static void player_died(void) {
     trace_note("X died at %.1f %.1f %.1f", s_player.body.x, s_player.body.y, s_player.body.z);
-    double hx, hz;
-    home_column(&hx, &hz);
+    // The column AND the cell, from the one place that owns both
+    // (worldstore_spawn). `home_column` above is the same call with the
+    // height dropped, because a compass only needs the column.
+    int32_t      hx, hy, hz;
+    bool const   known  = worldstore_spawn(&s_meta, &s_saved, &hx, &hy, &hz);
+    double const home_x = (double)hx + 0.5;
+    double const home_z = (double)hz + 0.5;
 
     // D-145: ONE spawn point, and it is the overworld's, because no bed
     // can be set down there. So dying in the Deep Mine is a crossing as
@@ -1847,7 +1859,8 @@ static void player_died(void) {
     // dropping a chunk the card had not taken would be data loss, so it
     // wakes up where it fell instead and tries again after the player
     // steps out of the frame.
-    bool const crossed = dimension_current() == DIM_OVERWORLD || cross_to(DIM_OVERWORLD, hx, hz, false);
+    bool const crossed = dimension_current() == DIM_OVERWORLD ||
+                         cross_to(DIM_OVERWORLD, home_x, home_z, false, known ? hy : ARRIVAL_Y_UNKNOWN);
     if (!crossed) {
         ESP_LOGW(TAG, "died in the %s and could not cross back; waking up where they fell",
                  dimension_name(dimension_current()));
@@ -1857,7 +1870,13 @@ static void player_died(void) {
         // screen. Down there the position has to wait for the nine chunks
         // around the home column, because there is nothing to stand on yet
         // (settle_player, D-26).
-        player_spawn(&s_player, hx, hz, s_player.yaw);
+        // A known cell is used as it was slept in, and only the column is
+        // handed to `world_ground()`. That is the difference between waking
+        // in your bed and waking on the roof of the house you built over
+        // it: `world_ground()` looks for the highest solid block in the
+        // column, and a roof is more solid than a bed.
+        bool const exact = known && player_place(&s_player, home_x, (double)hy, home_z, s_player.yaw, s_player.pitch);
+        if (!exact) player_spawn(&s_player, home_x, home_z, s_player.yaw);
     }
 
     food_reset(&s_player.food);
@@ -1936,10 +1955,13 @@ static void start_loading(double wx, double wz, app_state_t next, char const* wh
 // because the pairing is by column and 1:1 (D-142); the home column for a
 // death (D-145).
 //
+// `known_y` is the cell to arrive in when the caller knows one (the bed a
+// death wakes in), or ARRIVAL_Y_UNKNOWN to take the terrain's own answer.
+//
 // False means nothing was changed, and the caller stays where it is.
 // Refusing is the right answer for the same reason Part P refuses on
 // eviction: a chunk the card never took is something the player made.
-static bool cross_to(dimension_t to, double wx, double wz, bool far_end) {
+static bool cross_to(dimension_t to, double wx, double wz, bool far_end, int known_y) {
     int32_t const cx = (int32_t)floor(wx), cz = (int32_t)floor(wz);
     if (!dimension_switch(cx, cz, to)) return false;
 
@@ -1947,7 +1969,13 @@ static bool cross_to(dimension_t to, double wx, double wz, bool far_end) {
     // first air above that column's ground. It has to be answerable before
     // the chunk exists, because the store is empty at this moment -- which
     // is the only reason a 1:1 pairing can be stateless at all.
-    int const ay = mineshaft_arrival_y(cx, cz, s_meta.seed, (int)to);
+    //
+    // `known_y` wins when the caller has a height it actually knows. The
+    // estimate is the surface of the UNDECORATED column, so a bed on a
+    // platform or under a roof has the player arrive in the turf beside it
+    // -- or fail to fit and get put on the highest solid block in the
+    // column, which is the roof (F-159).
+    int const ay = known_y >= 0 ? known_y : mineshaft_arrival_y(cx, cz, s_meta.seed, (int)to);
 
     s_saved.x = (double)cx + 0.5;
     s_saved.y = (double)ay;
@@ -1969,6 +1997,16 @@ static bool cross_to(dimension_t to, double wx, double wz, bool far_end) {
     s_cross_sx    = cx;
     s_cross_sz    = cz;
     s_cross_tries = far_end ? CROSS_TRIES : 0;
+
+    // THE TRIGGER IS RELEASED HERE, not by whichever caller fired it. Every
+    // crossing arrives in a cell the shape test says yes to -- the pairing is
+    // by column, so the arrival cell is a shaft too -- and the player has to
+    // step out before it can fire again. Doing it only in check_crossing left
+    // a DEATH armed, which bounced a player back down into the cave the
+    // moment they woke up, whenever their home column holds a shaft.
+    s_cross_armed = false;
+    s_cross_said  = false;
+    s_cross_wait  = 0;
 
     start_loading(s_saved.x, s_saved.z, APP_PLAY, T(SM_STR_LOADING_CROSSING), LOAD_GATE_3X3);
     hud_say(T(to == DIM_DEEP_MINE ? SM_STR_HUD_DEEP_MINE : SM_STR_HUD_SURFACE));
@@ -2067,7 +2105,7 @@ static bool check_crossing(void) {
     }
 
     dimension_t const to = dimension_current() == DIM_DEEP_MINE ? DIM_OVERWORLD : DIM_DEEP_MINE;
-    if (!cross_to(to, (double)x, (double)z, true)) {
+    if (!cross_to(to, (double)x, (double)z, true, ARRIVAL_Y_UNKNOWN)) {
         // A refusal now means a genuine one: a chunk that could not reach
         // the card, or a chunk still being filled. The switch drains what
         // it has already started before it decides (dimension_switch.c), so
@@ -2081,8 +2119,7 @@ static bool check_crossing(void) {
         s_cross_wait = CROSS_RETRY_TICKS;
         return false;
     }
-    s_cross_armed = false;
-    s_cross_wait = 0;
+    // cross_to() released it, for every crossing and not only this one.
     return true;
 }
 
@@ -2529,7 +2566,14 @@ static void on_update(float dt, void* user) {
             // was last tick, which is what every other creature in
             // every other game does and what keeps the order fixed for
             // a replay.
-            mob_tick((uint32_t)s_meta.time_of_day, &s_player.body, inv_held(&s_player.inv)->item);
+            // AND WHAT THEY DID TO HIM (D-156). mob_tick REPORTS the
+            // damage instead of applying it, because game/mob.c has no
+            // business knowing what health is -- the same split as
+            // used_block, and for the same reason: the consequence
+            // belongs to the world, the cause belongs to the creature.
+            int const dealt = mob_tick((uint32_t)s_meta.time_of_day, &s_player.body,
+                                       inv_held(&s_player.inv)->item);
+            if (dealt > 0) player_hurt(&s_player, dealt, PLAYER_HURT_MOB);
             sm_audio_mob_tick(s_player.body.x, s_player.body.z);
             player_tick(&s_player, mask, input_pressed());
             sm_audio_player_tick(&s_player);  // footsteps and landings, AFTER the tick
@@ -3166,6 +3210,40 @@ static void on_render(pax_buf_t* fb, void* user) {
             }
             char const* const line = T(key);
             hud_text_lines(fb, &line, 1);
+        } else if (s_player.hurt_msg_ticks > 0 &&
+                   !(s_player.hurt_msg == PLAYER_HURT_MOB && mob_attacker_kind() == MOB_NONE)) {
+            // WHY THE HEALTH JUST WENT DOWN (game/player.h). Health is a
+            // bar, and a bar that drops with no reason next to it is a
+            // mystery: the player can see the number move and not what
+            // moved it, which is unfixable from the inside.
+            //
+            // Above the hunger line. Starving is a condition that will be
+            // there again in four seconds; this is the one that just
+            // happened and is about to stop being there.
+            //
+            // The guard on the first condition: the mob line NAMES its
+            // attacker, and `mob_attacker_kind` is re-set by every
+            // mob_tick. A hit from two ticks ago whose next tick had no
+            // attacker in it has no name left to print -- and printing
+            // the format string with nothing to fill it is worse than
+            // printing nothing.
+            char line[96];
+            char const* msg = T(SM_STR_HURT_FALL);
+            switch (s_player.hurt_msg) {
+                case PLAYER_HURT_LAVA: msg = T(SM_STR_HURT_LAVA); break;
+                case PLAYER_HURT_MOB: {
+                    // NAMED, because a zombie and a skeleton are different
+                    // problems -- one walks at you, one keeps its distance.
+                    uint8_t const who = mob_attacker_kind();
+                    i18n_fmt(line, sizeof(line), SM_STR_HURT_MOB,
+                             T(mob_def(who)->label));
+                    msg = line;
+                    break;
+                }
+                case PLAYER_HURT_FALL:
+                default: break;
+            }
+            hud_text_lines(fb, &msg, 1);
         } else if (s_player.food_msg_ticks > 0) {
             // STARVING, AND DYING OF IT. Above the creature line,
             // because an empty stomach matters more than what is under

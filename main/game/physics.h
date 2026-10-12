@@ -74,6 +74,22 @@
 #define PHYS_EDGE_PROBE    0.05  // how far below the feet "something to stand on" is
 #define PHYS_EDGE_HALVINGS 4
 
+// WHAT LAVA DOES TO A BODY, whoever is carrying it (D-156).
+//
+// ONE PAIR OF NUMBERS, not one in game/mob.c and one in game/player.c,
+// because the two have to agree: a zombie and a player standing in the
+// same cell of the same lava sea are burning at the same rate, and a
+// player who can stand in it twice as long as a mob is a rule nobody
+// can see, only a rule they can fail to notice.
+//
+// A COOLDOWN AND NOT A PER-TICK AMOUNT, so that standing in it is
+// survivable but urgent: two points every half second is ten seconds in
+// a lava sea and a scrape at the shoreline. Provisional like everything
+// else in Part M -- the user's standing rule is that these get tuned
+// after playing, not before.
+#define LAVA_DAMAGE     2
+#define LAVA_BURN_TICKS 10u
+
 // A body. Position is the CENTRE of the box in x and z and its BOTTOM
 // in y -- the feet -- because that is what the ground query, the
 // spawn point and the save format all want to talk about.
@@ -94,6 +110,18 @@ typedef struct {
 
 // Start a body at (x, y, z) with the player's dimensions.
 void phys_body_init(phys_body_t* b, double x, double y, double z);
+
+// IS THIS BODY IN LAVA (D-156)? Asked at the FEET and at the MIDDLE,
+// because the two cases are different and both happen: a body standing
+// in a one-block pool of it burns from the ground up, and one that has
+// fallen into a lava sea burns wherever it happens to be.
+//
+// LAVA IS NOT WATER. The two fluids share the BF_LIQUID flag in the
+// block registry, and everything that has so far asked "is this a
+// liquid?" has been answering for both -- which is why a creature used
+// to float on lava the way it floats on a lake. Anything that wants to
+// know which of the two it is standing in has to ask by name.
+bool phys_in_lava(phys_body_t const* b);
 
 // Move by (dx, dy, dz) blocks, resolving against the world. Updates
 // `on_ground` and the hit flags. Velocity is the caller's business:

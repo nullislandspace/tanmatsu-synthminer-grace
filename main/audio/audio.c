@@ -134,7 +134,17 @@ void sm_audio_mob_tick(double px, double pz) {
             case MOB_SAY_HURT:
             case MOB_SAY_DIE: id = SFX_BEAST_HURT; break;
             default:
-                id = m->kind == MOB_COW ? SFX_MOO : m->kind == MOB_PIG ? SFX_OINK : SFX_BARK;
+                // A HOSTILE ONE HAS ITS OWN VOICE (D-156). The chain
+                // below ends in the dog's bark, which is what a zombie
+                // used: the sound of a friendly animal being cheerful,
+                // out of the dark at the end of a lit corridor. Named off
+                // the row's `hostile` column rather than off two kinds,
+                // so the day a third hostile mob is added it is heard
+                // before it is seen, with no edit here.
+                id = mob_def(m->kind)->hostile ? SFX_GROWL
+                     : m->kind == MOB_COW      ? SFX_MOO
+                     : m->kind == MOB_PIG      ? SFX_OINK
+                                               : SFX_BARK;
                 break;
         }
         // AND IT GETS QUIETER WITH DISTANCE (the user). Full voice

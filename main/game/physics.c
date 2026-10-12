@@ -28,6 +28,19 @@ void phys_body_init(phys_body_t* b, double x, double y, double z) {
     b->edge_stop = false;
 }
 
+bool phys_in_lava(phys_body_t const* b) {
+    if (b == NULL) return false;
+    int32_t const x = fl(b->x), z = fl(b->z);
+    // THE FEET. A body standing on the lip of a lava pool with the lava
+    // one cell below is not in it; a body standing IN it has lava where
+    // its feet are.
+    if (world_block(x, fl(b->y), z) == BLK_LAVA) return true;
+    // ... AND THE MIDDLE, for a body that has fallen INTO a lava sea and
+    // is floating somewhere in the middle of it with its feet below the
+    // surface -- which is exactly where a body that fell in ends up.
+    return world_block(x, fl(b->y + (double)b->h * 0.5), z) == BLK_LAVA;
+}
+
 // Is anything solid inside the box lo..hi?
 //
 // The box is shrunk by PHYS_SKIN before the cells are worked out, so a

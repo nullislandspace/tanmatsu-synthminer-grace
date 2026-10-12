@@ -373,6 +373,9 @@ typedef enum {
     SM_STR_FOOD_STARVING,               // food.starving
     SM_STR_FOOD_DIED,                   // food.died
     SM_STR_FOOD_RESPAWN,                // food.respawn
+    SM_STR_HURT_FALL,                   // hurt.fall
+    SM_STR_HURT_LAVA,                   // hurt.lava
+    SM_STR_HURT_MOB,                    // hurt.mob
     SM_STR_FISH_CAST,                   // fish.cast
     SM_STR_FISH_NO_WORM,                // fish.no_worm
     SM_STR_FISH_NO_WATER,               // fish.no_water
