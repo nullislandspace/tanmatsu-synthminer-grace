@@ -413,6 +413,11 @@ static void apply(result_t* r) {
                 // reads as (blockupdate.h, the boundary note). Same
                 // place, same task, same reason as the light.
                 blockupdate_chunk_join(c);
+                // AND THE FACES: the chunks already here meshed their
+                // side of every shared border against BLK_BARRIER, and
+                // this chunk is no longer a barrier. Nothing else tells
+                // them (chunk.c, F-156).
+                chunk_neighbours_rejoin(c);
                 // And the slow half of the same idea: everything in
                 // this chunk that grows, advanced by however long it
                 // was away (world/crops.h -- the user's "advance events

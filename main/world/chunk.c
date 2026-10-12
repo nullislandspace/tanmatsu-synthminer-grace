@@ -363,6 +363,98 @@ static void touch(chunk_t* c, int y) {
     c->edit_seq++;
 }
 
+// The same, for a whole vertical section at every level of detail:
+// something along the chunk's edge changed, and every mesh that reads
+// that edge as its border is out of date.
+static void touch_section(chunk_t* c, int sect) {
+    if (c == NULL || sect < 0 || sect >= CH_SECT_N) return;
+    uint16_t bits = 0;
+    for (int l = 0; l < LOD_COUNT; l++) bits |= CH_MESH_BIT(l, sect);
+    c->lod_stale |= bits;
+    // Urgent, because the chunk dirtied this way is the one the player is
+    // looking through: its wall was meshed against a neighbour that was
+    // not there yet.
+    c->lod_urgent |= bits;
+    c->edit_seq++;
+}
+
+// THE CULLING BOUND, which is NOT just `bottom`.
+//
+// `bottom` is a promise about this chunk's OWN columns: below it every
+// cell is a full cube, so the mesher has nothing to draw. But a face
+// belongs to the chunk that owns the SOLID cell, and whether it shows is
+// decided by the cell on the other side -- which can be in the chunk next
+// door. A chunk of solid rock from bedrock up to its own cave floor says
+// "nothing below 13" while the chunk beside it is open cave at y = 10:
+// the wall between them is made of faces in the SOLID chunk's mesh, and
+// the draw pass throws that section away. In the Deep Mine, where almost
+// every chunk is rock from y = 0 up, that is a wall you can walk through,
+// mine and select -- and it all appears at once the moment one block in
+// it is dug out, which is exactly what the 2026-10-12 run reported
+// (F-156).
+//
+// So the bound is the lowest of `bottom` and the `bottom` of every
+// RESIDENT neighbour. Sound, not merely safer: air at height y in a
+// resident neighbour B means B's first non-cube in that column is at y or
+// lower, so B->bottom <= y - 1 < y. A chunk that is NOT resident answers
+// BLK_BARRIER -- a full cube -- and hides those faces, so it cannot be
+// why a face exists. Too low only ever costs a mesh that comes out empty.
+int chunk_cull_bottom(chunk_t const* c) {
+    if (c == NULL) return 0;
+    int b = c->bottom;
+    chunk_t const* n;
+    if ((n = chunk_find(c->cx - 1, c->cz)) != NULL && n->bottom < b) b = n->bottom;
+    if ((n = chunk_find(c->cx + 1, c->cz)) != NULL && n->bottom < b) b = n->bottom;
+    if ((n = chunk_find(c->cx, c->cz - 1)) != NULL && n->bottom < b) b = n->bottom;
+    if ((n = chunk_find(c->cx, c->cz + 1)) != NULL && n->bottom < b) b = n->bottom;
+    return b;
+}
+
+// A chunk that has just arrived changes the world the chunks already here
+// were meshed against: their side of every border it shares read as
+// BLK_BARRIER -- a full cube, so no face -- and nothing has told them the
+// barrier is now a cave. Light already does its half (light.c marks every
+// cell it changes dirty, neighbours included); BLOCKS have no such hook,
+// because a block that was never there cannot call world_set(). This is
+// that hook (F-156).
+//
+// Only the borders that can show a face are dirtied. Solid stone against
+// solid stone changed nothing, and in the Deep Mine that is most of what
+// arrives.
+void chunk_neighbours_rejoin(chunk_t* c) {
+    if (c == NULL || c->id == NULL) return;
+
+    for (int side = 0; side < 4; side++) {
+        int32_t const dx = side == 0 ? -1 : side == 1 ? 1 : 0;
+        int32_t const dz = side == 2 ? -1 : side == 3 ? 1 : 0;
+        chunk_t*      n  = chunk_find(c->cx + dx, c->cz + dz);
+        if (n == NULL) continue;
+
+        int const lx = side == 0 ? 0 : side == 1 ? CH_W - 1 : -1;
+        int const lz = side == 2 ? 0 : side == 3 ? CH_D - 1 : -1;
+
+        for (int s = 0; s < CH_SECT_N; s++) {
+            bool shows = false;
+            for (int y = s * CH_SECT; y < (s + 1) * CH_SECT && !shows; y++) {
+                if (lx >= 0) {
+                    for (int z = 0; z < CH_D; z++)
+                        if (block_kind(c->id[CH_IDX(lx, y, z)]) != K_CUBE) {
+                            shows = true;
+                            break;
+                        }
+                } else {
+                    for (int x = 0; x < CH_W; x++)
+                        if (block_kind(c->id[CH_IDX(x, y, lz)]) != K_CUBE) {
+                            shows = true;
+                            break;
+                        }
+                }
+            }
+            if (shows) touch_section(n, s);
+        }
+    }
+}
+
 void world_mark_dirty(int32_t x, int32_t y, int32_t z) {
     if (y < 0 || y >= CH_H) return;
     int32_t const cx = chunk_of(x), cz = chunk_of(z);

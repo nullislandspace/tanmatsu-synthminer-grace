@@ -394,3 +394,15 @@ static inline bool world_solid_at(int32_t x, int32_t y, int32_t z) {
 // Recompute a chunk's `top` and `bottom` summaries. Called after
 // generation or loading; world_set() maintains them incrementally.
 void chunk_resummarise(chunk_t* c);
+
+// The lowest height the draw pass may cull at: `bottom`, lowered to
+// whatever the RESIDENT neighbours say, because a face belongs to the
+// chunk that owns the solid cell and is decided by the cell next door
+// (chunk.c). Use this, not `bottom`, to throw sections away.
+int chunk_cull_bottom(chunk_t const* c);
+
+// A chunk has just become resident: mark the resident neighbours whose
+// meshes read its border as BLK_BARRIER stale, so the faces behind that
+// border get built. Call it on the main task, where every write to a
+// resident chunk happens (chunk_worker.c).
+void chunk_neighbours_rejoin(chunk_t* c);

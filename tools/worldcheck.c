@@ -4761,6 +4761,154 @@ static void check_population(void) {
     chunk_store_clear();
 }
 
+// F-156: A FACE BELONGS TO THE CHUNK THAT OWNS THE SOLID CELL.
+//
+// Two things the Deep Mine made visible. Its chunks are rock from y = 0 up
+// to a cave floor, so a chunk's own `bottom` promises "nothing below here
+// can show a face" while the chunk next door is open cave at a lower
+// height -- and the wall between them is made of faces in the SOLID
+// chunk's mesh, which the draw pass was throwing away. And a chunk that
+// arrives was meshed against by its already-resident neighbours as
+// BLK_BARRIER, a full cube, so the faces behind its border were never
+// built. Both read from the outside as a wall you can walk through, mine
+// and select -- and the whole wall appeared the moment one block in it was
+// dug out.
+static void check_border_faces(void) {
+    printf("border faces: the cull bound, and the chunk that arrives late\n");
+
+    uint32_t const seed = 0xDEE00003u;
+    dimension_set_current(DIM_DEEP_MINE);
+    chunk_store_clear();
+
+    int const N = 4;
+    uint8_t* scratch = malloc(chunkmesh_scratch_bytes());
+    CHECK(scratch != NULL, "no scratch for the mesher");
+    if (scratch == NULL) {
+        dimension_set_current(DIM_OVERWORLD);
+        return;
+    }
+
+    for (int32_t cz = 0; cz < N; cz++) {
+        for (int32_t cx = 0; cx < N; cx++) {
+            chunk_t* c = chunk_claim(cx, cz);
+            if (c == NULL) continue;
+            deepmine_chunk(c, seed);
+            c->cstate = CS_READY;
+            chunk_resummarise(c);
+        }
+    }
+
+    // 1. NOTHING THE DRAW PASS THROWS AWAY MAY HAVE FACES. It drops a
+    //    section when `yhi <= chunk_cull_bottom()`; such a section must
+    //    come out of the mesher EMPTY, at every level of detail. With the
+    //    old per-chunk `bottom` this failed on real Deep Mine terrain.
+    int culled = 0, culled_tris = 0, lowered = 0, resident = 0;
+    for (int32_t cz = 0; cz < N && !s_fail; cz++) {
+        for (int32_t cx = 0; cx < N && !s_fail; cx++) {
+            chunk_t const* c = chunk_find(cx, cz);
+            if (c == NULL) continue;
+            resident++;
+            int const bound = chunk_cull_bottom(c);
+            if (bound < (int)c->bottom) lowered++;
+            for (int s = 0; s < CH_SECT_N; s++) {
+                int const yhi = (s + 1) * CH_SECT;
+                // The two levels that own their faces. LOD_COARSE is not
+                // in this invariant: its `skirt` emits a closing wall at
+                // the chunk's outer edge for every solid cell in its band,
+                // buried or not, so a culled coarse section legitimately
+                // has triangles -- ones that would be inside solid rock
+                // anyway, and are never drawn because the section is
+                // culled.
+                for (int lod = 0; lod < LOD_COARSE; lod++) {
+                    mesh_t m;
+                    mesh_init(&m);
+                    if (!chunkmesh_build(cx, cz, lod, s, scratch, &m)) {
+                        mesh_free(&m);
+                        continue;
+                    }
+                    if (yhi <= bound) {
+                        culled++;
+                        culled_tris += m.tn;
+                        CHECK(m.tn == 0, "chunk %d,%d section %d is culled below y %d, but its lod %d mesh has %d faces",
+                              cx, cz, s, bound, lod, m.tn);
+                    }
+                    mesh_free(&m);
+                }
+            }
+        }
+    }
+    printf("  %d of %d chunks reach lower through a neighbour than through their own columns; %d culled section meshes "
+           "holding %d faces\n",
+           lowered, resident, culled, culled_tris);
+
+    // 2. THE LATE NEIGHBOUR. For every chunk of the patch: take it away,
+    //    mesh the neighbours that remain (their side of the shared border
+    //    now reads as BLK_BARRIER), say the worker answered -- built,
+    //    nothing waiting -- then put the chunk back the way the streamer
+    //    does and ask whether anything told those neighbours that their
+    //    wall is not a wall.
+    int borders = 0, gained = 0;
+    for (int32_t cz = 0; cz < N && !s_fail; cz++) {
+        for (int32_t cx = 0; cx < N && !s_fail; cx++) {
+            chunk_t* c = chunk_find(cx, cz);
+            if (c == NULL) continue;
+
+            chunk_t* nb[4];
+            int      nn = 0;
+            for (int side = 0; side < 4; side++) {
+                chunk_t* n = chunk_find(cx + (side == 0 ? -1 : side == 1 ? 1 : 0),
+                                        cz + (side == 2 ? -1 : side == 3 ? 1 : 0));
+                if (n != NULL) nb[nn++] = n;
+            }
+            if (nn == 0) continue;
+
+            static int before[4][CH_SECT_N];
+            chunk_release(c);
+            for (int i = 0; i < nn; i++) {
+                for (int s = 0; s < CH_SECT_N; s++) {
+                    mesh_t m;
+                    mesh_init(&m);
+                    before[i][s] = chunkmesh_build(nb[i]->cx, nb[i]->cz, LOD_FANCY, s, scratch, &m) ? m.tn : 0;
+                    mesh_free(&m);
+                    nb[i]->lod_stale  = 0;
+                    nb[i]->lod_urgent = 0;
+                }
+            }
+
+            c = chunk_claim(cx, cz);
+            CHECK(c != NULL, "chunk %d,%d could not come back", cx, cz);
+            if (c == NULL) break;
+            deepmine_chunk(c, seed);
+            c->cstate = CS_READY;
+            chunk_resummarise(c);
+            chunk_neighbours_rejoin(c);
+
+            for (int i = 0; i < nn; i++) {
+                borders++;
+                for (int s = 0; s < CH_SECT_N; s++) {
+                    mesh_t m;
+                    mesh_init(&m);
+                    int const after = chunkmesh_build(nb[i]->cx, nb[i]->cz, LOD_FANCY, s, scratch, &m) ? m.tn : 0;
+                    mesh_free(&m);
+                    if (after == before[i][s]) continue;
+                    gained++;
+                    for (int lod = 0; lod < LOD_COUNT; lod++)
+                        CHECK((nb[i]->lod_stale & CH_MESH_BIT(lod, s)) != 0,
+                              "chunk %d,%d arrived: %d,%d section %d gained %d faces and nothing asked for a new mesh "
+                              "(lod %d, lod_stale 0x%04x)",
+                              cx, cz, nb[i]->cx, nb[i]->cz, s, after - before[i][s], lod, nb[i]->lod_stale);
+                }
+            }
+        }
+    }
+    printf("  %d neighbour borders tested, %d sections gained faces when a chunk arrived\n", borders, gained);
+    CHECK(gained > 0, "no border changed when a chunk arrived -- the check is not looking at real terrain");
+
+    free(scratch);
+    chunk_store_clear();
+    dimension_set_current(DIM_OVERWORLD);
+}
+
 // The Deep Mine (Part M): a sealed cave with two surfaces of its own --
 // terraces, hills, lakes at one level, places where the roof lands on the
 // floor -- richer iron, occasional diamond, and a pack per chunk. All of it
@@ -10554,6 +10702,7 @@ int main(void) {
     check_shoving();
     check_mob_steering();
     check_mesh_budget();
+    check_border_faces();
     check_eviction_releases();
     check_breeding();
     check_cave_mouths();

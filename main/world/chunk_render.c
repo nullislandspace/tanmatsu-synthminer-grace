@@ -522,6 +522,7 @@ void chunk_render_submit(double eye_wx, double eye_wz) {
     static struct {
         float   dist;
         int16_t slot;
+        uint8_t bottom;
     } vis[CH_SLOT_COUNT];
     int vn = 0;
 
@@ -537,7 +538,12 @@ void chunk_render_submit(double eye_wx, double eye_wz) {
         // The whole chunk first, as one box: most of the resident set
         // is behind the eye or past the fog, and rejecting it here
         // saves four section tests.
-        vec3_t const lo = v3(ox, (float)c->bottom, oz);
+        //
+        // `chunk_cull_bottom`, not `c->bottom`: the box has to reach as
+        // low as the cave in the chunk next door, whose walls are faces
+        // in THIS chunk's mesh (F-156).
+        int const   bottom = chunk_cull_bottom(c);
+        vec3_t const lo    = v3(ox, (float)bottom, oz);
         vec3_t const hi = v3(ox + CH_W, (float)c->top_max + 1.0f, oz + CH_D);
 
         float const dist = box_dist(lo, hi, eye);
@@ -546,6 +552,7 @@ void chunk_render_submit(double eye_wx, double eye_wz) {
 
         vis[vn].dist = dist;
         vis[vn].slot = (int16_t)i;
+        vis[vn].bottom = (uint8_t)bottom;
         vn++;
     }
 
@@ -585,10 +592,11 @@ void chunk_render_submit(double eye_wx, double eye_wz) {
     // PASS TWO: submit, nearest first.
     for (int vi = 0; vi < vn; vi++) {
         chunk_t*     c    = chunk_slot_at(vis[vi].slot);
-        float const  dist = vis[vi].dist;
+        float const  dist   = vis[vi].dist;
+        int const    bottom = vis[vi].bottom;
         float const  ox   = (float)(c->cx * CH_W - s_origin_x);
         float const  oz   = (float)(c->cz * CH_D - s_origin_z);
-        vec3_t const lo   = v3(ox, (float)c->bottom, oz);
+        vec3_t const lo   = v3(ox, (float)bottom, oz);
         vec3_t const hi   = v3(ox + CH_W, (float)c->top_max + 1.0f, oz + CH_D);
 
         // THE LEVEL OF DETAIL IS THE CHUNK'S, not the section's. Two
@@ -607,11 +615,13 @@ void chunk_render_submit(double eye_wx, double eye_wz) {
         // it is about to be drawn, never builds it in the first place.
         for (int sect = 0; sect < CH_SECT_N; sect++) {
             int const ylo = sect * CH_SECT, yhi = ylo + CH_SECT;
-            // Below `bottom` is buried stone and above `top_max` is
-            // sky: neither can carry a face.
-            if (yhi <= (int)c->bottom || ylo >= (int)c->top_max) continue;
+            // Below the bound is buried stone and above `top_max` is
+            // sky: neither can carry a face -- unless the face belongs
+            // to THIS chunk and looks into the neighbour's cave, which
+            // is why the bound counts the neighbours in (F-156).
+            if (yhi <= bottom || ylo >= (int)c->top_max) continue;
 
-            vec3_t const slo = v3(lo.x, (float)(ylo > (int)c->bottom ? ylo : (int)c->bottom), lo.z);
+            vec3_t const slo = v3(lo.x, (float)(ylo > bottom ? ylo : bottom), lo.z);
             vec3_t const shi = v3(hi.x, (float)(yhi < (int)c->top_max ? yhi : (int)c->top_max), hi.z);
 
             float const sdist = box_dist(slo, shi, eye);
