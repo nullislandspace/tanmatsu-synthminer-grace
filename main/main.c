@@ -1859,13 +1859,20 @@ static void player_died(void) {
     // dropping a chunk the card had not taken would be data loss, so it
     // wakes up where it fell instead and tries again after the player
     // steps out of the frame.
-    bool const crossed = dimension_current() == DIM_OVERWORLD ||
-                         cross_to(DIM_OVERWORLD, home_x, home_z, false, known ? hy : ARRIVAL_Y_UNKNOWN);
+    bool const up_here = dimension_current() == DIM_OVERWORLD;
+    bool const crossed = up_here || cross_to(DIM_OVERWORLD, home_x, home_z, false, known ? hy : ARRIVAL_Y_UNKNOWN);
+
+    // ASKED BEFORE THE CROSSING, AND IT MATTERS. `cross_to()` ends with the
+    // overworld as the current dimension, so a test on `dimension_current()`
+    // afterwards cannot tell "no crossing was needed" from "we just crossed" --
+    // and the second one has to be left alone, because the store it would have
+    // placed the player into is empty until the nine chunks arrive (F-160).
     if (!crossed) {
         ESP_LOGW(TAG, "died in the %s and could not cross back; waking up where they fell",
                  dimension_name(dimension_current()));
+        trace_note("X could not cross home: %s", dimension_name(dimension_current()));
         player_spawn(&s_player, s_player.body.x, s_player.body.z, s_player.yaw);
-    } else if (dimension_current() == DIM_OVERWORLD) {
+    } else if (up_here) {
         // Already up here: the ordinary respawn, no crossing, no loading
         // screen. Down there the position has to wait for the nine chunks
         // around the home column, because there is nothing to stand on yet

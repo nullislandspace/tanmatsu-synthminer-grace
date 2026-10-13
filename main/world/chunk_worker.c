@@ -630,10 +630,31 @@ int chunk_worker_collect(int max_results) {
 }
 
 bool chunk_worker_idle(void) {
+    // Nothing queued and nothing in flight -- which is NOT what a loop over
+    // chunk_worker_collect() answers: that only reports what has already
+    // finished. Use chunk_worker_drain() when you have to wait.
 #ifndef SM_HOST
     if (!s_sync) return s_in_flight == 0;
 #endif
     return true;
+}
+
+bool chunk_worker_drain(int max_ms) {
+#ifndef SM_HOST
+    int64_t const t0 = esp_timer_get_time();
+    for (;;) {
+        chunk_worker_collect(CH_SLOT_COUNT);
+        if (s_in_flight <= 0) return true;
+        if (max_ms > 0 && (esp_timer_get_time() - t0) / 1000 >= max_ms) return false;
+        // Asleep, not spinning: the work is on the other core, and a busy
+        // loop here is one more task competing for the memory bus. One tick
+        // is 10 ms on this badge, which is about half of a normal save.
+        vTaskDelay(1);
+    }
+#else
+    (void)max_ms;
+    return true;  // no task, no queue: everything already ran inline
+#endif
 }
 
 void chunk_worker_stats(int* queued, int* loaded_total, int* meshed_total) {

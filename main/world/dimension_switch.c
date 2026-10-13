@@ -15,6 +15,22 @@
 // game -- it is the same reason the retry layer in Part P has a bound.
 #define SWITCH_SAVE_PASSES 8
 
+// How long one drain may take, in milliseconds. A healthy save is 6.6/21.5 ms
+// a chunk (chunk_worker.h), so this covers a whole ring of them several times
+// over; past it the card is not slow, it is not answering, and refusing is
+// the answer that keeps the game running.
+#define SWITCH_DRAIN_MS 4000
+
+// Wait for the worker, and say out loud what it was still doing. Returns
+// false when the switch has to refuse.
+static bool drain_or_refuse(char const* what) {
+    if (chunk_worker_drain(SWITCH_DRAIN_MS)) return true;
+    chunk_worker_flow_t f;
+    chunk_worker_flow(&f);
+    trace_note("D switch refused: %s (%d job(s) still running)", what, f.in_flight);
+    return false;
+}
+
 bool dimension_switch(int32_t x, int32_t z, dimension_t to) {
     dimension_t const from = dimension_current();
     if (from == to) return true;
@@ -28,8 +44,16 @@ bool dimension_switch(int32_t x, int32_t z, dimension_t to) {
     // are still the worker's (Part K), and draining is what separates the
     // two -- everything that can become saveable does, and what is left
     // below is a chunk that truly cannot be.
-    while (chunk_worker_collect(CH_SLOT_COUNT) > 0) {
-    }
+    //
+    // AND IT HAS TO ACTUALLY WAIT. Until 2026-10-13 this was
+    // `while (chunk_worker_collect(N) > 0)`, and collect() is a non-blocking
+    // peek (xQueueReceive with a zero timeout): that loop takes delivery of
+    // whatever has ALREADY finished and ends the moment nothing has, which on
+    // a streaming world -- 9/48 jobs in flight in an ordinary second of play --
+    // means it never waited for anything. Every check below then saw a busy
+    // worker and refused, so a shaft said "would not open" and a death in the
+    // Deep Mine never crossed home (F-160).
+    if (!drain_or_refuse("the worker had not finished streaming")) return false;
 
     // 1. SAVE EVERY DIRTY CHUNK.
     //
@@ -43,24 +67,24 @@ bool dimension_switch(int32_t x, int32_t z, dimension_t to) {
         for (int i = 0; i < CH_SLOT_COUNT; i++) {
             chunk_t* c = chunk_slot_at(i);
             if (c == NULL || c->cstate == CS_FREE) continue;
-            if (c->cstate == CS_LOADING) return false;
+            if (c->cstate == CS_LOADING) {
+                trace_note("D switch refused: chunk %ld,%ld was still being filled", (long)c->cx, (long)c->cz);
+                return false;
+            }
             if (!(c->flags & CF_EDITED)) continue;
             dirty++;
             // A full queue is not a failure; it is a retry next pass.
             (void)chunk_worker_request_save(c->cx, c->cz);
         }
         if (dirty == 0) break;
-        while (chunk_worker_collect(CH_SLOT_COUNT) > 0) {
-        }
+        if (!drain_or_refuse("the card had not taken the saves yet")) return false;
     }
 
     // 2. DRAIN THE WORKER, and check what it could not write. A save the
     // card refused leaves the chunk CF_EDITED -- the streamer will not
     // evict a chunk it could not write -- so anything still dirty here is
     // a chunk this switch would have to throw away. It does not.
-    while (chunk_worker_collect(CH_SLOT_COUNT) > 0) {
-    }
-    if (!chunk_worker_idle()) return false;
+    if (!drain_or_refuse("still draining after the last save pass")) return false;
 
     for (int i = 0; i < CH_SLOT_COUNT; i++) {
         chunk_t* c = chunk_slot_at(i);

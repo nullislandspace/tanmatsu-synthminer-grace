@@ -124,6 +124,15 @@ bool chunk_worker_request_save(int32_t cx, int32_t cz);
 // task. Returns how many results were applied.
 int chunk_worker_collect(int max_results);
 
+// WAIT for everything in flight to come back, collecting as it arrives, and
+// say whether it managed to. `chunk_worker_collect()` on its own is a
+// non-blocking peek: a loop over its return value takes delivery of what has
+// ALREADY finished and stops the moment nothing has, which is not the same
+// thing as an empty queue (F-160). `max_ms` bounds the wait so a card that
+// has stopped answering cannot hang the caller; 0 waits as long as it takes.
+// False means jobs are still running.
+bool chunk_worker_drain(int max_ms);
+
 // Nothing queued and nothing in flight.
 bool chunk_worker_idle(void);
 
