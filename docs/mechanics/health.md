@@ -1,13 +1,16 @@
 ---
 title: Health, falling and death
-summary: Ten hearts, three free blocks, and a death that costs you almost nothing.
+summary: Ten hearts, three free blocks, what can take them, and a death that costs you almost nothing.
 ---
 
-You have **10 hearts — 20 points of health.** Two things in this version of the game can
-take it: **falling**, and **starving**.
+You have **10 hearts — 20 points of health.** Four things can take it: **falling**,
+**starving**, **hostile mobs**, and **lava**.
 
-There are no monsters yet. Animals do not fight back. Water does not drown you. Lava does
-not exist.
+The last two are new in v0.3.0, and both of them are found only in the
+[Deep Mine](../world/deep-mine.html).
+
+**Animals still do not fight back.** Nothing on the surface of the overworld can hurt you,
+and water does not drown you.
 
 ## Fall damage
 
@@ -51,6 +54,26 @@ This is the single most useful fact in the game:
 
 Carry a bucket.
 
+## Mobs
+
+Only in the [Deep Mine](../world/deep-mine.html), and only from the two kinds there:
+
+| | Damage per swing | How often |
+|---|---|---|
+| [**Zombie**](../mobs/zombie.html) | **3** — one and a half hearts | Once a second |
+| [**Skeleton**](../mobs/skeleton.html) | 2 — one heart | Once a second |
+
+They notice you at 16 blocks and walk to within a swing. They are slower than you, so the
+first answer to a mob is to not be where it is. The HUD says **"Zombie hits you"** rather
+leaving you to work it out.
+
+## Lava
+
+**Standing in lava costs 2 health — one heart — every half second.** Full health to dead in
+five seconds, and lava does not slow you down or push you out: it is the floor, on fire.
+
+The HUD says **"The lava burns"**. See [Lava](../world/lava.html).
+
 ## Starving
 
 At **zero** drumsticks you lose a point of health every 4 seconds until you are dead — about
@@ -85,6 +108,12 @@ That is it. There is no penalty beyond the walk back to wherever you were.
 The inventory is deliberate: this game does not scatter your things on the ground when you
 die and it never will. And hunger going back to full is not generosity — waking up starving
 would be waking up eighty seconds from dying again, which is a loop rather than a penalty.
+
+**Dying in the Deep Mine adds one thing: you go home.** There is no bed down there and no
+spawn point of its own, so you wake up in the **overworld**, at your bed or at the world's
+original spawn, with your whole inventory. The cave you died in stays as you left it — the
+mobs you killed stay dead — and the [mine shaft](../devices/mine-shaft.html) you crossed to
+get there is still standing.
 
 <p class="note"><b>The HOME mark on the compass is where you will wake up.</b> It is your
 bed if you have slept in one, and the world's spawn column otherwise. Sleeping in a bed

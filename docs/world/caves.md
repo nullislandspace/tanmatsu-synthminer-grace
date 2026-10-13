@@ -44,8 +44,14 @@ Take, in rough order of how much you will regret not having it:
 | **Water** | Anything hollow below y = 24 that the sea can reach is flooded. |
 | **Bedrock** | y = 0, unbreakable. The bottom. |
 
-Nothing is hunting you. This version of the game has no monsters — the danger in
-a cave is the drop, the dark, and running out of food a long way from home.
+**Nothing is hunting you down here.** The overworld has no hostile mobs at all, and no
+cave in it has any. The monsters live in the [Deep Mine](deep-mine.html), a dimension of
+its own that you reach through a [mine shaft](../devices/mine-shaft.html) rather than by
+digging down. So the danger in an overworld cave is still the drop, the dark, and running
+out of food a long way from home.
+
+<p class="note"><b>A cave is not the way down.</b> Digging to y = 0 gets you bedrock, not
+the Deep Mine. The two are not connected by tunnels — the only door is the one you build.</p>
 
 ## Falling
 

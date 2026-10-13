@@ -14,11 +14,21 @@
     - {url: /world/water.html, name: Water}
     - {url: /world/caves.html, name: Caves and the deep}
 
+- title: The Deep Mine
+  pages:
+    - {url: /world/deep-mine.html, name: The Deep Mine}
+    - {url: /devices/mine-shaft.html, name: The mine shaft}
+    - {url: /world/lava.html, name: Lava}
+    - {url: /mobs/index.html, name: Hostile mobs}
+    - {url: /mobs/zombie.html, name: Zombie}
+    - {url: /mobs/skeleton.html, name: Skeleton}
+
 - title: Ores and stone
   pages:
     - {url: /ores/index.html, name: Overview}
     - {url: /ores/coal.html, name: Coal ore}
     - {url: /ores/iron.html, name: Iron ore}
+    - {url: /ores/diamond.html, name: Diamond ore}
 
 - title: Plants
   pages:
@@ -54,6 +64,7 @@
   pages:
     - {url: /devices/index.html, name: Overview}
     - {url: /devices/crafting-table.html, name: Crafting table}
+    - {url: /devices/mine-shaft.html, name: Mine shaft}
     - {url: /devices/furnace.html, name: Furnace}
     - {url: /devices/chest.html, name: Chest}
     - {url: /devices/trash-chest.html, name: Trash chest}
@@ -82,6 +93,7 @@
 - title: Releases
   pages:
     - {url: /releases/index.html, name: Version history}
+    - {url: /releases/v0.3.0.html, name: "v0.3.0 — The Deep Mine Update"}
     - {url: /releases/v0.2.1.html, name: "v0.2.1 — What Playing It Found"}
     - {url: /releases/v0.2.0.html, name: "v0.2.0 — Fred's Farm Update"}
     - {url: /releases/v0.1.0.html, name: "v0.1.0 — The Base Game"}

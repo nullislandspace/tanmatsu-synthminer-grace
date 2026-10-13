@@ -64,6 +64,21 @@ all waiting for you in the morning.</p>
 - Breaking either half takes the whole bed down and drops one bed.
 - The bed is **not** fuel — wool does not burn — but it is reversible on a
   [disassembly bench](disassembly-bench.html), which gives the 3 wool and 3 planks back.
-- There is no monster in this version of the game, so sleeping through the night is a
+- There is nothing on the surface that hunts you, so sleeping through the night is a
   convenience rather than a safety measure. It is still the single best thing you can do
-  with the dark.
+  with the dark — it is the fast-forward button for every machine and every crop you have
+  running.
+
+## Not in the Deep Mine
+
+**A bed cannot be placed in the [Deep Mine](../world/deep-mine.html).** The game refuses it
+and says **"Beds only work in the overworld"**.
+
+There are two reasons, and both are load-bearing:
+
+- **There is no night down there.** No sun, no moon, no clock you can skip forward to. A
+  bed would set a spawn point in a place with no morning to wake into.
+- **The game has one spawn point, and it is the overworld's.** If you die in the cave you
+  wake up upstairs, at this bed or at the world's original spawn. That is what makes a
+  death down there a trip home rather than a trap — see
+  [Health, falling and death](../mechanics/health.html).

@@ -58,6 +58,7 @@ Anywhere, any time. Deliberately short — finding wood is enough to get started
 | **Bed** | 3 wool + 3 planks | ↔ |
 | **3 fences** | 2 planks + 4 sticks | ↔ |
 | **Fence gate** | 2 planks + 4 sticks | ↔ |
+| [**Mine shaft**](devices/mine-shaft.html) *(places a 3×3 frame, 16 blocks)* | **16 iron ingots** | — |
 
 ### Materials
 
@@ -67,7 +68,9 @@ Anywhere, any time. Deliberately short — finding wood is enough to get started
 | **3 string** | 1 wool | |
 
 <p class="note"><b>Six <em>stone</em> for the stove, not cobblestone.</b> Smelt the
-cobblestone in a furnace first.</p>
+cobblestone in a furnace first. And the mine shaft is the one machine in this table that
+is <b>not reversible</b>: sixteen ingots go in, and taking the frame down gives you
+nothing back.</p>
 
 ## In a [furnace](devices/furnace.html)
 
@@ -148,3 +151,4 @@ Some things are not crafted at all.
 | **Sardine, salmon, shrimp** | [Fishing](mechanics/fishing.html) |
 | **Yellow flowers** | Compost thrown on grass — a 3×3 patch |
 | **Coal, iron ore** | Digging. See [Ores](ores/index.html) |
+| **Diamond** | **The Deep Mine only.** See [Diamond ore](ores/diamond.html) |

@@ -102,11 +102,16 @@ See [Hunger and saturation](mechanics/hunger.html) and
 
 ## What kills you
 
-Not much, yet. There are no monsters in this version. What there is:
+Not much on the surface. **Nothing in the overworld hunts you** — no animal fights back,
+and the monsters live in the [Deep Mine](world/deep-mine.html), which you can simply not
+enter on the first day. What there is up here:
 
 - **Falling.** Three blocks are free; after that it is half a heart a block,
   and a long drop is fatal. Water at the bottom cancels all of it.
 - **Starving.** An empty hunger bar takes health, slowly but without stopping.
+
+Down there, add **[zombies and skeletons](mobs/index.html)** and **lava** — see
+[Lava](world/lava.html).
 
 Dying costs you **nothing but half your health** — you keep your whole
 inventory and wake up at your bed or your spawn. See

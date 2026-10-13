@@ -6,6 +6,7 @@ summary: Everything you put down and then use, and what each one costs.
 | Thing | Costs | Does |
 |---|---|---|
 | [**Crafting table**](crafting-table.html) | 4 planks | Unlocks most recipes |
+| [**Mine shaft**](mine-shaft.html) | **16 iron ingots** | The door to the [Deep Mine](../world/deep-mine.html). Places a 3×3 frame, 16 blocks |
 | [**Furnace**](furnace.html) | 8 cobblestone | Smelts ore, sand and cobble; makes coal out of logs |
 | [**Chest**](chest.html) | 8 planks | 27 stacks of storage |
 | [**Trash chest**](trash-chest.html) | 8 planks + 1 coal | Destroys what you put in it, ten minutes later |
@@ -21,6 +22,11 @@ summary: Everything you put down and then use, and what each one costs.
 Everything except the torch and the fence is made at a
 [crafting table](crafting-table.html). The table itself, and torches, can be made
 with bare hands.
+
+<p class="note"><b>The mine shaft is the odd one out.</b> It is not a machine and it is not
+furniture: it is a structure you stand in, it is the only thing in this table that is
+<b>not reversible</b>, and it is the only one that does something to <em>you</em> rather
+than to your items.</p>
 
 ## The machines never tick
 

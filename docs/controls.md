@@ -1,6 +1,6 @@
 ---
 title: Controls and the HUD
-summary: Every key, what the bars mean, and the two ways of looking around.
+summary: Every key, what the bars mean, what the game says when it refuses, and the optional display on your badge.
 ---
 
 ## The keyboard
@@ -79,6 +79,40 @@ At the top there is a **compass**, with a mark on it for **HOME** — your bed i
 you have slept in one, and otherwise the spot the world was created around. It is
 the same place you come back to when you die.
 
+## What the game says
+
+One line at the bottom of the screen, for a second or two. It is worth reading,
+because it is usually the reason something did not happen.
+
+| Line | Meaning |
+|---|---|
+| **"The Deep Mine"** / **"Back on the surface"** | Which dimension you are now in, said once as you arrive |
+| **"The shaft would not open"** | A crossing was refused — see [Mine shaft](devices/mine-shaft.html) |
+| **"There is not room for that here"** | A shaft, a bed or a stove does not fit where you pointed |
+| **"Beds only work in the overworld"** | You cannot set a spawn point in the Deep Mine |
+| **"Zombie hits you"** / **"Skeleton hits you"** | Who took the health |
+| **"The lava burns"** | You are standing in lava |
+| **"You fall hard"** | Fall damage |
+| **"Crossing over"** | The loading screen between dimensions |
+
+## The optional VFD display
+
+Some Tanmatsu units carry a small external **12-character VFD display**. If yours has
+one, SynthMiner uses it:
+
+| | It shows |
+|---|---|
+| **In a world** | The name of the **item in your hand** — blank for an empty slot |
+| **Anywhere else** | **SynthMiner** — the title screen, the loading and saving screens, and every menu |
+
+It is found by itself on startup and needs no setting. A badge without a tube changes
+nothing at all. Names longer than the twelve characters scroll across; names in another
+alphabet are written out in plain letters, so a Russian item name reads as *kirka* rather
+than as garbage.
+
+**It is switched off when you leave the game**, so the tube is dark rather than showing a
+frozen item name.
+
 ## Breaking and placing
 
 Hold <kbd>Q</kbd> to break. How long it takes depends on the block and on what is
@@ -96,6 +130,17 @@ with nothing to attach to.
 chunk is unloaded, when you choose *Save* in the pause menu, and when you quit.
 Quitting from the pause menu always saves first, so the honest way to stop
 playing is <kbd>Esc</kbd> and then *Quit*.
+
+**Saving is a screen now, with a bar that fills.** The chunks go out a handful a frame
+instead of all in one go, so a big world takes a visible few seconds rather than looking
+like a hang. If the card refuses a chunk the screen says so — **"3 chunk(s) could not be
+written"** — instead of sitting there forever. Those chunks are still in memory and still
+retried, so the game is not pretending a write happened.
+
+<p class="note"><b>If that line appears, do not pull the card out.</b> The world on the
+card is part-written and the game is still trying. Finish the session normally, and if the
+line keeps coming back on a world you like, the likely answer is the card rather than the
+game.</p>
 
 Worlds, settings, screenshots and replays live in `/sd/synthminer`, which is not
 the folder the app installs into — reinstalling or updating the game cannot touch

@@ -36,6 +36,9 @@ drop. The game tells you what you need before you start.
 
 Everything else in the game drops for bare hands. A tool just makes it faster.
 
+**Diamond ore is on the stone-pickaxe line as well**, and it is the one ore you cannot
+find in the overworld at all — see [Diamond ore](../ores/diamond.html).
+
 ## Every block, and how long it takes
 
 Seconds. A dash means the tool does not help.
@@ -62,10 +65,16 @@ Seconds. A dash means the tool does not help.
 | Furnace | 9.0 | 4.5 | 2.25 | 1.5 | **Pickaxe** |
 | Coal ore | 10.0 | 5.0 | 2.5 | 1.7 | **Pickaxe** |
 | Iron ore | 11.0 | 5.5 | **2.8** | 1.8 | **Pickaxe (stone+)** |
-| Bedrock, water | never | | | | |
+| **Diamond ore** | 12.0 | 6.0 | **3.0** | 2.0 | **Pickaxe (stone+)** |
+| [Shaft post, shaft brace](../devices/mine-shaft.html) | 6.0 | 3.0 | 1.5 | 1.0 | Pickaxe *(not required — and they **drop nothing**)* |
+| Bedrock, water, lava | never | | | | |
 
 **Stone at 1.9 seconds with a stone pickaxe** is the number the early game is paced around.
 By hand it is seven and a half seconds and gives you nothing.
+
+<p class="note"><b>Lava is unbreakable, like bedrock.</b> There is no tool for it and no
+bucket for it; the answer to it is water, which turns it into stone. See
+<a href="../world/lava.html">Lava</a>.</p>
 
 ## Special breaking rules
 

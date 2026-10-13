@@ -60,3 +60,20 @@ An [iron bucket](../tools/bucket.html) is the only thing that moves water about.
 till the soil, and when you offer it a seed. Nothing watches a field while it
 grows, so draining the moat afterwards will not kill the crop. It will stop you
 planting the next one.</p>
+
+## Water meets lava
+
+Since v0.3.0 the two fluids react, and the answer is always the same: **the lava becomes
+stone** and the water survives.
+
+- Water flowing into lava turns that lava cell into **stone**.
+- Lava flowing into water turns *itself* into stone.
+- It is **stone, not cobblestone and not obsidian**, so the wall it leaves drops cobblestone
+  for a pickaxe and matches the cave floor around it.
+
+That makes a bucket of water the one tool that can beat a lava lake in the
+[Deep Mine](deep-mine.html): pour it over the shore and the lake grows a wall into itself,
+and the ground you needed is where the lava was. See [Lava](lava.html).
+
+**One rule the two fluids do not share:** two neighbouring water sources make a third, and
+two neighbouring lava flows never do. A lake of lava you drain stays drained.

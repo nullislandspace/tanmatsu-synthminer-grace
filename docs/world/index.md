@@ -1,13 +1,19 @@
 ---
 title: How a world is made
-summary: The order the ground is built in, and what that means for where things are.
+summary: The order the ground is built in, the two dimensions a save holds, and what that means for where things are.
 ---
 
 A SynthMiner world is **64 blocks tall**, endless sideways, and built from a seed
 you can type in when you create it. Two worlds with the same seed are the same
 world, down to which field the cows are standing in.
 
-It is generated a chunk at a time as you walk, always in the same order:
+Since v0.3.0 one save holds **two dimensions** — the overworld and the
+[Deep Mine](deep-mine.html) — from that one seed, in one save file, with one player and
+one inventory. Everything below is how the **overworld** is built; the Deep Mine has its
+own generator and its own heights, and you reach it through a
+[mine shaft](../devices/mine-shaft.html) rather than by digging.
+
+Each one is generated a chunk at a time as you walk, always in the same order:
 
 | | |
 |---|---|
@@ -20,6 +26,12 @@ It is generated a chunk at a time as you walk, always in the same order:
 | **Plants** | Flowers, grass, cactus, and the rare wild crop. |
 | **Trees** | Last, so a canopy can cross a chunk boundary. |
 | **Animals** | A herd is placed with the land, not spawned at you later. |
+
+<p class="note"><b>Only one dimension is loaded at a time.</b> Crossing over saves what you
+have changed, releases the whole loaded world and streams in the other one, which is why
+there is a short <em>Crossing over</em> screen instead of an instant change. Everything you
+are carrying, your health and your hunger come across with you; only the world is
+different.</p>
 
 ## Heights worth remembering
 
@@ -35,6 +47,19 @@ It is generated a chunk at a time as you walk, always in the same order:
 
 <kbd>Backspace</kbd> shows your height, which is the only way to know whether you
 are deep enough for iron.
+
+### In the Deep Mine
+
+| y | What is there |
+|---|---|
+| 0 | Bedrock, as upstairs. |
+| **12** | **The lava level** — one level for the whole dimension, as 24 is for the sea. |
+| ~10–22 | Where the cave floor actually is. |
+| ~18–41 | The bedrock roof, sealed on every column. |
+| 63 | Still the top of the world, and the roof is always below it. |
+
+There is no sea level down there and no surface: the cave floor *is* the depth, which is
+why the Deep Mine's iron needs no descent.
 
 ## Chunks, and what "loaded" means
 
@@ -63,3 +88,6 @@ four of the last ordinary land before the wall has a **sign** standing in it,
 left by whoever got there first.
 
 It is a long walk. Bring food.
+
+**The Far Lands are the overworld's.** The Deep Mine has no wall at the west edge; it runs
+on as an ordinary cave.
