@@ -1390,8 +1390,13 @@ Three tiers of time carry all of it, and all three already exist:
 | tier | mechanism | who uses it |
 |---|---|---|
 | sub-second | the wheel in `world/blockupdate.h` (D-98) | water, and later falling sand |
-| minutes | `now - stamp`, read when opened (D-51, `game/furnace.h`) | the stove and the sausage maker, one in-game minute a go |
+| minutes | `now - stamp` (D-51, `game/furnace.h`) -- read when opened, and since Part Q (D-164) advanced every tick while the chunk is resident and in one go when it comes back | the stove and the sausage maker, one in-game minute a go |
 | a day | the same clock, a longer number | the composter and the cheese maker |
+
+The middle row used to say *read when opened* and nothing more. Part Q (D-164) keeps the arithmetic
+exactly as it is and adds a caller: while a machine's chunk is resident its stamp is advanced every
+tick, so the game can answer "is this one burning right now" without the player opening it. Crops
+have had that shape since step 9 and are the model (D-112).
 
 Crops are the awkward one and are dealt with below: a crop is a block,
 not a block entity, so there is nowhere in a cell to write *when it last
@@ -2819,14 +2824,181 @@ Playtest questions, not implementation questions. None of them blocks anything a
   answer is a sleeve -- and whether that is worth a mesh (D-161).
 - **Whether a mob can disarm you**, or whether a piece only ever leaves the player's own hand.
   Today it is only ever the player's own hand, and a broken piece simply vanishes with a message.
-- **Whether the flame is worth the draw.** The suggestion is the user's (D-159); the cheap version
-  is the forge the player is standing at, the version that reads from across the cave is a register
-  of every running forge, and neither is built.
+- **What the flame is, and what "finished" looks like.** The suggestion is the user's (D-159) and
+  Part Q (D-164) now owns it: the machine advances while its chunk is resident, and the flame is
+  drawn from `burn_left` for whatever is resident -- which is the version that reads from across the
+  loaded area without the register Part S was weighing. What a machine that is *done* looks like is
+  still open, and is the half of the user's sentence a flame does not answer.
 - **Whether lava is still the right number** now that a zombie takes 10 a swing and lava still takes
   2 every half second (D-156). Recorded as a gap, deliberately not retuned here.
 
 ---
 
+## Part Q: active blocks -- a machine runs while its chunk is loaded, and it shows it
+
+Added 2026-10-18 by the user (D-164), out of the flame Part S had to defer (D-159, F-163).
+**Not built.** Steps 72 / 73.
+
+> *"Furnace, stoves, composters and other 'active' blocks (blocks that currently running a process)
+> should be treated as such while a chunk is loaded (and do time based processing when unloaded then
+> loaded again). That way normal furnaces, kitchen stoves etc can also show their status (fire
+> burning in them). This makes it much easier for a player to see if a process is done/needs attention
+> that to interact with every such block."*
+
+### The plants already do this, and they are the model
+
+The user's own follow-up -- *"I mean, it also works for plants, doesn't it?"* -- is the right
+instinct, and the answer is that plants are already exactly this. `world/crops.h` is the tier this
+part is asking the machines to join, and it has had it since step 9:
+
+| | crops today |
+|---|---|
+| while loaded | `crops_tick()` runs once a tick from main.c's sim loop and visits **one chunk slot**
+  of the 256 in the ring, so a full round is 13 seconds; a slot with nothing growing in it is a
+  `CF_CROPS` flag test and costs nothing at all |
+| when it comes back | `crops_chunk_join()` runs in `chunk_worker.c`'s `apply()`, on the main task,
+  beside the light join and the fluid join, and advances everything in the chunk by the time it was
+  away -- the user's own rule, quoted there as *"advance events in one go to where they would be now
+  as if the chunk was never unloaded"* |
+| how it is told the time | `crops_now()`: the tick count the sweep last saw, cached precisely so the
+  join can be told the clock without anything under `world/` being handed the world metadata (D-52) |
+
+So this is not a new mechanism. It is the furnace, the stove, the composter, the two makers and the
+forge being put through the two doors the crops already come in through.
+
+### What changes is who knows, not what happens
+
+**THE ARITHMETIC DOES NOT MOVE.** `furnace_catch_up()` already spends a week's absence in one loop --
+4 billion ticks in 0.01 ms, host-measured (F-77) -- and a furnace left with coal and ore already
+fills its output slot whether or not anybody is standing there. Part C's promise that "a furnace in a
+chunk nobody has visited costs nothing and is still right after a week" survives this change intact.
+
+**WHAT IS MISSING IS A LIVE ANSWER TO "IS IT DOING ANYTHING RIGHT NOW".** `burn_left`, `cook` and
+`job` are current only for a machine somebody last opened or drew. Nothing in the game can ask
+*which of my furnaces is burning*, because the only way to find out is to open each one -- which is
+exactly the interaction the user is asking to avoid. `blockent_t::burn_max` has carried the comment
+"for the flame" since it was added and has never had a customer (F-163); that is the hole.
+
+**SO THE CATCH-UP FUNCTIONS KEEP THEIR BODIES AND GAIN A SECOND CALLER.** Every one of them is
+already idempotent -- `furnace.h` says doing it twice in a row is free because the second call has no
+elapsed time to spend -- which is the only reason a per-tick pass is safe to run beside the UI's call
+rather than instead of it.
+
+### The two passes
+
+1. **`blockent_tick(now)`**, in main.c's sim loop beside `crops_tick()`. It walks the record pool --
+   a flat array of `BE_MAX` 192 records, and `blockent_at()` already walks it linearly on a keypress
+   and says so in its own comment -- and calls the machine's own catch-up for each live record. 192
+   iterations a tick is nothing next to the `mob_tick()` and `player_tick()` on either side of it.
+2. **`blockent_chunk_join(now)`**, in `chunk_worker.c`'s `apply()` beside `crops_chunk_join()`, on the
+   main task like every other write to a resident chunk, for the records this chunk just brought back
+   from the card. It needs the clock the way crops do, so `blockent_tick()` caches it as
+   `blockent_now()`.
+
+A record's stamp is therefore never more than a tick stale while its chunk is resident, and can be
+arbitrarily stale while it is not -- which is exactly the shape crops already have.
+
+### The race this would otherwise create
+
+`world/blockent.h` currently argues, in its own header, that it needs no lock:
+
+> *A chunk is only saved when it is being evicted or when the world is being saved, and a furnace can
+> only be opened when the player is standing next to it -- which is to say in a chunk that is resident
+> and nowhere near eviction.*
+
+**A PER-TICK PASS TAKES THAT ARGUMENT AWAY.** `do_save()` -> `world_chunk_save()` ->
+`region_write_chunk()` -> `blockent_encode_chunk()` all run on core 1, on a chunk that is still in the
+ring as `CS_SAVING`, and the main task would be advancing records in that same chunk while the worker
+serialises them. So:
+
+- **The tick pass skips any record whose chunk is not `CS_READY`.** One `chunk_find()` per record, on
+  a chunk that is about to be walked anyway. A record in a chunk being saved or loaded is not touched
+  by the main task, which is the same rule the light join and the fluid join already follow.
+- `chunk_release()` already drops the records *before* the slot goes `CS_FREE` (chunk.c), and neither
+  caller lets go of a `CF_EDITED` chunk, so a record cannot vanish mid-encode.
+
+### A working machine does not make its chunk dirty every tick
+
+`catch_up` advances `stamp` every tick, even for an idle furnace, and `blockent_touch()` is what turns
+a change into a write. Marking a record touched every tick would make every chunk that has ever held
+a chest permanently dirty and re-written on every eviction, which is a card write per machine per
+walk -- the opposite of what this game's save policy is for (D-30, "written only when needed").
+
+**So: mark it only when something a save would actually carry moved** -- a slot, `burn_left`, `cook`
+or `job`. A record whose stamp is stale on the card is not a record that is *wrong*, because pass 2
+catches it up the moment it lands, which is the same reason `crops_tick()` does not mark a chunk with
+nothing growing in it.
+
+### What the player sees
+
+**FIRE, for the three machines that have fire.** The furnace, the kitchen stove and the smithing
+forge, drawn while `burn_left > 0`. The shape is the showreel's `voxel_fx_flame()`: two crossed
+emissive quads on `torch_flame.png`, already generated, already installed on the card, already loaded
+by nothing. `burn_max` finally says how big the flame is.
+
+**WHERE IT IS DRAWN MATTERS, AND IT IS NOT `voxel_fx.c`.** That file is still not in `APP_SOURCES`
+(step 3.5 deferred the whole of it) and its break/chip/item functions would arrive as dead code
+beside the engine's own chip drawing (F-116). The flame belongs in `main/world/chunk_render.c`, which
+is already in the app, already called once a frame, already owns the texture table, and already
+animates one thing per frame by swapping a material -- the torch's flipbook (F-155). Two things it
+must get right that `voxel_fx.c` never had to:
+
+- **Coordinates are relative.** Everything the scene is given is relative to an integer origin
+  (`chunk_render_origin()`, main.c's draw pass), which is why Fred goes through
+  `chunk_render_rel()`. The flame quads are built in that space, not in world space.
+- **It is per-block state, so it cannot be a material.** The torch animates for free because every
+  torch shares one material and every torch is lit; a forge that is *running* is a fact about one
+  cell, and the mesher runs on core 1 from block bytes alone -- it cannot see a block entity. That is
+  why this is a quad drawn per frame and not a `VM_SMITH_LIT`, and it is the answer to the question
+  Part S left open.
+
+**Cost, measured against the caps that exist:** 4 textured triangles per burning machine per frame
+(two quads), against `SE_SCENE_TEXTURED_TRI_CAP` 4096, with the world itself peaking at 1114 in the
+last device run. A dozen machines in view is 48 triangles. Nothing here is close.
+
+**"DONE", AND "NEEDS ATTENTION", ARE NOT SOLVED BY FIRE.** A flame says *this one is burning*. A
+furnace that finished its last ingot and ran out of coal is dark, and looks exactly like a furnace
+that was never started -- which is the case the user is actually asking about. Options, cheapest
+first, none built:
+
+- the output item drawn as a small cube at the machine's cell, the same shape the game already uses
+  for a dropped item;
+- a second, dimmer quad over the front face for "there is something finished in here";
+- a line on the HUD when the player is looking at one, which is the honest fallback and the one that
+  costs no draw at all.
+
+**THE MACHINES WITH NO FIRE** -- the composter, the cheese maker, the sausage maker -- have nothing to
+draw that reads as "working" without inventing a second visual language. Left open below rather than
+invented here.
+
+### What it costs
+
+| | |
+|---|---|
+| Modules | no new ones. `blockent_tick()` / `blockent_chunk_join()` / `blockent_now()` in `world/blockent.{c,h}`, one new accessor to walk the pool by kind, the flame in `world/chunk_render.c`, one call each in `main/main.c` and `world/chunk_worker.c` |
+| Tick budget | 192 pool iterations a tick, most of them a `kind != BE_NONE` test. Free in a world with no machines, in the same way `crops_tick()` is free in a world with no farms |
+| Draw | 4 textured tris per burning machine, distance-culled to what is resident |
+| Save | unchanged in format; changed in *when* a record is marked dirty, and the rule for that is above |
+| Determinism | the pool order is fixed, so the pass is reproducible; it belongs in the sim loop before `player_tick()`, like `crops_tick()` and `mob_tick()`, so a replay replays |
+| Docs | the machines' pages gain "you can see it working", and `docs/mechanics/time.md` gains the tier |
+
+### Open
+
+- **What "finished" looks like.** The three options above. This is the half of the user's sentence
+  the flame does not answer.
+- **What the fireless machines show.** Composter, cheese maker, sausage maker.
+- **Whether a machine should keep burning when its output is full.** Today a furnace stops and its
+  fuel stays lit (`furnace.h`: it "never burns fuel it has no use for"); with a flame on the block,
+  "lit but nothing happening" becomes visible, and whether that reads as a bug to a player is a
+  playtest question.
+- **Whether the flame is worth a register of every running machine.** Drawn only for machines whose
+  chunk is resident, it is already visible from anywhere in the loaded area; a register is what it
+  would need to be visible from further away, and Part S rejected that for torches (F-155).
+- **Whether the pass should be per-record or per-chunk-slot.** Crops sweep one chunk slot a tick
+  because there are thousands of plants; there are at most 192 records, so walking the pool every
+  tick is cheaper than finding them by chunk. Recorded as the choice, not as a law.
+
+---
 ## Part D: step-by-step plan with status tracking
 
 **Status values:** `todo` / `in progress` / `done` / `blocked (why)` /
@@ -2969,6 +3141,8 @@ Playtest questions, not implementation questions. None of them blocks anything a
 | 69 | **The smithing forge**: two blocks and a chest, `RS_SMITH`, the selector, the fuel slot, and a job that makes exactly one item and stops | done, **device test pending** | Part S, built 2026-10-18 (F-163, D-158, D-159, D-160, D-163). `main/game/forge.{c,h}` and `main/ui/smith_ui.{c,h}`; `BLK_SMITH` 56 and `BLK_SMITH_CHEST` 57 reuse the stove's pair rules (`interact_pair_other()`, renamed from `interact_stove_other`). 12 diamonds + 10 planks at the crafting table. Iron `DAY_TICKS` (20 playing minutes), titanium 2 x `DAY_TICKS`, and it is the **metal** that sets the clock, not the piece. Fuel is the furnace's own model with one item lit at a time: **15 coal** an iron job, **30** a titanium one. The progress is a new `uint32_t job` on `blockent_t` saved as `TAG_I32` -- `cook` (u16, `i16` on disk) cannot hold 48000 ticks, and `check_forge()` walks a job past the old 32767 ceiling and resumes it to a finished chestplate. Start commits the ingots into `BE_SMITH_METAL`, locks the selector, allows one job at a time, and **refuses a forge with nothing to burn** (D-163); a job starved mid-way keeps its progress and waits. Exactly one item per Start, clamped however long the player is away. Breaking either half gives the committed ingots back and nothing else. No flames drawn -- `forge.waiting` in the HUD is the answer instead. |
 | 70 | **Swords and armour**, armour on Fred, `SM_CONFIRM`, and four equipment slots on the save | done, **device test pending** | Part S, built 2026-10-18 (F-163, D-158, D-159, D-161, D-162). 10 items and **3** new columns appended to `item_def_t` (`attack`, `guard`, `wear_slot`), `SM_CONFIRM` as the 25th action (`SE_BINDINGS_MAX` 24 -> 32), and an additive `equip` compound in `level.smw` keyed `0..3` (D-30: an old save has none and reads as wearing nothing). Armour is a **percentage** off the blow -- 9 / 16 / 12 / 8 iron and exactly double in titanium, so 45% and 90% -- and the mobs moved to **zombie 10 / skeleton 8**. Measured through the check: 10 lands for 6 through iron and 1 through titanium, 8 for 4 and 1, never 0. A blow taken costs 1 use off every worn piece; a sword costs 1 per blow that lands (D-162). Fred wears four shells over his existing head/body/leg meshes under one `FM_ARMOUR` whose `argb` is set per submit -- an iron helmet on a titanium chestplate -- plus a second stroke driver for the swing, and `SFX_SWING` / `SFX_CLANG` tell a miss from a hit. **Deviation from D-161:** the Tab-screen figure is a 2D figure, not these meshes. |
 | 71 | **The axe stops being a weapon**: only a weapon damages a creature, and the documentation that calls an axe one gets rewritten | done, **device test pending** | Part S, built 2026-10-18 (F-163, D-158). `mob_damage_of()` is now `item_def(item).attack` and the sword is the only item in the game with a nonzero one, so the predicate covers animals as well as hostiles -- the user's sentence says "monsters or animals", and `mob_def_t::hostile` is not the line. A tool swing is a *miss* rather than a no-op: `mob_hit()` refuses `damage < 1`, so it sounds like a miss, wears nothing and costs no hunger. Rewritten: `docs/tools/{axe,pickaxe,shovel,hoe,index}.md`, `docs/animals/{index,cow,pig}.md`, `docs/ores/titanium.md`; new: `docs/tools/{sword,armour}.md` and `docs/devices/smithing-forge.md`. Consequence to watch on a device: pork, beef and mutton now sit behind the sword, and the first cave trips have no weapon in the game at all. |
+| 72 | **Active blocks**: a machine advances while its chunk is resident, and in one go when it comes back | todo | Part Q, designed 2026-10-18 (D-164). `blockent_tick(now)` beside `crops_tick()` in main.c's sim loop, `blockent_chunk_join(now)` beside `crops_chunk_join()` in `chunk_worker.c`'s `apply()`, and `blockent_now()` to hand that join the clock -- the two doors crops already come in through (step 9, D-112), not a new mechanism. The catch-up bodies do not move: `furnace_catch_up()` already spends a week's absence in 0.01 ms (F-77) and every one of them is idempotent, which is the only reason a per-tick pass is safe beside the UI's call rather than instead of it. Two rules come with it. **Skip a record whose chunk is not `CS_READY`**, because `do_save()` -> `world_chunk_save()` -> `region_write_chunk()` -> `blockent_encode_chunk()` serialises a `CS_SAVING` chunk on core 1 while the main task would be advancing records in it -- which is also the sentence in `world/blockent.h` that argues it needs no lock and no longer holds. **Mark a chunk dirty only when a slot, `burn_left`, `cook` or `job` actually moved**, so a world full of idle machines saves nothing, in the same way `crops_tick()` does not mark a chunk with nothing growing in it. |
+| 73 | **The flame**: a running machine is visible without opening it | todo | Part Q, designed 2026-10-18 (D-164), the draw Part S deferred (D-159, F-163). Two crossed emissive quads on `torch_flame.png` -- already generated, already installed on the card, loaded by nothing -- drawn in `main/world/chunk_render.c`, **not** `voxel_fx.c`, which is still not in `APP_SOURCES` (step 3.5) and whose break/chip/item functions would arrive as dead code beside the engine's own (F-116). Two things that file never had to get right: the scene is submitted **relative to an integer origin**, so the quads are built in that space like everything else (`chunk_render_rel()`), and it is **not a material** -- a running machine is a fact about one cell, and the mesher runs on core 1 from block bytes alone and cannot see a block entity, which is why there is no `VM_SMITH_LIT`. It sits beside the torch flipbook that already animates one thing a frame (F-155), and `burn_max`, commented "for the flame" since it was added and never once read, finally says how big it is. Cost: 4 textured tris a burning machine against `SE_SCENE_TEXTURED_TRI_CAP` 4096, last device run peaking 1114. What "finished" looks like, and what the fireless machines show, stays open in Part Q. |
 
 ---
 
@@ -9960,6 +10134,49 @@ Playtest questions, not implementation questions. None of them blocks anything a
   that now takes two swings off an armoured player, whether the sword's sound is legible over the
   mining sound that plays 1.8 times a second, and whether an unarmed first cave trip is survivable at
   all (D-159, D-146) are device questions, and none of them is answered by a green check.
+
+- **D-164** 2026-10-18, **the user**: **an active block runs while its chunk is loaded, and it shows it.**
+
+  *"Furnace, stoves, composters and other 'active' blocks (blocks that currently running a process)
+  should be treated as such while a chunk is loaded (and do time based processing when unloaded then
+  loaded again). That way normal furnaces, kitchen stoves etc can also show their status (fire burning
+  in them). This makes it much easier for a player to see if a process is done/needs attention that to
+  interact with every such block."*
+
+  Recorded as Part Q, steps 72 / 73. **Not built.**
+
+  **THE USER'S FOLLOW-UP IS THE RIGHT INSTINCT, AND THE ANSWER IS THAT PLANTS ALREADY DO THIS.**
+  *"I mean, it also works for plants, doesn't it?"* -- yes, and crops are the model rather than a
+  second case. `crops_tick()` visits one chunk slot a tick from main.c's sim loop,
+  `crops_chunk_join()` advances a chunk that just landed in one go (the user's own rule, quoted in
+  `chunk_worker.c` since step 9), and `crops_now()` hands that join the clock. Part Q puts the
+  furnace, the stove, the composter, the two makers and the forge through those same two doors.
+
+  **WHAT IS MISSING IS NOT ARITHMETIC, IT IS A LIVE ANSWER.** `furnace_catch_up()` already spends a
+  week's absence in 0.01 ms (F-77) and fills its output slot whether or not anybody is standing
+  there, so Part C's promise that a furnace in a chunk nobody visited costs nothing and is still
+  right after a week survives this unchanged. What nothing can answer today is *which of my furnaces
+  is burning*, because the only way to find out is to open each one -- the interaction the user is
+  asking to avoid. `blockent_t::burn_max` has carried the comment "for the flame" since it was added
+  and has never had a customer.
+
+  **THE HEADER'S NO-LOCK ARGUMENT DOES NOT SURVIVE IT.** `world/blockent.h` argues that no lock is
+  needed because a furnace can only be opened in a resident chunk. A per-tick pass is not a keypress:
+  `do_save()` -> `world_chunk_save()` -> `region_write_chunk()` -> `blockent_encode_chunk()` all run
+  on core 1 over a chunk still in the ring as `CS_SAVING`. So the tick pass skips any record whose
+  chunk is not `CS_READY`, and a chunk is marked edited only when a slot, `burn_left`, `cook` or `job`
+  actually moved.
+
+  **THE FLAME IS DRAWN IN `chunk_render.c`, NOT `voxel_fx.c`.** Two crossed emissive quads on
+  `torch_flame.png`, in the scene's relative coordinates, beside the torch flipbook (F-155), and not
+  as a material -- the mesher runs on core 1 from block bytes alone and cannot see a block entity.
+
+  **What this does NOT say**: what a machine that is *finished* looks like -- a furnace that ran out
+  of coal is dark and indistinguishable from one that was never started, which is the half of the
+  user's sentence a flame does not answer -- what the fireless machines (composter, cheese maker,
+  sausage maker) show, whether a machine should keep burning when its output is full, whether the
+  pass walks the record pool or sweeps a chunk slot a tick, or any number. Steps 72 / 73 are `todo`.
+
 
 ## Verification
 
