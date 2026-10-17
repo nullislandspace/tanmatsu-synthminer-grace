@@ -65,6 +65,12 @@ typedef enum {
     // the stove's state byte (D-110). So the stove is the first record
     // here that reads another one.
     BE_STOVE,
+    // THE SMITHING FORGE (game/forge.h, Part S). The stove's shape --
+    // fuel and output of its own, its METAL in the chest beside it,
+    // found through the facing both halves carry (D-110) -- with one
+    // difference that is the whole point of the machine: it has an
+    // explicit Start and makes exactly one item, so it needs a job.
+    BE_SMITH,
 } be_kind_t;
 
 typedef struct {
@@ -82,11 +88,27 @@ typedef struct {
     uint16_t   burn_max;   // ... and what it started at, for the flame
     uint16_t   cook;       // furnace and stove: ticks into the thing being made
 
+    // THE FORGE'S JOB, in ticks of work DONE on the item it was told to
+    // make: 0 for "nothing committed", 1 the instant Start is pressed,
+    // and up to the item's length (24000 iron, 48000 titanium) when it
+    // lands.
+    //
+    // NOT `cook`, for the arithmetic reason D-160 names: `cook` is a
+    // uint16_t in RAM and a SIGNED i16 tag on the card, which stops at
+    // 32767 and so cannot hold a titanium job's 48000. A day of forge
+    // fits `cook`; two days do not, and a field that overflows quietly
+    // is the kind of bug this file's save format exists to avoid.
+    uint32_t   job;
+
     // THE STOVE'S RECIPE SELECTOR, as the OUTPUT ITEM of the chosen
     // dish (0 for "nothing chosen yet"). The user's design has a stove
     // pick what it is cooking rather than infer it, because a chest
     // full of a farm's produce fits a dozen recipes at once and
     // guessing which one is wanted is not a thing a machine can do.
+    //
+    // The forge uses it the same way for the same reason: it is a machine
+    // with a selector, and a chest of ingots fits all five of its recipes
+    // at once.
     //
     // An item id and NOT a recipe index, for the reason every save in
     // this game keys on names: a recipe inserted in the middle of the
@@ -125,6 +147,16 @@ typedef struct {
 // (D-105). A stove is therefore the cheapest record in the pool.
 #define BE_STOVE_FUEL 0
 #define BE_STOVE_OUT  1
+
+// AND THE FORGE'S THREE. Fuel and output are the stove's two; the third
+// is the METAL THE JOB IS MADE OF, which leaves the chest the moment
+// Start is pressed and belongs to the job from then on (D-160). That is
+// why the forge has a slot of its own instead of reading the chest every
+// event the way the stove does: a forge whose chest is robbed or buried
+// still finishes what it was told to make.
+#define BE_SMITH_FUEL  0
+#define BE_SMITH_OUT   1
+#define BE_SMITH_METAL 2
 
 // Take the pool (once, at world open) and give it back. Safe to call
 // twice either way.

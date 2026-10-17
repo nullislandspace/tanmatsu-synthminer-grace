@@ -69,6 +69,16 @@ static sfx_def_t const SFX[SFX_COUNT] = {
     // deliberately the quietest row here: at 20 Hz it would otherwise
     // become a buzz rather than a tapping.
     [SFX_HIT]    = {"hit",    O_TRI,  320, 240, 0.20f, 0.45f, F_HPF, 2600, 3200, 0.70f, 0.001f, 0.035f, 0.16f, 0.30f},
+    // A CLANG IS HIT'S HEAVIER COUSIN: the same triangle, an octave and a
+    // half lower, ringing three times as long, and with the noise band
+    // opened up so it is an impact rather than a tap. A sword landing has
+    // to be unmistakably not the tapping of a pickaxe, because it is the
+    // sound that tells you the swing you just paid for actually connected.
+    [SFX_CLANG]  = {"clang",  O_TRI,  520, 300, 0.55f, 0.55f, F_HPF, 1100, 1900, 0.90f, 0.001f, 0.300f, 0.46f, 0.22f},
+    // A SWING THAT HIT NOTHING is all air: no tone at all, a band-pass
+    // that sweeps UP through the whoosh and back down, and a jitter wide
+    // enough that three misses in a row are not one miss played thrice.
+    [SFX_SWING]  = {"swing",  O_SINE, 0, 0, 0.00f, 0.70f, F_BPF, 800, 2800, 1.30f, 0.010f, 0.150f, 0.24f, 0.30f},
     [SFX_PICKUP] = {"pickup", O_SINE, 880, 1400, 0.70f, 0.00f, F_NONE, 0, 0, 0.0f, 0.004f, 0.120f, 0.30f, 0.05f},
     [SFX_HURT]   = {"hurt",   O_SAW,  330, 170, 0.60f, 0.20f, F_LPF, 1700, 800,  0.90f, 0.003f, 0.280f, 0.40f, 0.08f},
     [SFX_LAND]   = {"land",   O_SINE, 95,  60,  0.45f, 0.55f, F_LPF, 700,  300,  0.80f, 0.002f, 0.140f, 0.38f, 0.12f},

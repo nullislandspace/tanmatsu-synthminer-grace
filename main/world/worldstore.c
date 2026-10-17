@@ -320,6 +320,25 @@ static void write_inventory(NbtWriter* w, player_state_t const* p) {
         nbt_write_end(w);
     }
 
+    // THE ARMOUR WORN, in a compound of its own and keyed by BODY PLACE
+    // rather than by grid slot. The four places are not slots and never
+    // become slots (D-158), which is why this is a second small compound
+    // rather than four more numbered ones: an old save has no "equip" at
+    // all, and an old reader ignores this one (D-30).
+    nbt_write_compound(w, "equip");
+    for (int i = 0; i < EQUIP_SLOTS; i++) {
+        inv_slot_t const* s = &p->equip[i];
+        if (s->item == 0 || s->count == 0) continue;
+        char key[12];
+        snprintf(key, sizeof(key), "%d", i);
+        nbt_write_compound(w, key);
+        nbt_write_string(w, "item", item_def(s->item).name);
+        nbt_write_int32(w, "count", s->count);
+        nbt_write_int32(w, "wear", s->wear);
+        nbt_write_end(w);
+    }
+    nbt_write_end(w);
+
     // What the crafting book knows, by name. An item this build has
     // dropped simply does not come back, and one it has added is not
     // there yet -- both of which are the right answer.
@@ -380,8 +399,32 @@ static void read_slot(NbtReader* r, inv_slot_t* out) {
     out->wear     = (uint16_t)(wear < 0 ? 0 : wear > 65535 ? 65535 : wear);
 }
 
+// The four worn pieces, keyed 0..3 by body place. Anything keyed past this
+// build's place count is read and discarded, exactly as a slot past this
+// build's slot count is.
+static void read_equip(NbtReader* r, player_state_t* p) {
+    char name[NAME_BUF];
+    for (;;) {
+        int const type = nbt_read_tag(r, name, sizeof(name));
+        if (type == NBT_END || type < 0 || r->error) break;
+        if (type == NBT_COMPOUND) {
+            char* end = NULL;
+            long  const i = strtol(name, &end, 10);
+            if (end != name && *end == '\0' && i >= 0 && i < EQUIP_SLOTS) {
+                read_slot(r, &p->equip[i]);
+            } else {
+                inv_slot_t discard = {0};
+                read_slot(r, &discard);
+            }
+        } else {
+            nbt_skip_payload(r, type);
+        }
+    }
+}
+
 static void read_inventory(NbtReader* r, player_state_t* p) {
     memset(p->inv, 0, sizeof(p->inv));
+    memset(p->equip, 0, sizeof(p->equip));
     memset(p->seen, 0, sizeof(p->seen));
     p->inv_selected = 0;
     p->has_inv      = true;
@@ -394,6 +437,8 @@ static void read_inventory(NbtReader* r, player_state_t* p) {
             p->inv_selected = (v >= 0 && v < INV_HOTBAR) ? v : 0;
         } else if (type == NBT_COMPOUND && strcmp(name, "known") == 0) {
             read_known(r, p);
+        } else if (type == NBT_COMPOUND && strcmp(name, "equip") == 0) {
+            read_equip(r, p);
         } else if (type == NBT_COMPOUND) {
             // The slot's index is its name; anything past this build's
             // slot count is read and discarded.

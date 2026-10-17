@@ -32,6 +32,7 @@ typedef enum {
     FRED_HOLD_ROD,    // the fishing rod: a long taper with a line off the end
     FRED_HOLD_BONE,   // a bone, knobs and all
     FRED_HOLD_BED,    // a bed under one arm, rather than the red cube a block gets
+    FRED_HOLD_SWORD,  // a sword: a blade, a guard and a grip, in the metal of the item
 } fred_hold_kind_t;
 
 typedef struct {
@@ -51,7 +52,22 @@ typedef struct {
     fred_hold_t hold;
     bool        left_handed;  // which hand holds the tool (a Graphics setting)
     float       crouch;       // 0 standing .. 1 sneaking (game/player.h)
+
+    // WHAT HE IS WEARING (D-161): a bit per piece, and the colour of each
+    // piece. Bits in this order, which is the order the four meshes are
+    // submitted in -- NOT the game's EQUIP_* values, whose numbers belong
+    // to the save file and the inventory screen (items/items.h).
+    //
+    // The colour rather than a tier, so that an iron helmet on a titanium
+    // chestplate is two colours and not a compromise.
+    uint8_t  armour;
+    uint32_t armour_argb[4];
 } fred_pose_t;
+
+#define FRED_ARM_HEAD  0x01u
+#define FRED_ARM_CHEST 0x02u
+#define FRED_ARM_LEGS  0x04u
+#define FRED_ARM_FEET  0x08u
 
 // THE CROUCH, and it is the torso that does it, not the legs.
 //

@@ -10,7 +10,7 @@ fights back.
 | | [**Zombie**](zombie.html) | [**Skeleton**](skeleton.html) |
 |---|---|---|
 | **Health** | 20 — 10 hearts | 16 — 8 hearts |
-| **Damage per swing** | 3 | 2 |
+| **Damage per swing** | **10** — five hearts | **8** — four hearts |
 | **Swings** | One a second | One a second |
 | **Notices you at** | 16 blocks | 16 blocks |
 | **Height** | 1.8 blocks | 1.9 blocks |
@@ -77,23 +77,28 @@ something worth having as loot, never an ingredient you cannot get another way.
 
 ## Fighting them
 
-**There is no sword.** What you hit them with is what you already carry:
+**A sword, or nothing.** A pickaxe, an axe, a shovel, a hoe and a fist all do **zero**
+damage to a creature, so the fight starts when you can forge one:
 
-| In hand | Damage | Skeleton dies in | Zombie dies in |
+| In hand | Damage | Skeleton (16) dies in | Zombie (20) dies in |
 |---|---|---|---|
-| Fist, or a hoe | 1 | 16 swings | 20 swings |
-| Wooden pickaxe | 2 | 8 | 10 |
-| Stone pickaxe | 3 | 6 | 7 |
-| **Iron pickaxe** | 4 | 4 | 5 |
-| Stone axe | 4 | 4 | 5 |
-| **Iron axe** | **5** | 4 | **4** |
+| Everything that is not a sword | **0** | never | never |
+| [Iron sword](../tools/sword.html) | 7 | 3 swings | 3 swings |
+| [Titanium sword](../tools/sword.html) | **11** | **2 swings** | **2 swings** |
 
-One swing a second, from either side. An iron axe and a zombie trade 5 and 3 health a
-second, so a fight is a race you win — but two of them at once is a race you may not.
+**And they hit far harder than they used to.** A zombie's swing is **10** — five of your
+twenty health — and a skeleton's is 8. Unarmoured, **a zombie kills you in two swings and
+a skeleton in three**, one swing a second each. That is the reason [armour](../tools/armour.html)
+exists: a full iron set turns a zombie's 10 into 6, and a full titanium set turns it into
+**1, half a heart**. See [Armour](../tools/armour.html).
 
-**Killing one costs hunger** the same way mining does, and healing afterwards is the
-expensive part: half a heart every four seconds, and one and a half points of hunger for
-each. See [Health, falling and death](../mechanics/health.html).
+One swing a second, from either side. A sword spends one use per blow that lands, so an
+iron one is good for about eighty zombies.
+
+**Hitting costs nothing to eat.** Swinging does not spend hunger in this game — mining
+does. What a fight costs is health, and healing afterwards is the expensive part: half a
+heart every four seconds, and one and a half points of hunger for each. See
+[Health, falling and death](../mechanics/health.html).
 
 <p class="note"><b>Running works.</b> They are slower than you. A corridor you cannot
 hold, you can run past — and with nothing respawning, running past is only a delay, not

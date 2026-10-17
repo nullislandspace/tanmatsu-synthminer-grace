@@ -64,15 +64,20 @@ doing on your first day in a place you intend to stay.
 Hit with <kbd>Q</kbd>. Animals flinch and run from the blow, and are briefly
 unhittable after each one.
 
+**Only a weapon hurts an animal.** A fist, an axe, a pickaxe, a shovel, a hoe, shears —
+all of them do **zero**, and the swing lands as nothing. What you need is an
+[sword](../tools/sword.html), which means a [smithing forge](../devices/smithing-forge.html),
+which means [12 diamonds](../ores/diamond.html) from the [Deep Mine](../world/deep-mine.html).
+
 | In hand | Damage | Pig or cow (10) | Sheep or dog (8) |
 |---|---|---|---|
-| Fist, hoe, shears | 1 | 10 hits | 8 hits |
-| Wooden axe | 3 | 4 | 3 |
-| Stone axe | 4 | 3 | 2 |
-| Iron axe | 5 | 2 | 2 |
-| Wooden / stone / iron pickaxe or shovel | 2 / 3 / 4 | 5 / 4 / 3 | 4 / 3 / 2 |
+| Everything that is not a sword | **0** | never | never |
+| [Iron sword](../tools/sword.html) | 7 | 2 swings | 2 swings |
+| [Titanium sword](../tools/sword.html) | **11** | **1 swing** | **1 swing** |
 
-An **axe** is the weapon in this game. There is no sword.
+<p class="note"><b>Before the forge, breeding is the only way to get meat.</b> That is
+the intended shape of the early game: a pen, two animals, and patience. A sword makes
+killing cheap, and it is a <em>later</em> tool than a fence.</p>
 
 <p class="note"><b>A dog drops nothing.</b> Killing one pays exactly zero — it is
 not livestock. Don't.</p>

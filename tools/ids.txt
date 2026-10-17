@@ -134,3 +134,15 @@ item titanium_ingot
 item pickaxe_titanium
 item axe_titanium
 item shovel_titanium
+item sword_iron
+item sword_titanium
+item helmet_iron
+item helmet_titanium
+item chestplate_iron
+item chestplate_titanium
+item leggings_iron
+item leggings_titanium
+item boots_iron
+item boots_titanium
+block 56 smith
+block 57 smith_chest

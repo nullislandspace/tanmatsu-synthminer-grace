@@ -66,6 +66,7 @@
 #include "fred/beast.h"
 #include "ui/maker_ui.h"
 #include "ui/stove_ui.h"
+#include "ui/smith_ui.h"
 #include "ui/furnace_ui.h"
 #include "se_stream.h"
 #include "ui/menu.h"
@@ -291,6 +292,12 @@ static bool s_info;
 #define FRED_BACK      4.0f   // third person: blocks behind his eyes
 #define FRED_STROKES   1.8f   // swings a second while mining
 static float s_walk, s_stride, s_swing_t;
+// The swing of an ATTACK (D-158) runs on the same stroke curve as the
+// pick, but it is fired by an event rather than held: player_tick counts
+// every swing onto player_t::attack_anim, and this ramps 0 -> 1 once per
+// swing.  1.0 means nothing is swinging.
+static float     s_attack_t = 1.0f;
+static uint32_t  s_attack_seen;
 // The `replay_third` test scene: third person for this run only, without
 // touching the player's settings.txt.
 static bool  s_force_third;
@@ -1230,8 +1237,10 @@ static bool enter_world(int slot, bool create, char const* name, uint32_t seed) 
         memcpy(s_player.inv.slot, s_saved.inv, sizeof(s_player.inv.slot));
         memcpy(s_player.inv.seen, s_saved.seen, sizeof(s_player.inv.seen));
         s_player.inv.selected = (int)s_saved.inv_selected;
+        memcpy(s_player.equip, s_saved.equip, sizeof(s_player.equip));
     }
     s_player.inv.open = false;
+    s_player.equip_cursor = -1;
 
     // WHERE THEY WERE, exactly, if they were anywhere. Settled on the
     // first frame their chunk is resident (on_update), because until
@@ -1635,6 +1644,7 @@ static void save_world_state(void) {
     memcpy(s_saved.inv, s_player.inv.slot, sizeof(s_saved.inv));
     memcpy(s_saved.seen, s_player.inv.seen, sizeof(s_saved.seen));
     s_saved.inv_selected = s_player.inv.selected;
+    memcpy(s_saved.equip, s_player.equip, sizeof(s_saved.equip));
     int64_t const now    = (int64_t)time(NULL);
     if (now > 0) s_meta.last_played = now;
     // Which dimension the next session opens in. The only field
@@ -2423,10 +2433,15 @@ static void on_update(float dt, void* user) {
     // day and a minute (game/maker.h).
     if (maker_ui_active()) maker_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
     if (stove_ui_active()) stove_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
+    // The smithing forge, which is the one machine here that stops by
+    // itself (game/forge.h): looking at it IS it running, and not looking
+    // at it is what a job waits through.
+    if (smith_ui_active()) smith_ui_update(&s_player.inv, (uint32_t)s_meta.time_of_day);
     if (bench_ui_active()) bench_ui_update(&s_player.inv);
     if (cheat_ui_active()) cheat_ui_update(&s_player.inv);
     s_player.ui_open = craft_ui_active() || furnace_ui_active() || chest_ui_active() || bench_ui_active() ||
-                       cheat_ui_active() || composter_ui_active() || maker_ui_active() || stove_ui_active();
+                       cheat_ui_active() || composter_ui_active() || maker_ui_active() || stove_ui_active() ||
+                       smith_ui_active();
 
     // The menus. Whatever changes the world or the game's running state
     // comes back as a command and is acted on here, in one place.
@@ -2612,12 +2627,16 @@ static void on_update(float dt, void* user) {
             } else if (s_player.used_block == BLK_STOVE && !stove_ui_active()) {
                 s_player.inv.open = false;
                 stove_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
+            } else if (s_player.used_block == BLK_SMITH && !smith_ui_active()) {
+                s_player.inv.open = false;
+                smith_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
             } else if ((s_player.used_block == BLK_CHEST || s_player.used_block == BLK_TRASH ||
                         // THE STOVE'S OWN CHEST IS A CHEST (D-110): the
                         // same record, the same screen. Walking up to
                         // the chest end of your kitchen and finding it
                         // inert would be a puzzle with no answer.
-                        s_player.used_block == BLK_STOVE_CHEST) &&
+                        s_player.used_block == BLK_STOVE_CHEST ||
+                        s_player.used_block == BLK_SMITH_CHEST) &&
                        !chest_ui_active()) {
                 s_player.inv.open = false;
                 chest_ui_open(s_player.aim.x, s_player.aim.y, s_player.aim.z);
@@ -2654,6 +2673,18 @@ static void on_update(float dt, void* user) {
         s_stride += (want - s_stride) * fminf(dt * 8.0f, 1.0f);
         s_walk += dt * 9.0f * s_stride;
         s_swing_t = s_player.mining ? s_swing_t + dt * FRED_STROKES : 0.0f;
+        // A swing the player just landed: start the arm and play the sound
+        // that matches whether anything was there.  Only a HIGHER count is
+        // a new swing -- a lower one is player_reset() starting a life over,
+        // which must not clang.
+        if (s_player.attack_anim > s_attack_seen) {
+            s_attack_seen = s_player.attack_anim;
+            s_attack_t    = 0.0f;
+            sfx_play(s_player.attack_hit ? SFX_CLANG : SFX_SWING);
+        } else if (s_player.attack_anim != s_attack_seen) {
+            s_attack_seen = s_player.attack_anim;
+        }
+        if (s_attack_t < 1.0f) s_attack_t += dt * FRED_STROKES;
 
         // THIRD PERSON: behind him along the line he looks down, pulled
         // in when something is in the way so the camera never ends up in
@@ -2724,6 +2755,10 @@ static void on_input(bsp_input_event_t const* ev, void* user) {
     }
     if (stove_ui_active()) {
         stove_ui_event(ev);
+        return;
+    }
+    if (smith_ui_active()) {
+        smith_ui_event(ev);
         return;
     }
     if (maker_ui_active()) {
@@ -3088,7 +3123,22 @@ static void on_render(pax_buf_t* fb, void* user) {
     // third. Lit by the cell he is in, like the world round him.
     if (s_app == APP_PLAY && s_cam_effective == CAM_PLAYER) {
         fred_hold_t const hold  = fred_hold_for(inv_held(&s_player.inv)->item);
-        float const       swing = s_player.mining ? fred_stroke(s_swing_t) : 0.0f;
+        float swing = s_player.mining ? fred_stroke(s_swing_t) : 0.0f;
+        // An attack swing takes the arm through the same arc; whichever of
+        // the two is further along wins, so mining and hitting never fight.
+        if (s_attack_t < 1.0f) swing = fmaxf(swing, fred_stroke(s_attack_t));
+        // What he is wearing (D-158): the shells go over his existing parts,
+        // each in the colour of the metal it is made of, so an iron chest
+        // with titanium boots looks like that.
+        static uint8_t const ARM_BIT[EQUIP_SLOTS] = {FRED_ARM_HEAD, FRED_ARM_CHEST, FRED_ARM_LEGS, FRED_ARM_FEET};
+        uint8_t  armour = 0;
+        uint32_t argb[EQUIP_SLOTS] = {0, 0, 0, 0};
+        for (int i = 0; i < EQUIP_SLOTS; i++) {
+            inv_slot_t const* e = &s_player.equip[i];
+            if (e->item == 0) continue;
+            armour |= ARM_BIT[i];
+            argb[i]  = item_def(e->item).argb;
+        }
         if (third_person()) {
             double px, py, pz;
             float  pyaw, ppitch;
@@ -3108,7 +3158,9 @@ static void on_render(pax_buf_t* fb, void* user) {
                 .head_pitch  = ppitch,
                 .hold        = hold,
                 .left_handed = left_handed(),
-                .crouch      = crouch};
+                .crouch      = crouch,
+                .armour      = armour,
+                .armour_argb = {argb[0], argb[1], argb[2], argb[3]}};
             fred_submit(&root, &pose,
                         world_light((int32_t)floor(px), (int32_t)floor(py - 0.6), (int32_t)floor(pz)));
         } else {
@@ -3184,6 +3236,7 @@ static void on_render(pax_buf_t* fb, void* user) {
         if (composter_ui_active()) composter_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
         if (maker_ui_active()) maker_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
         if (stove_ui_active()) stove_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
+        if (smith_ui_active()) smith_ui_draw(fb, &s_player.inv, (uint32_t)s_meta.time_of_day);
         if (chest_ui_active()) chest_ui_draw(fb, &s_player.inv);
         if (bench_ui_active()) bench_ui_draw(fb, &s_player.inv);
         if (cheat_ui_active()) cheat_ui_draw(fb);
@@ -3217,6 +3270,31 @@ static void on_render(pax_buf_t* fb, void* user) {
             }
             char const* const line = T(key);
             hud_text_lines(fb, &line, 1);
+        } else if (s_player.equip_msg_ticks > 0) {
+            // WHAT A PRESS OF ENTER IN THE INVENTORY DID (Part S, D-158).
+            // Same argument as every line above: putting a chestplate on and
+            // failing to put it on look identical from the world, and this is
+            // the only screen where the difference is even possible.
+            static char line[96];
+            char const* p = T(SM_STR_EQUIP_NOT_ARMOUR);
+            switch (s_player.equip_msg) {
+                case EQUIP_MSG_ON:
+                    i18n_fmt(line, sizeof(line), SM_STR_EQUIP_ON, T(item_label(s_player.equip_msg_item)));
+                    p = line;
+                    break;
+                case EQUIP_MSG_OFF:
+                    i18n_fmt(line, sizeof(line), SM_STR_EQUIP_OFF, T(item_label(s_player.equip_msg_item)));
+                    p = line;
+                    break;
+                case EQUIP_MSG_NO_ROOM: p = T(SM_STR_EQUIP_NO_ROOM); break;
+                case EQUIP_MSG_BROKE:
+                    i18n_fmt(line, sizeof(line), SM_STR_EQUIP_BROKE, T(item_label(s_player.equip_msg_item)));
+                    p = line;
+                    break;
+                case EQUIP_MSG_NOT_ARMOUR:
+                default: break;
+            }
+            hud_text_lines(fb, &p, 1);
         } else if (s_player.hurt_msg_ticks > 0 &&
                    !(s_player.hurt_msg == PLAYER_HURT_MOB && mob_attacker_kind() == MOB_NONE)) {
             // WHY THE HEALTH JUST WENT DOWN (game/player.h). Health is a
@@ -3313,7 +3391,15 @@ static void on_render(pax_buf_t* fb, void* user) {
                 } else {
                     p = T(mob_def(m->kind)->label);
                 }
-                hud_text_lines(fb, &p, 1);
+                // Under that, when the swing could not have hurt anything:
+                // a pickaxe or a shovel is not a weapon (D-158), and "why did
+                // my swing miss" is answered by saying so out loud.
+                char const* lines[2] = {p, NULL};
+                int         n        = 1;
+                if (!item_is_weapon(inv_held(&s_player.inv)->item)) {
+                    lines[n++] = T(SM_STR_ANIMAL_TOOL);
+                }
+                hud_text_lines(fb, lines, n);
             }
         } else if (s_info || replay_recording()) {
             draw_info(fb);

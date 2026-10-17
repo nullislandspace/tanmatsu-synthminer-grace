@@ -48,6 +48,8 @@ static struct {
     // because this colour is what shows when the texture will not load and
     // a titanium vein that draws the same grey as its wall is invisible.
     [VM_TITANIUM_ORE]  = {"titanium_ore.png", 0xFF8E96A8u},
+    [VM_SMITH_TOP]     = {"smith_top.png", 0xFF4E7EA6u},
+    [VM_SMITH_FRONT]   = {"smith_front.png", 0xFF5A8EB0u},
     [VM_LEAVES]        = {"leaves.png", 0xFF3A7026u},
     [VM_COAL]          = {"coal_ore.png", 0xFF606062u},
     [VM_GLASS]         = {"glass.png", 0xFFC8D8DEu},

@@ -76,7 +76,10 @@
 
 // The record maxima are measured, not estimated (F-142), and worldcheck
 // re-measures them against the live tables so these cannot go stale.
-#define BE_RECORD_WORST   1279u  // 44 B of fields + 27 filled slots at 46 B
+#define BE_RECORD_WORST   1306u  // 2 B record header + 45 B of fields + 27 filled slots, at
+                                 // 46 B each for the ten 2-char "sN" keys and 47 B for the
+                                 // seventeen 3-char ones, every slot holding the longest name
+                                 // in the item table (19: "chestplate_titanium")
 #define MOB_RECORD_WORST  119u   // every optional field present
 #define SECTION_FRAME     5u     // u8 id + u32 length
 
@@ -92,7 +95,7 @@
 //
 // What it costs is RAM, always, whatever the data -- four statics in
 // region.c, three CHUNK_PAYLOAD_MAX and one CHUNK_SECTIONS_MAX, so
-// 1,141,626 B, about 1.1 MiB of PSRAM (F-37) against F-22's 20,604 KiB
+// 1,162,362 B, about 1.1 MiB of PSRAM (F-37) against F-22's 20,604 KiB
 // free. The card does not pay it: the directory entry stores the length
 // actually encoded, so a chunk with two pigs still writes ~174 B.
 

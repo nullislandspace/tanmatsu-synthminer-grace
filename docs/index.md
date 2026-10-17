@@ -37,10 +37,12 @@ long a tree takes, why a sheep has stopped giving wool.
 <li><a href="plants/index.html"><b>Plants and farming</b><span>The hoe, wet soil, five crops, and trees that grow back.</span></a></li>
 <li><a href="animals/index.html"><b>Animals</b><span>Pigs, cows, sheep and dogs: finding, feeding, breeding, shearing.</span></a></li>
 <li><a href="tools/index.html"><b>Tools</b><span>Four kinds, three tiers, and what each one is actually for.</span></a></li>
-<li><a href="devices/index.html"><b>Machines and furniture</b><span>Furnace, chests, composter, the two makers, the kitchen stove, the bed, the mine shaft.</span></a></li>
+<li><a href="tools/sword.html"><b>Sword and armour</b><span>The only thing that hurts a creature, and the four pieces that decide how much a hit costs you.</span></a></li>
+<li><a href="devices/index.html"><b>Machines and furniture</b><span>Furnace, chests, composter, the two makers, the kitchen stove, the smithing forge, the bed, the mine shaft.</span></a></li>
 <li><a href="mechanics/hunger.html"><b>Hunger</b><span>Drumsticks, the invisible reserve, and why a good meal lasts longer.</span></a></li>
 <li><a href="mechanics/fishing.html"><b>Fishing</b><span>Worms for bait, and a bite you have to strike.</span></a></li>
 <li><a href="recipes.html"><b>Every recipe</b><span>One table per station: hands, table, furnace, makers, stove.</span></a></li>
+<li><a href="devices/smithing-forge.html"><b>Smithing forge</b><span>Twelve diamonds, one item per press of Start, and a day or two of waiting.</span></a></li>
 <li><a href="food.html"><b>Every food</b><span>Thirteen dishes and eight other edibles, with what each is worth.</span></a></li>
 </ul>
 
@@ -51,7 +53,8 @@ of things that each need the one before it, and the chain is most of the game:
 
 **wood** → a crafting table → a wooden pickaxe → **stone** → a stone pickaxe →
 **iron ore** → a furnace → **iron** → a bucket, shears and a stove → **milk,
-wool and cooked food** → a **mine shaft** → **the Deep Mine** → **diamond**.
+wool and cooked food** → a **mine shaft** → **the Deep Mine** → **diamond and
+titanium** → a **smithing forge** → **a sword and armour**.
 
 Off to the side of that spine: a hoe turns grass into a field, a composter turns
 the weeds into fertiliser *and* fishing bait, a bucket turns a cow into cheese,
@@ -60,6 +63,10 @@ and a bone turns a wild dog into company.
 The last link is the newest one, and it is a loop rather than an end: the iron you
 dig upstairs buys the shaft, and the shaft opens onto iron three times as dense as
 anything on the hillside.
+
+The end of the chain is gear rather than a place. Twelve diamonds buy the forge, the
+forge spends iron or titanium on a sword and four pieces of armour, and the armour is
+what turns the Deep Mine from somewhere you visit carefully into somewhere you stay.
 
 ## Numbers worth knowing
 

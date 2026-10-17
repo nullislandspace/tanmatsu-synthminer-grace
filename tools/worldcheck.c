@@ -51,6 +51,7 @@
 #include "world/tree.h"
 #include "game/maker.h"
 #include "game/stove.h"
+#include "game/forge.h"
 #include "game/mob.h"
 #include "game/daytime.h"
 #include "world/fluid.h"
@@ -1393,7 +1394,12 @@ static void check_worst_chunk(void) {
     }
     CHECK(blockent_count() == BE_MAX, "%d block entities instead of %d", blockent_count(), BE_MAX);
     CHECK(mob_live() == MOB_MAX, "%d creatures instead of %d", mob_live(), MOB_MAX);
-    CHECK(strlen(item_def(worst_item).name) == 18, "the longest item name is now %s", item_def(worst_item).name);
+    // PINNED, on purpose. The longest name is what makes a chest record the
+    // biggest in the format, so a new item that beats it (19: Part S's
+    // "chestplate_titanium") means BE_RECORD_WORST in chunk_codec.h has to be
+    // re-measured -- and this line is what makes that impossible to miss.
+    CHECK(strlen(item_def(worst_item).name) == 19, "the longest item name is now %s",
+          item_def(worst_item).name);
 
     static uint8_t sec[CHUNK_SECTIONS_MAX];
     size_t const be = blockent_encode_chunk(cx, cz, sec, sizeof(sec));
@@ -6984,14 +6990,19 @@ static void check_animals(void) {
     item_entity_reset();
     mob_reset();
     int const beef_cow = mob_spawn(MOB_COW, 6.5, 20.0, 6.5, false);
-    int       blows    = 0;
-    while (mob_at(beef_cow)->alive && blows < 100) {
+    // WITH AN IRON SWORD, because an iron sword is what a kill now needs
+    // (D-158). Seven a blow against ten health is two blows, and the count is
+    // pinned so that a retune of either number is a decision rather than
+    // something that drifted.
+    int  blows = 0;
+    bool dead  = false;
+    while (!dead && blows < 100) {
         mob_at_mut(beef_cow)->hurt = 0;  // the flinch is a timer, not a shield against the test
-        mob_hit(beef_cow, mob_damage_of(0), 6.5, 4.0);
+        dead = mob_hit(beef_cow, mob_damage_of(ITEM_SWORD_IRON), 6.5, 4.0);
         blows++;
     }
-    CHECK(!mob_at(beef_cow)->alive, "a cow would not die");
-    CHECK(blows == mob_def(MOB_COW)->health_max, "a bare fist took %d blows, not %d", blows,
+    CHECK(dead, "an iron sword would not kill a cow");
+    CHECK(blows == 2, "an iron sword took %d blows on a %d-health cow, not 2", blows,
           mob_def(MOB_COW)->health_max);
     CHECK(item_entity_live() > 0, "a dead cow dropped nothing");
     int found = 0;
@@ -7002,10 +7013,31 @@ static void check_animals(void) {
     CHECK(found >= mob_def(MOB_COW)->drop_min && found <= mob_def(MOB_COW)->drop_max,
           "a cow dropped %d beef, outside %u..%u", found, mob_def(MOB_COW)->drop_min, mob_def(MOB_COW)->drop_max);
 
-    // AN IRON AXE IS FOUR BLOWS OF THE TEN. Not a balance test: it is
-    // the claim that what is in the hand matters at all.
-    CHECK(mob_damage_of(ITEM_AXE_IRON) > mob_damage_of(0), "an iron axe hits no harder than a fist");
-    CHECK(mob_damage_of(ITEM_HOE_IRON) == mob_damage_of(0), "a hoe is a weapon");
+    // ONLY A WEAPON HURTS A CREATURE (D-158), and the line is drawn by the
+    // item rather than by the creature: the user's sentence is "Axes can't
+    // kill monsters or animals anymore", so a cow is inside the rule exactly
+    // as a zombie is. Every tool at every tier, a block, a meal and an empty
+    // hand are all 0.
+    CHECK(mob_damage_of(0) == 0, "an empty hand still hits for %d", mob_damage_of(0));
+    CHECK(mob_damage_of(ITEM_HOE_IRON) == 0, "a hoe is a weapon");
+    CHECK(mob_damage_of(ITEM_AXE_TITANIUM) == 0, "a titanium axe is a weapon");
+    CHECK(mob_damage_of(ITEM_PICK_IRON) == 0, "an iron pickaxe is a weapon");
+    CHECK(mob_damage_of(ITEM_SHOVEL_STONE) == 0, "a stone shovel is a weapon");
+    CHECK(mob_damage_of(ITEM_SWORD_IRON) < mob_damage_of(ITEM_SWORD_TITANIUM),
+          "a titanium sword (%d) does not hit harder than an iron one (%d)", mob_damage_of(ITEM_SWORD_TITANIUM),
+          mob_damage_of(ITEM_SWORD_IRON));
+    // AND THE COW LIVES THROUGH A FIST, which is the gate: meat wants a sword,
+    // and a sword wants the forge.
+    // A SECOND COW, because the first one is a corpse.
+    int const stubborn_cow = mob_spawn(MOB_COW, 9.5, 20.0, 6.5, false);
+    CHECK(stubborn_cow >= 0, "the pool would not take a second cow");
+    for (int t = 0; t < 60; t++) {
+        mob_at_mut(stubborn_cow)->hurt = 0;
+        (void)mob_hit(stubborn_cow, mob_damage_of(0), 6.5, 4.0);
+    }
+    CHECK(mob_at(stubborn_cow)->alive, "60 swings of an empty hand killed a cow");
+    CHECK(mob_at(stubborn_cow)->health == mob_def(MOB_COW)->health_max, "an empty hand took %d health off a cow",
+          mob_def(MOB_COW)->health_max - mob_at(stubborn_cow)->health);
 
     // A CALF DROPS NOTHING, or breeding is a meat machine.
     item_entity_reset();
@@ -7312,11 +7344,11 @@ static void check_stove(void) {
     CHECK(world_block(5, 20, 6) == BLK_STOVE_CHEST, "the chest did not come down on the stove's left");
 
     int32_t ox, oy, oz;
-    CHECK(interact_stove_other(6, 20, 6, &ox, &oy, &oz) && ox == 5 && oy == 20 && oz == 6,
+    CHECK(interact_pair_other(6, 20, 6, &ox, &oy, &oz) && ox == 5 && oy == 20 && oz == 6,
           "the stove does not know where its chest is");
-    CHECK(interact_stove_other(5, 20, 6, &ox, &oy, &oz) && ox == 6 && oy == 20 && oz == 6,
+    CHECK(interact_pair_other(5, 20, 6, &ox, &oy, &oz) && ox == 6 && oy == 20 && oz == 6,
           "the chest does not know which stove it belongs to");
-    CHECK(!interact_stove_other(6, 20, 9, NULL, NULL, NULL), "empty air claims to be half a stove");
+    CHECK(!interact_pair_other(6, 20, 9, NULL, NULL, NULL), "empty air claims to be half a stove");
 
     blockent_t* be    = blockent_at(6, 20, 6);
     blockent_t* chest = blockent_at(5, 20, 6);
@@ -7334,9 +7366,9 @@ static void check_stove(void) {
     h2.face  = MESH_DIR_PY;
     CHECK(interact_place_dir(&h2, BLK_STOVE, NULL, 0.0f, 1.0f), "a second stove would not go down");
     CHECK(world_block(7, 20, 6) == BLK_STOVE_CHEST, "the second stove's chest is missing");
-    CHECK(interact_stove_other(8, 20, 6, &ox, NULL, NULL) && ox == 7,
+    CHECK(interact_pair_other(8, 20, 6, &ox, NULL, NULL) && ox == 7,
           "a stove in a row picked up its neighbour's chest");
-    CHECK(interact_stove_other(7, 20, 6, &ox, NULL, NULL) && ox == 8,
+    CHECK(interact_pair_other(7, 20, 6, &ox, NULL, NULL) && ox == 8,
           "a chest in a row picked up the wrong stove");
     interact_break(8, 20, 6, ITEM_PICK_IRON);
     item_entity_reset();
@@ -7483,6 +7515,339 @@ static void check_stove(void) {
     CHECK(blockent_at(5, 20, 6) == NULL && blockent_at(6, 20, 6) == NULL,
           "breaking the pair left a record behind in the pool");
     printf("  placed as two, saved as two, broken as two, dropped as one stove\n");
+    item_entity_reset();
+    blockent_clear();
+}
+
+// =====================================================================
+//  THE SMITHING FORGE (step 69, D-158 and D-160)
+// ---------------------------------------------------------------------
+//  The one machine in this game with a Start and a stop, which is why it
+//  gets its own section instead of riding along with the stove. Four
+//  things, and each one is a rule the user asked for out loud:
+//
+//    ONE ITEM   -- Start makes exactly one thing and goes back to idle,
+//                  however long the chunk was left alone;
+//    THE METAL  -- the ingots leave the chest AT START and belong to the
+//                  job, so a robbed or collapsed forge still finishes;
+//    THE COAL   -- a forge that runs dry mid-job keeps its progress and
+//                  waits, which neither the furnace nor the stove does;
+//    THE CLOCK  -- a titanium item is 48000 ticks, past the 32767 a
+//                  signed 16-bit tag can hold, so the save carries a u32.
+// =====================================================================
+static void check_forge(void) {
+    printf("the smithing forge: one item per Start, metal committed up front\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    CHECK(flat_world(20) != NULL, "the forge world would not become resident");
+    for (int x = 0; x < 16; x++)
+        for (int z = 0; z < 16; z++) set_block(x, 19, z, BLK_GRASS, 0);
+    blockent_clear();
+    item_entity_reset();
+
+    // --- What it can make, and how long each takes -------------------
+    CHECK(forge_item_count() == 10, "the forge can make %d items, expected iron's five and titanium's five",
+          forge_item_count());
+    CHECK(forge_job_ticks(ITEM_SWORD_IRON) == DAY_TICKS, "an iron sword takes %u ticks, expected a day",
+          (unsigned)forge_job_ticks(ITEM_SWORD_IRON));
+    CHECK(forge_job_ticks(ITEM_BOOTS_TITANIUM) == 2u * DAY_TICKS,
+          "a titanium item takes %u ticks, expected two days", (unsigned)forge_job_ticks(ITEM_BOOTS_TITANIUM));
+    // It is the METAL that sets the clock, not the piece.
+    CHECK(forge_job_ticks(ITEM_SWORD_TITANIUM) == forge_job_ticks(ITEM_CHESTPLATE_TITANIUM),
+          "a titanium sword and a titanium chestplate do not take the same time");
+    CHECK(forge_job_ticks(ITEM_PICK_TITANIUM) == 0, "a pickaxe is the bench's, not the forge's");
+    CHECK(forge_job_ticks(BLK_IRON_ORE) == 0, "ore is the furnace's, not the forge's");
+
+    // --- One item, two blocks ----------------------------------------
+    //
+    // Facing +z, so the chest lands on the player's LEFT, which is -x --
+    // the same shape the stove has (D-110) and the same facings.
+    ray_hit_t hit = {0};
+    hit.x = 6, hit.y = 19, hit.z = 6;
+    hit.px = 6, hit.py = 20, hit.pz = 6;
+    hit.block = BLK_GRASS;
+    hit.face  = MESH_DIR_PY;
+    CHECK(interact_place_dir(&hit, BLK_SMITH, NULL, 0.0f, 1.0f), "a forge would not go down");
+    CHECK(world_block(6, 20, 6) == BLK_SMITH, "the forge is not where it was put");
+    CHECK(world_block(5, 20, 6) == BLK_SMITH_CHEST, "the forge's chest did not come down on its left");
+
+    int32_t ox, oy, oz;
+    CHECK(interact_pair_other(6, 20, 6, &ox, &oy, &oz) && ox == 5 && oy == 20 && oz == 6,
+          "the forge does not know where its chest is");
+    CHECK(interact_pair_other(5, 20, 6, &ox, &oy, &oz) && ox == 6 && oy == 20 && oz == 6,
+          "the forge's chest does not know which forge it belongs to");
+
+    blockent_t* be    = blockent_at(6, 20, 6);
+    blockent_t* chest = blockent_at(5, 20, 6);
+    CHECK(be != NULL && be->kind == BE_SMITH, "the forge has no record");
+    CHECK(chest != NULL && chest->kind == BE_CHEST, "the forge's chest is not a chest");
+    if (be == NULL || chest == NULL) return;
+
+    // NO ROOM, NO FORGE: half a smithy is a machine that can never be
+    // told to make anything, so nothing goes down at all.
+    set_block(11, 20, 6, BLK_STONE, ST_PLACED);  // where the chest would go
+    ray_hit_t h3 = {0};
+    h3.x = 12, h3.y = 19, h3.z = 6;
+    h3.px = 12, h3.py = 20, h3.pz = 6;
+    h3.block = BLK_GRASS;
+    h3.face  = MESH_DIR_PY;
+    CHECK(!interact_place_dir(&h3, BLK_SMITH, NULL, 0.0f, 1.0f),
+          "a forge went down with nowhere for its chest");
+    CHECK(world_block(12, 20, 6) == BLK_AIR, "a refused forge left half of itself behind");
+    CHECK(blockent_at(12, 20, 6) == NULL, "a refused forge kept a record from the pool");
+
+    // --- Why it is standing still, which is the line under the slots --
+    be->stamp = 0;
+    CHECK(forge_idle_reason(be, chest) == FORGE_IDLE_NO_PICK, "a forge with nothing chosen does not say so");
+    CHECK(!forge_start(be, chest), "a forge started with nothing chosen");
+
+    CHECK(forge_set_pick(be, ITEM_PICK_IRON) == false, "the forge agreed to make a pickaxe");
+    CHECK(forge_set_pick(be, ITEM_HELMET_IRON), "the forge would not choose an iron helmet");
+    CHECK(forge_pick(be) != NULL && forge_pick(be)->out == ITEM_HELMET_IRON, "the forge forgot its choice");
+
+    chest->slot[0] = (inv_slot_t){ITEM_IRON_INGOT, 3, 0};  // a helmet wants 4
+    CHECK(forge_idle_reason(be, chest) == FORGE_IDLE_NO_METAL, "a forge short of metal does not say so");
+    int      need = 0;
+    uint16_t what = forge_missing(be, chest, &need);
+    CHECK(what == ITEM_IRON_INGOT && need == 1, "the forge named %u x %u as missing, wanted 1 iron ingot", need,
+          what);
+    CHECK(!forge_start(be, chest), "a forge started with three of the four ingots it needs");
+    CHECK(forge_idle_reason(be, NULL) == FORGE_IDLE_NO_CHEST,
+          "a forge with no chest complains about metal instead");
+
+    chest->slot[0].count = 4;
+    CHECK(forge_idle_reason(be, chest) == FORGE_IDLE_NO_FUEL, "a forge with nothing to burn does not say so");
+    CHECK(!forge_start(be, chest), "a forge started with nothing to burn");
+
+    be->slot[BE_SMITH_FUEL] = (inv_slot_t){ITEM_COAL, 15, 0};
+    CHECK(forge_idle_reason(be, chest) == FORGE_IDLE_READY, "a forge that could start does not say so");
+
+    // --- Start: the metal moves, the selector locks -------------------
+    //
+    // 15 coal because a coal is 1600 ticks and an iron item is 24000
+    // (D-159). The forge lights ONE lump at a time, exactly as the
+    // furnace does, so this is fifteen short fires rather than one day
+    // of fire.
+    CHECK(forge_start(be, chest), "the forge would not start");
+    CHECK(be->job == 1u, "a job that has started reads %u ticks spent, expected 1", (unsigned)be->job);
+    CHECK(forge_metal_count(be) == 4, "Start committed %d ingots, expected 4", forge_metal_count(be));
+    CHECK(be->slot[BE_SMITH_METAL].item == ITEM_IRON_INGOT, "the forge committed the wrong metal");
+    CHECK(forge_chest_count(chest, ITEM_IRON_INGOT) == 0, "the chest still holds the ingots Start spent");
+    CHECK(forge_busy(be), "a running job does not read as busy");
+
+    // THE SELECTOR IS LOCKED (D-160), and it is not a preference: the
+    // ingots in the forge's own slot were spent on the item the selector
+    // names, so moving it mid-job would mint metal out of nothing.
+    CHECK(!forge_set_pick(be, ITEM_SWORD_IRON), "a running forge let its recipe change");
+    CHECK(be->pick == ITEM_HELMET_IRON, "a refused recipe change still moved the selector");
+    CHECK(!forge_start(be, chest), "a forge took a second job while running one");
+
+    // THE CHEST IS IRRELEVANT NOW. Something else goes into it and the
+    // helmet still lands, which is the whole point of committing the
+    // metal up front (D-160).
+    chest->slot[1] = (inv_slot_t){ITEM_WHEAT, 5, 0};
+
+    // --- One item, one day --------------------------------------------
+    forge_catch_up(be, DAY_TICKS - 200);
+    CHECK(be->slot[BE_SMITH_OUT].count == 0, "the forge paid out before its day was up");
+    CHECK(forge_progress_pct(be) >= 99, "the progress bar reads %d%% a tick before the end",
+          forge_progress_pct(be));
+    CHECK(forge_busy(be), "a forge 200 ticks from finishing its job does not read as busy");
+
+    forge_catch_up(be, DAY_TICKS);
+    CHECK(be->slot[BE_SMITH_OUT].item == ITEM_HELMET_IRON && be->slot[BE_SMITH_OUT].count == 1,
+          "a day did not make one helmet");
+    CHECK(be->job == 0u, "a finished job still reads %u ticks spent", (unsigned)be->job);
+    CHECK(forge_metal_count(be) == 0, "a finished forge still holds %d ingots", forge_metal_count(be));
+    CHECK(forge_chest_count(chest, ITEM_WHEAT) == 5, "the forge ate %d of the chest's wheat",
+          forge_chest_count(chest, ITEM_WHEAT));
+
+    // ONE ITEM, HOWEVER LONG IT WAS LEFT. A week of burning coal must
+    // not turn one Start into seven helmets -- this is the machine the
+    // user described, and it is the one place the forge refuses to be a
+    // furnace.
+    forge_catch_up(be, DAY_TICKS + 7u * DAY_TICKS);
+    CHECK(be->slot[BE_SMITH_OUT].count == 1, "one Start made %d helmets", be->slot[BE_SMITH_OUT].count);
+    CHECK(be->job == 0u, "a forge that made its item started another one on its own");
+
+    // A FULL OUTPUT WAITS, IT DOES NOT LOSE THE ITEM.
+    chest->slot[0] = (inv_slot_t){ITEM_IRON_INGOT, 4, 0};
+    CHECK(forge_idle_reason(be, chest) == FORGE_IDLE_FULL, "a forge with nowhere to put its helmet does not say so");
+    CHECK(!forge_start(be, chest), "a forge started with its output full");
+    CHECK(forge_chest_count(chest, ITEM_IRON_INGOT) == 4, "a refused Start spent the chest anyway");
+
+    // --- A starved forge keeps its progress (D-160) -------------------
+    //
+    // THE ONE PLACE IT DISAGREES WITH THE FURNACE. furnace_catch_up()
+    // and stove_catch_up() both zero their progress when they go cold;
+    // this one holds what it spent and finishes when the next coal
+    // arrives. One lump, then ten days of nothing, then the coal.
+    ray_hit_t h2 = {0};
+    h2.x = 2, h2.y = 19, h2.z = 2;
+    h2.px = 2, h2.py = 20, h2.pz = 2;
+    h2.block = BLK_GRASS;
+    h2.face  = MESH_DIR_PY;
+    CHECK(interact_place_dir(&h2, BLK_SMITH, NULL, 0.0f, 1.0f), "the starved forge would not go down");
+    blockent_t* f2 = blockent_at(2, 20, 2);
+    blockent_t* c2 = blockent_at(1, 20, 2);
+    CHECK(f2 != NULL && c2 != NULL, "the starved forge has no records");
+    if (f2 != NULL && c2 != NULL) {
+        f2->stamp                     = 0;
+        f2->slot[BE_SMITH_FUEL]       = (inv_slot_t){ITEM_COAL, 1, 0};
+        c2->slot[0]                   = (inv_slot_t){ITEM_IRON_INGOT, 2, 0};
+        CHECK(forge_set_pick(f2, ITEM_SWORD_IRON), "the starved forge would not choose a sword");
+        CHECK(forge_start(f2, c2), "the starved forge would not start");
+
+        forge_catch_up(f2, 1600);  // the one lump, burned
+        CHECK(f2->job == 1601u, "a starved forge kept %u ticks of its job, expected 1601", (unsigned)f2->job);
+        CHECK(forge_progress_pct(f2) == 6, "a starved forge reads %d%% done, expected 6", forge_progress_pct(f2));
+        CHECK(forge_idle_reason(f2, c2) == FORGE_IDLE_WAITING,
+              "a forge starved mid-job does not say it is waiting for coal");
+        CHECK(forge_metal_count(f2) == 2, "a starved forge gave its %d ingots back", forge_metal_count(f2));
+
+        f2->slot[BE_SMITH_FUEL] = (inv_slot_t){ITEM_COAL, 15, 0};
+        forge_catch_up(f2, 1600u + 10u * DAY_TICKS);
+        CHECK(f2->slot[BE_SMITH_OUT].item == ITEM_SWORD_IRON && f2->slot[BE_SMITH_OUT].count == 1,
+              "more coal did not finish the sword that was already half made");
+        CHECK(f2->job == 0u, "a finished sword left the forge mid-job");
+    }
+
+    // --- 48000 ticks, which does not fit a signed 16-bit tag ----------
+    //
+    // `cook' is a u16 saved as i16, so it stops at 32767. A titanium
+    // item is 48000, and a save that clipped it would silently hand the
+    // player back a job that has to start over. This is the regression
+    // test for `blockent_t::job' being a u32 saved as TAG_I32.
+    ray_hit_t h4 = {0};
+    h4.x = 10, h4.y = 19, h4.z = 2;
+    h4.px = 10, h4.py = 20, h4.pz = 2;
+    h4.block = BLK_GRASS;
+    h4.face  = MESH_DIR_PY;
+    CHECK(interact_place_dir(&h4, BLK_SMITH, NULL, 0.0f, 1.0f), "the titanium forge would not go down");
+    blockent_t* f3 = blockent_at(10, 20, 2);
+    blockent_t* c3 = blockent_at(9, 20, 2);
+    CHECK(f3 != NULL && c3 != NULL, "the titanium forge has no records");
+    if (f3 != NULL && c3 != NULL) {
+        f3->stamp                     = 0;
+        f3->slot[BE_SMITH_FUEL]       = (inv_slot_t){ITEM_COAL, 30, 0};  // two days' worth
+        c3->slot[0]                   = (inv_slot_t){ITEM_TITANIUM_INGOT, 6, 0};
+        CHECK(forge_set_pick(f3, ITEM_CHESTPLATE_TITANIUM), "the forge would not choose a titanium chestplate");
+        CHECK(forge_start(f3, c3), "the titanium forge would not start");
+        forge_catch_up(f3, 40000);  // past 32767, and nowhere near its 48000
+        CHECK(f3->job == 40001u, "a titanium job reads %u ticks, expected 40001", (unsigned)f3->job);
+        CHECK(f3->slot[BE_SMITH_OUT].count == 0, "a 40000-tick catch-up finished a 48000-tick job");
+    }
+
+    // --- What it remembers across a save ------------------------------
+    {
+        static uint8_t sec[8192];
+        size_t const   n = blockent_encode_chunk(0, 0, sec, sizeof(sec));
+        CHECK(n > 0, "a forge and its chest would not encode");
+        blockent_clear();
+        blockent_decode_section(sec + 5, n - 5);
+
+        blockent_t const* a = blockent_at(6, 20, 6);
+        CHECK(a != NULL && a->kind == BE_SMITH, "the forge did not come back from the card");
+        if (a != NULL) {
+            CHECK(a->pick == ITEM_HELMET_IRON, "the forge forgot what it was told to make");
+            CHECK(a->slot[BE_SMITH_OUT].item == ITEM_HELMET_IRON && a->slot[BE_SMITH_OUT].count == 1,
+                  "the forge's finished helmet did not survive");
+        }
+        CHECK(blockent_at(5, 20, 6) != NULL, "the forge's chest did not come back");
+
+        blockent_t const* b2 = blockent_at(2, 20, 2);
+        CHECK(b2 != NULL && b2->slot[BE_SMITH_OUT].item == ITEM_SWORD_IRON,
+              "the starved forge lost the sword it finished");
+
+        blockent_t const* c = blockent_at(10, 20, 2);
+        CHECK(c != NULL, "the titanium forge did not come back from the card");
+        if (c != NULL) {
+            CHECK(c->pick == ITEM_CHESTPLATE_TITANIUM, "the titanium forge forgot its recipe");
+            CHECK(c->job == 40001u, "the save brought back %u ticks of a 48000-tick job", (unsigned)c->job);
+            CHECK(forge_metal_count(c) == 6, "the save brought back %d of the 6 committed ingots",
+                  forge_metal_count(c));
+        }
+
+        // And the job goes on from where the card left it.
+        blockent_t* c2 = blockent_at(10, 20, 2);
+        if (c2 != NULL) {
+            forge_catch_up(c2, 40000u + 2u * DAY_TICKS);
+            CHECK(c2->slot[BE_SMITH_OUT].item == ITEM_CHESTPLATE_TITANIUM && c2->slot[BE_SMITH_OUT].count == 1,
+                  "a job resumed from the card did not finish");
+            CHECK(c2->job == 0u, "a resumed job did not stop when it was done");
+        }
+    }
+
+    // --- Breaking it: the time is lost, the metal is not --------------
+    //
+    // A FORGE BURIED BY A COLLAPSED TUNNEL DOES NOT ALSO SWALLOW THE
+    // IRON (D-160). The ingots live in the forge's own record from the
+    // moment Start is pressed, and breaking it puts them back on the
+    // ground; what is gone is the clock.
+    ray_hit_t h5 = {0};
+    h5.x = 13, h5.y = 19, h5.z = 10;
+    h5.px = 13, h5.py = 20, h5.pz = 10;
+    h5.block = BLK_GRASS;
+    h5.face  = MESH_DIR_PY;
+    CHECK(interact_place_dir(&h5, BLK_SMITH, NULL, 0.0f, 1.0f), "the forge to be broken would not go down");
+    blockent_t* f4 = blockent_at(13, 20, 10);
+    blockent_t* c4 = blockent_at(12, 20, 10);
+    if (f4 != NULL && c4 != NULL) {
+        f4->stamp                     = 0;
+        f4->slot[BE_SMITH_FUEL]       = (inv_slot_t){ITEM_COAL, 30, 0};
+        c4->slot[0]                   = (inv_slot_t){ITEM_TITANIUM_INGOT, 5, 0};
+        CHECK(forge_set_pick(f4, ITEM_LEGGINGS_TITANIUM), "the forge would not choose titanium leggings");
+        CHECK(forge_start(f4, c4), "the forge to be broken would not start");
+        forge_catch_up(f4, 5000);  // a third of the way through
+
+        item_entity_reset();
+        break_result_t const r = interact_break(13, 20, 10, ITEM_PICK_IRON);  // the FORGE half
+        CHECK(r.ok, "a forge mid-job would not break");
+        CHECK(world_block(13, 20, 10) == BLK_AIR && world_block(12, 20, 10) == BLK_AIR,
+              "breaking one half of the forge left the other");
+        int forges = 0, titanium = 0;
+        for (int i = 0; i < ITEM_ENTITY_MAX; i++) {
+            item_entity_t const* e = item_entity_at(i);
+            if (e == NULL || !e->alive) continue;
+            if (e->item == BLK_SMITH) forges += e->count;
+            if (e->item == ITEM_TITANIUM_INGOT) titanium += e->count;
+        }
+        CHECK(forges == 1, "breaking a forge dropped %d of them", forges);
+        CHECK(titanium == 5, "a broken forge kept %d of its 5 committed ingots", titanium);
+        CHECK(blockent_at(13, 20, 10) == NULL && blockent_at(12, 20, 10) == NULL,
+              "breaking the forge left a record behind in the pool");
+    }
+
+    // WITH AN AXE, AT THE CHEST END. The wrong tool for the stone half,
+    // and it has to work anyway: a pair breaks as one thing, and a
+    // smithy taken down from the wrong end must not evaporate twelve
+    // diamonds (blocks.c, BLK_SMITH has no tool level for this reason).
+    be    = blockent_at(6, 20, 6);
+    chest = blockent_at(5, 20, 6);
+    CHECK(be != NULL && chest != NULL, "the pair is not in the pool after the save round trip");
+    if (be != NULL && chest != NULL) {
+        chest->slot[0] = (inv_slot_t){ITEM_IRON_INGOT, 11, 0};
+        item_entity_reset();
+        break_result_t const r = interact_break(5, 20, 6, ITEM_AXE_IRON);  // the CHEST half
+        CHECK(r.ok, "the forge's chest would not break");
+        CHECK(world_block(6, 20, 6) == BLK_AIR && world_block(5, 20, 6) == BLK_AIR,
+              "breaking the forge's chest left the forge standing");
+        int forges = 0, ingots = 0, helmets = 0;
+        for (int i = 0; i < ITEM_ENTITY_MAX; i++) {
+            item_entity_t const* e = item_entity_at(i);
+            if (e == NULL || !e->alive) continue;
+            if (e->item == BLK_SMITH) forges += e->count;
+            if (e->item == ITEM_IRON_INGOT) ingots += e->count;
+            if (e->item == ITEM_HELMET_IRON) helmets += e->count;
+        }
+        CHECK(forges == 1, "breaking a forge dropped %d of them, expected one for two blocks", forges);
+        CHECK(ingots == 11, "the chest kept %d of its 11 ingots", ingots);
+        CHECK(helmets == 1, "the forge kept %d of its 1 helmet", helmets);
+        CHECK(blockent_at(5, 20, 6) == NULL && blockent_at(6, 20, 6) == NULL,
+              "breaking the pair left a record behind in the pool");
+    }
+
+    printf("  one item per Start, metal committed up front, progress kept when the coal runs out\n");
     item_entity_reset();
     blockent_clear();
 }
@@ -11386,6 +11751,7 @@ int main(void) {
     check_makers();
     check_saplings();
     check_stove();
+    check_forge();
     check_hunger();
     check_fall();
     check_replay();

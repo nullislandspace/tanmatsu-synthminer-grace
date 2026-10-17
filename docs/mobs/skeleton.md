@@ -1,13 +1,13 @@
 ---
 title: Skeleton
-summary: The weaker of the two — 16 health, 2 damage, and the quicker one to put down.
+summary: The weaker of the two — 16 health, 8 damage, and the quicker one to put down.
 ---
 
 | | |
 |---|---|
 | **Found in** | The [Deep Mine](../world/deep-mine.html) only — 40% of a pack's members |
 | **Health** | 16 — 8 hearts |
-| **Damage** | 2 per swing, one swing a second |
+| **Damage** | **8 per swing** — four hearts, one swing a second |
 | **Notices you at** | 16 blocks, and gives up at 26 |
 | **Walks** | 1.1 blocks a second, **1.5 when it is coming at you** |
 | **Size** | 0.6 wide, 1.9 tall — taller than you are |
@@ -21,28 +21,24 @@ in it at your rate.
 
 **It has no ranged attack.** Not yet. A skeleton is not an archer; it is a thinner,
 weaker, slightly slower zombie with a different colour. What it is good at is being
-*cheaper to kill* — 16 health against 20 — so a pack of three skeletons is a fight you
-can win with a stone pickaxe and a zombie pack is not.
+*cheaper to kill* — 16 health against 20, which is two swings of a titanium sword against
+the zombie's two of 11 damage but three of an iron one.
 
 **It is the one a zombie hits by accident.** A skeleton swung at by a zombie turns on the
-zombie, and it wins that argument: 2 damage a second against a 20-health opponent is a
-slow way to kill one, but a zombie swinging at it deals 3 to a 16-health opponent and
-loses in six seconds.
+zombie, and it loses that argument: a zombie's 10 kills a 16-health skeleton in two
+swings, while the skeleton's 8 needs three swings to kill a zombie.
 
 ## Killing one
 
 | In hand | Damage | Swings | Seconds |
 |---|---|---|---|
-| Fist, or a hoe | 1 | 16 | 16 |
-| Wooden pickaxe | 2 | 8 | 8 |
-| Stone pickaxe | 3 | 6 | 6 |
-| **Iron pickaxe** | 4 | **4** | **4** |
-| Stone axe | 4 | 4 | 4 |
-| **Iron axe** | **5** | **4** | **4** |
+| Everything that is not a sword | **0** | never | never |
+| [Iron sword](../tools/sword.html) | 7 | 3 | 3 |
+| [Titanium sword](../tools/sword.html) | **11** | **2** | **2** |
 
-**Four swings either way with iron.** A skeleton hits twice a second for 2 while you take
-four seconds to kill it, so a single one costs you about 8 health — half your hearts for
-one mob. Two of them is where it stops being an accident.
+**Three swings of an iron sword, and 24 health taken while you take them** — more than
+your whole bar. A skeleton kills an unarmoured player in three swings of its own, so a
+single one is a fight you win only if you are faster than it or wearing something.
 
 ## Why it is worth having in the game at all
 

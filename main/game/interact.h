@@ -118,8 +118,16 @@ bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* 
 // ONE spawn point, which is the overworld's. A bed down there would look
 // like a bed and do nothing.
 bool interact_block_needs_overworld(uint8_t block);
-// THE OTHER HALF OF A STOVE at (x, y, z) -- its chest, given the stove,
-// or its stove, given the chest. False if that is neither.
+// THE OTHER HALF OF A TWO-CELL MACHINE at (x, y, z) -- its chest, given
+// the machine, or the machine, given the chest. False if that is neither.
+//
+// THE STOVE AND THE SMITHING FORGE SHARE THIS, which is the point of the
+// name: a kitchen stove and a forge are the same machine shape -- one
+// working cell and the chest it eats out of, placed together, broken
+// together, opened through the same two faces (D-110, D-158). Splitting
+// this in two would be two functions that differ only in which block ids
+// they will accept, and the one that gets forgotten is the one that
+// leaves an orphan chest holding somebody's ingots.
 //
 // The same trick the bed uses and the whole of D-110's "the two store
 // each other's coordinates": both halves carry the facing that joins
@@ -127,7 +135,7 @@ bool interact_block_needs_overworld(uint8_t block);
 // nothing to keep in a record or write to a card. A partner that is not
 // resident simply is not there, and the caller finds something else in
 // the cell -- which is what makes a pair safe across a chunk border.
-bool interact_stove_other(int32_t x, int32_t y, int32_t z, int32_t* ox, int32_t* oy, int32_t* oz);
+bool interact_pair_other(int32_t x, int32_t y, int32_t z, int32_t* ox, int32_t* oy, int32_t* oz);
 
 // THE OTHER HALF OF THE BED at (x, y, z), or false if that is not a
 // bed. Both halves carry the same facing in their state byte, so the

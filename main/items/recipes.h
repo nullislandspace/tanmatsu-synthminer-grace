@@ -49,6 +49,17 @@ typedef enum {
     // this is where they belong; nothing can reach the station, so they
     // are inert until the machine arrives.
     RS_STOVE,
+    // THE SMITHING FORGE (Part S, D-158). A station rather than a rule in
+    // the forge, for the stove's reason: a sword and four pieces of armour
+    // in two metals are rows in a table, and the disassembly bench, the
+    // book and the host checks all keep working without learning that a
+    // new machine exists.
+    //
+    // NOT reachable from the crafting table. `recipe_station_allows` lets
+    // a table do what the hands can and nothing more, and the user's rule
+    // here is the opposite of that: weapons and armour are NOT made on the
+    // regular crafting table.
+    RS_SMITH,
     RS_COUNT
 } recipe_station_t;
 

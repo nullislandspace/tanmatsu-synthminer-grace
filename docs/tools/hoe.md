@@ -44,8 +44,8 @@ better hoe; it is a hoe you stop having to re-make.
 
 ## It is not a weapon
 
-A hoe does 1 damage, the same as your bare hand. Swinging a hoe at a cow is not a
-plan.
+A hoe does **zero** damage, the same as every other tool in the game and the same as
+your bare hand. Swinging a hoe at a cow is not a plan; a [sword](sword.html) is.
 
 ## Breaking farmland
 

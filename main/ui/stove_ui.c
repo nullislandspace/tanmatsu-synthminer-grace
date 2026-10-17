@@ -60,7 +60,7 @@ static blockent_t* stove(void) {
 // ingredients are missing, because those are very different problems.
 static blockent_t* stove_chest(void) {
     int32_t cx, cy, cz;
-    if (!interact_stove_other(s_x, s_y, s_z, &cx, &cy, &cz)) return NULL;
+    if (!interact_pair_other(s_x, s_y, s_z, &cx, &cy, &cz)) return NULL;
     if (world_block(cx, cy, cz) != BLK_STOVE_CHEST) return NULL;
     blockent_t* b = blockent_at(cx, cy, cz);
     return (b != NULL && b->kind == BE_CHEST) ? b : NULL;

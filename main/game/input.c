@@ -49,6 +49,7 @@ static se_binding_def_t const BINDINGS[SM_ACTION_COUNT] = {
     [SM_INFO]       = {SM_INFO, "Show position", "info", BSP_INPUT_SCANCODE_BACKSPACE},
     [SM_SCREENSHOT] = {SM_SCREENSHOT, "Screenshot", "screenshot", BSP_INPUT_SCANCODE_0},
     [SM_CRAFT]      = {SM_CRAFT, "Crafting", "craft", BSP_INPUT_SCANCODE_C},
+    [SM_CONFIRM]    = {SM_CONFIRM, "Confirm", "confirm", BSP_INPUT_SCANCODE_ENTER},
 };
 
 // The navigation key a scancode ALSO arrives as, where there is one.
@@ -190,6 +191,7 @@ static sm_str_t const ACTION_STRINGS[SM_ACTION_COUNT] = {
     [SM_INFO]       = SM_STR_ACTION_INFO,
     [SM_SCREENSHOT] = SM_STR_ACTION_SCREENSHOT,
     [SM_CRAFT]      = SM_STR_ACTION_CRAFT,
+    [SM_CONFIRM]    = SM_STR_ACTION_CONFIRM,
 };
 
 char const* input_action_label(sm_action_t a) {

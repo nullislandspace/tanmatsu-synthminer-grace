@@ -44,6 +44,12 @@ typedef enum {
     // and the pillow on the bed he is carrying, which is the only
     // reason it is worth a row of its own.
     FM_PALE,
+    // ARMOUR, AND THE BLADE OF A SWORD. One row, because its colour is
+    // never the mesh's business: fred.c sets it per draw from the item
+    // being worn or held, which is what lets an iron helmet sit on a
+    // titanium chestplate without needing a material per piece
+    // (items/items.h, D-158).
+    FM_ARMOUR,
     FM_COUNT
 } fred_mat_t;
 
@@ -76,6 +82,26 @@ void fred_build_bucket(mesh_t* m);
 void fred_build_axe(mesh_t* m);
 void fred_build_shovel(mesh_t* m);
 void fred_build_hoe(mesh_t* m);
+
+// THE SWORD, which is a weapon and not a tool (D-158): a long thin blade
+// rather than a head on a handle, a crossguard, and a grip. Held like a
+// tool, because a swing is the same gesture -- but the blade is FM_ARMOUR,
+// so an iron sword and a titanium one are the same model in two colours.
+void fred_build_sword(mesh_t* m);
+
+// THE FOUR PIECES OF ARMOUR (D-161), as SHELLS over the figure rather
+// than as a second figure: each is the piece it covers, a hair bigger,
+// so a posed Fred in a chestplate is a posed Fred with a chestplate and
+// not a different model that has to be kept in step with the first one.
+//
+// Each is built in the frame of the part it covers -- the helmet round
+// the head's neck joint, the chestplate round the body's hips, the
+// leggings and boots round a leg's hip -- which is what lets fred.c
+// submit them on the joints it already has.
+void fred_build_helmet(mesh_t* m);
+void fred_build_chestplate(mesh_t* m);
+void fred_build_leggings(mesh_t* m);
+void fred_build_boots(mesh_t* m);
 
 // THE FISHING ROD, which is not a tool: no head, a much longer shaft
 // than any of them, and a line hanging off the tip. It is the thing a

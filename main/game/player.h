@@ -137,6 +137,36 @@ typedef struct {
     // drives the real one rather than a copy of it.
     fall_t      fall;
 
+    // THE ARMOUR WORN (Part S, D-158). Four places on the body, and NOT four
+    // more inventory slots: `inv_add`, `inv_take`, stacking, the hotbar and
+    // the Tab grid all stay exactly as they are, and the save gains four tags
+    // instead of a wider array (D-30's additive tags, no format change).
+    //
+    // An inv_slot_t rather than a bare item id because a worn piece carries
+    // `wear` just like a tool does -- armour that cannot wear out is a
+    // permanent stat boost, and the durability column exists to stop that.
+    // Indexed EQUIP_HEAD-1 .. EQUIP_FEET-1; an empty place is item 0.
+    inv_slot_t equip[EQUIP_SLOTS];
+
+    // WHERE THE TAB SCREEN IS POINTING: -1 for the 6 x 4 grid (the
+    // inventory's own `cursor`), 0..EQUIP_SLOTS-1 for one of the four
+    // places on the figure. It lives here rather than on `inventory_t`
+    // because the grid is the inventory's business and the figure is the
+    // player's -- and because `inv_move_cursor` and `inv_screen_row` then
+    // never have to learn that a fifth column exists.
+    //
+    // Not saved: a screen closed is a screen with no cursor.
+    int equip_cursor;
+
+    // WHAT PUTTING SOMETHING ON OR TAKING IT OFF DID, on the same clock as
+    // `use_msg` and for the same reason: a press of Enter that refused and a
+    // press that did not register look exactly alike. `equip_msg_item` is the
+    // piece the line names, so the words can stay in main.c where every other
+    // line in this game is worded.
+    uint8_t  equip_msg;
+    uint16_t equip_msg_ticks;
+    uint16_t equip_msg_item;
+
     // WHAT THE SURVIVAL LOOP DID THIS TICK (food_event_t), and how many
     // ticks are left of saying so. Reported rather than acted on, like
     // used_block: this file has no business knowing what a screen is,
@@ -208,6 +238,19 @@ typedef struct {
     // it before it goes to the world.
     int       hit_mob;
 
+    // THE SWING, reported the same way (D-161). One per press of the
+    // attack key at a creature -- whether or not it connected, and
+    // whether what was in the hand could connect at all -- and `attack_hit`
+    // says which. main.c watches the count change and runs Fred's arm
+    // through exactly one stroke and one sound for each.
+    //
+    // Counted rather than a flag, because a flag is read once and this is
+    // drawn at 20 Hz and animated at 60: a swing has to be a fact that
+    // happened, not a state that may already have gone away by the time
+    // somebody looks.
+    uint32_t  attack_anim;
+    bool      attack_hit;
+
     // ... and what the last use of one DID, with how many ticks are
     // left of saying so. Milking, feeding and taming all look like
     // nothing happening unless the screen says otherwise -- the same
@@ -250,6 +293,19 @@ typedef enum {
     PLAYER_HURT_MOB,
 } player_hurt_t;
 
+// WHAT A PRESS OF ENTER IN THE TAB SCREEN DID (Part S, D-158). The reason
+// lives here and the words live in main.c, exactly as for `use_msg`.
+typedef enum {
+    EQUIP_MSG_NOTHING = 0,
+    EQUIP_MSG_ON,        // put it on
+    EQUIP_MSG_OFF,       // took it off
+    EQUIP_MSG_NOT_ARMOUR,// Enter on something that is not armour
+    EQUIP_MSG_NO_ROOM,   // nowhere to put a piece being taken off
+    EQUIP_MSG_BROKE,     // a worn piece came apart
+} equip_msg_t;
+
+// How far through breaking the aimed block, 0..1. Zero when not mining.
+float player_mine_progress(player_t const* p);
 // How far through breaking the aimed block, 0..1. Zero when not mining.
 float player_mine_progress(player_t const* p);
 

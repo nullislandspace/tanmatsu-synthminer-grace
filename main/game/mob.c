@@ -107,6 +107,16 @@ mob_def_t const MOBS[MOB_KIND_COUNT] = {
     // is the only thing they are good at. A zombie is the slower one with
     // the harder hit; a skeleton is quicker to shrug off and dies sooner,
     // so the two are a choice rather than two sizes of the same threat.
+    //
+    // AND THE SWING IS BIG ON PURPOSE (D-159). These were 3 and 2, which is
+    // a nuisance upstairs and nothing to wear armour against. The user's
+    // instruction was "increase the damage mobs do to the player by a lot, so
+    // armor is useful ... a full set of titanium armor reduces damage per
+    // swing to half a heart" -- half a heart is 1 out of 20, and 10% of 10 is
+    // exactly 1, so the swing a full titanium set turns into half a heart is
+    // 10. Unarmoured, a zombie kills in two swings and a skeleton in three,
+    // which is the stretch of the game between "I built a shaft" and "I built
+    // a forge" being dangerous rather than boring.
     [MOB_ZOMBIE] = {.name       = "zombie",
                     .label      = SM_STR_MOB_ZOMBIE,
                     .w          = 0.6f,
@@ -115,7 +125,7 @@ mob_def_t const MOBS[MOB_KIND_COUNT] = {
                     .speed      = 0.06f,
                     .drop_item  = ITEM_NONE,
                     .hostile    = true,
-                    .attack     = 3,
+                    .attack     = 10,
                     .argb       = 0xFF6E8A5Cu},
 
     [MOB_SKELETON] = {.name       = "skeleton",
@@ -126,26 +136,28 @@ mob_def_t const MOBS[MOB_KIND_COUNT] = {
                       .speed      = 0.055f,
                       .drop_item  = ITEM_NONE,
                       .hostile    = true,
-                      .attack     = 2,
+                    .attack     = 8,
                       .argb       = 0xFFD8D4C8u},
 };
 
 int mob_damage_of(uint16_t item) {
-    // A FIST IS ONE, AND A TOOL IS WHAT IT IS WORTH. There is no sword
-    // yet and none of these is one: an axe hits hardest because it is
-    // the heaviest thing in the game, and a hoe hits like a fist
-    // because swinging a hoe at a cow is not a plan.
+    // ONLY A WEAPON HURTS A CREATURE (D-158). The user's sentence is "Axes
+    // can't kill monsters or animals anymore, only actual weapons can
+    // damage/kill them", so the line is drawn by the item and not by the
+    // creature: mob_def_t::hostile is NOT the test, because a cow and a pig
+    // are inside the rule too. An axe is the heaviest thing in the game and
+    // it does nothing to a living thing; what it is for is trees.
     //
-    // Ten points of health means a cow takes ten punches or four blows
-    // of an iron axe -- long enough that killing one is a decision,
-    // short enough that it is not a chore.
-    item_def_t const d = item_def(item);
-    switch (d.tool) {
-        case TOOL_AXE: return 2 + (int)d.tool_level;
-        case TOOL_PICK:
-        case TOOL_SHOVEL: return 1 + (int)d.tool_level;
-        default: return 1;
-    }
+    // The value is the item table's `attack` column (items.h), so a new
+    // weapon is a row there and this function never has to hear about it.
+    // 0 means "this swing does not land", and the caller says so on the HUD
+    // rather than playing a hit sound and changing nothing.
+    //
+    // WHAT THAT MOVES: pork, beef and mutton now sit behind a sword, which
+    // sits behind the forge, which sits behind 12 diamonds, which sit behind
+    // the Deep Mine. The vegetarian route -- five crops, cheese and milk out
+    // of a bucket, wool off a shear, and fishing -- is untouched.
+    return item_def(item).attack;
 }
 
 // --- The pool ----------------------------------------------------------
@@ -1142,6 +1154,17 @@ int mob_pick(double ex, double ey, double ez, float dx, float dy, float dz, floa
 bool mob_hit(int i, int damage, double fx, double fz) {
     mob_t* m = mob_at_mut(i);
     if (m == NULL || !m->alive || m->hurt > 0) return false;
+
+    // A SWING THAT CANNOT LAND DOES NOT SWING (D-158). A tool, a block, a
+    // meal and an empty hand all have attack 0, and 0 here means the whole
+    // gesture is refused: no flinch, no knockback, no aggro. Knockback was
+    // the one thing a bare hand could do to a zombie, and leaving it would
+    // put the axe decision back through the side door -- you would clear a
+    // cave by shoving creatures out of it.
+    //
+    // The caller knows which swing this was and says so on the HUD; this
+    // file only refuses to pretend something happened.
+    if (damage < 1) return false;
 
     m->hurt = (uint8_t)MOB_HURT_TICKS;
     // Knocked back, and then what it does about it depends on what it is.

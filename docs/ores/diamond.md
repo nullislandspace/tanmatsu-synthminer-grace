@@ -32,17 +32,19 @@ sideways is the answer.
 
 ## What a diamond is for
 
-**Nothing yet.** It is not food, not a tool, not a fuel, and it is not an ingredient in
-any recipe. It is a gem you mine and keep.
+**Twelve of them make a [smithing forge](../devices/smithing-forge.html).** That is what
+a diamond is for: **12 diamonds + 10 planks** at a crafting table, and the forge is the
+only way to make a [sword](../tools/sword.html) or [armour](../tools/armour.html).
 
-That is the point of it. The Deep Mine costs 16 iron ingots for a shaft, a dark cave, and
-zombies; something has to be worth that, and the something is the one thing in the game
-that cannot be made, grown, smelted, farmed, fished or obtained from an animal. A diamond
-is a return ticket you paid for with the trip.
+It is still not food, not a tool, and not a fuel, and it is not an ingredient in anything
+else. Twelve gems for one machine is a steep price, and it is meant to be: the Deep Mine
+costs 16 iron ingots for a shaft, a dark cave and zombies, and something has to be worth
+that. The forge is that something — and the twelve diamonds are the reason the trip is
+worth making more than once.
 
 **Titanium is the other thing down there**, at the same rarity and one tier of tool above
-it — and unlike diamond, titanium does become something: tools. If you are going down for
-gear rather than for a gem, see [Titanium ore](titanium.html).
+it. Titanium is what the forge turns into the best gear in the game; diamond is what buys
+the forge. See [Titanium ore](titanium.html).
 
 <p class="note"><b>Bring a stone pickaxe or better, or do not go.</b> Diamond ore breaks
 by hand and gives you nothing, and at twelve seconds a block you will not even notice you

@@ -54,6 +54,12 @@ typedef enum {
 
     SFX_PLACE,        // putting a block down: a short dull knock
     SFX_HIT,          // the tool striking a block, once per swing
+    // A SWORD SWING, both halves of it (D-161). The user asked for the
+    // sound to differ between a hit and a miss, and the two are genuinely
+    // different noises: a blow that lands is metal arriving at something,
+    // and a blow that does not is only the air moving out of the way.
+    SFX_CLANG,        // ... the one that landed
+    SFX_SWING,        // ... and the one that did not
     SFX_PICKUP,       // an item into the inventory
     SFX_HURT,         // the player takes damage
     SFX_LAND,         // feet hitting the ground after a fall

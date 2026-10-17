@@ -136,6 +136,12 @@ typedef struct {
     bool       has_inv;
     inv_slot_t inv[INV_SLOTS];
     int32_t    inv_selected;
+    // THE ARMOUR WORN (Part S, D-158). Four more slots next to the grid's,
+    // saved by item NAME for the same reason the grid is: an armour item
+    // added or renumbered later must not move anybody's chestplate. Additive
+    // tags in `level.smw`, so no format version and no migration (D-30) -- a
+    // save from before Part S simply has nothing worn.
+    inv_slot_t equip[EQUIP_SLOTS];
     // Every item this player has ever held: what the crafting book
     // knows (items/recipes.h). Saved by NAME, like the slots above and
     // for the same reason -- so that adding, renumbering or renaming a

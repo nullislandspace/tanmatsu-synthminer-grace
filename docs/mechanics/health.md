@@ -60,12 +60,30 @@ Only in the [Deep Mine](../world/deep-mine.html), and only from the two kinds th
 
 | | Damage per swing | How often |
 |---|---|---|
-| [**Zombie**](../mobs/zombie.html) | **3** — one and a half hearts | Once a second |
-| [**Skeleton**](../mobs/skeleton.html) | 2 — one heart | Once a second |
+| [**Zombie**](../mobs/zombie.html) | **10** — five hearts | Once a second |
+| [**Skeleton**](../mobs/skeleton.html) | **8** — four hearts | Once a second |
 
-They notice you at 16 blocks and walk to within a swing. They are slower than you, so the
-first answer to a mob is to not be where it is. The HUD says **"Zombie hits you"** rather
-leaving you to work it out.
+**Unarmoured, a zombie kills you in two swings and a skeleton in three.** They notice you
+at 16 blocks and walk to within a swing. They are slower than you, so the first answer to
+a mob is still to not be where it is — but the second answer is now
+[armour](../tools/armour.html), and it is a bigger one than it used to be. The HUD says
+**"Zombie hits you"** rather leaving you to work it out.
+
+### Armour
+
+Armour is a **percentage off the blow**, added across everything you are wearing: 45% for
+a full iron set, **90% for a full titanium set**. A zombie's 10 lands as 6 through iron
+and as **1 — half a heart** — through titanium.
+
+Two limits worth knowing:
+
+- **A blow never rounds down to nothing.** Half a heart is the least armour can turn a hit
+  into, at any level of gear.
+- **Armour only covers creature blows.** Lava, falls and starving are untouched by what
+  you are wearing.
+
+Every piece spends one use per blow it stands, so armour runs out. See
+[Armour](../tools/armour.html).
 
 ## Lava
 

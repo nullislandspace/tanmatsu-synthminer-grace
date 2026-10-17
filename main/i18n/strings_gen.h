@@ -393,6 +393,62 @@ typedef enum {
     SM_STR_BED_NO_HERE,                 // bed.no_here
     SM_STR_BED_SPAWN_SET,               // bed.spawn_set
     SM_STR_HUD_NEEDS_TOOL,              // hud.needs_tool
+    SM_STR_ITEM_SWORD_IRON,             // item.sword_iron
+    SM_STR_ITEM_SWORD_TITANIUM,         // item.sword_titanium
+    SM_STR_ITEM_HELMET_IRON,            // item.helmet_iron
+    SM_STR_ITEM_HELMET_TITANIUM,        // item.helmet_titanium
+    SM_STR_ITEM_CHESTPLATE_IRON,        // item.chestplate_iron
+    SM_STR_ITEM_CHESTPLATE_TITANIUM,    // item.chestplate_titanium
+    SM_STR_ITEM_LEGGINGS_IRON,          // item.leggings_iron
+    SM_STR_ITEM_LEGGINGS_TITANIUM,      // item.leggings_titanium
+    SM_STR_ITEM_BOOTS_IRON,             // item.boots_iron
+    SM_STR_ITEM_BOOTS_TITANIUM,         // item.boots_titanium
+    SM_STR_ITEM_SMITHING_FORGE,         // item.smithing_forge
+    SM_STR_ANIMAL_TOOL,                 // animal.tool
+    SM_STR_FORGE_TITLE,                 // forge.title
+    SM_STR_FORGE_ITEM,                  // forge.item
+    SM_STR_FORGE_FUEL,                  // forge.fuel
+    SM_STR_FORGE_OUTPUT,                // forge.output
+    SM_STR_FORGE_METAL,                 // forge.metal
+    SM_STR_FORGE_START,                 // forge.start
+    SM_STR_FORGE_EMPTY,                 // forge.empty
+    SM_STR_FORGE_NONE,                  // forge.none
+    SM_STR_FORGE_SLOT,                  // forge.slot
+    SM_STR_FORGE_HINT,                  // forge.hint
+    SM_STR_FORGE_WORKING,               // forge.working
+    SM_STR_FORGE_MAKING,                // forge.making
+    SM_STR_FORGE_TAKES,                 // forge.takes
+    SM_STR_FORGE_TAKES_TWO,             // forge.takes_two
+    SM_STR_FORGE_FROM_CHEST,            // forge.from_chest
+    SM_STR_FORGE_NO_PICK,               // forge.no_pick
+    SM_STR_FORGE_NO_CHEST,              // forge.no_chest
+    SM_STR_FORGE_NO_METAL,              // forge.no_metal
+    SM_STR_FORGE_NO_FUEL,               // forge.no_fuel
+    SM_STR_FORGE_FULL,                  // forge.full
+    SM_STR_FORGE_READY,                 // forge.ready
+    SM_STR_FORGE_LOCKED,                // forge.locked
+    SM_STR_FORGE_CANNOT,                // forge.cannot
+    SM_STR_FORGE_STARTED,               // forge.started
+    SM_STR_FORGE_WAITING,               // forge.waiting
+    SM_STR_FORGE_TOOK,                  // forge.took
+    SM_STR_FORGE_PICK_TITLE,            // forge.pick_title
+    SM_STR_FORGE_PICK_HINT,             // forge.pick_hint
+    SM_STR_FORGE_PICK_FUEL,             // forge.pick_fuel
+    SM_STR_FORGE_PICK_NONE_FUEL,        // forge.pick_none_fuel
+    SM_STR_FORGE_BURNS,                 // forge.burns
+    SM_STR_FORGE_NEEDS,                 // forge.needs
+    SM_STR_FORGE_COST,                  // forge.cost
+    SM_STR_EQUIP_HEAD,                  // equip.head
+    SM_STR_EQUIP_CHEST,                 // equip.chest
+    SM_STR_EQUIP_LEGS,                  // equip.legs
+    SM_STR_EQUIP_FEET,                  // equip.feet
+    SM_STR_EQUIP_EMPTY,                 // equip.empty
+    SM_STR_EQUIP_HINT,                  // equip.hint
+    SM_STR_EQUIP_ON,                    // equip.on
+    SM_STR_EQUIP_OFF,                   // equip.off
+    SM_STR_EQUIP_NOT_ARMOUR,            // equip.not_armour
+    SM_STR_EQUIP_NO_ROOM,               // equip.no_room
+    SM_STR_EQUIP_BROKE,                 // equip.broke
     SM_STR_ACTION_FORWARD,              // action.forward
     SM_STR_ACTION_BACK,                 // action.back
     SM_STR_ACTION_LEFT,                 // action.left
@@ -417,6 +473,7 @@ typedef enum {
     SM_STR_ACTION_INFO,                 // action.info
     SM_STR_ACTION_SCREENSHOT,           // action.screenshot
     SM_STR_ACTION_CRAFT,                // action.craft
+    SM_STR_ACTION_CONFIRM,              // action.confirm
     SM_STR_COUNT
 } sm_str_t;
 

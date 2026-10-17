@@ -50,7 +50,7 @@
     - {url: /animals/sheep.html, name: Sheep}
     - {url: /animals/dog.html, name: Dog}
 
-- title: Tools
+- title: Tools, weapons and armour
   pages:
     - {url: /tools/index.html, name: Overview and tiers}
     - {url: /tools/pickaxe.html, name: Pickaxe}
@@ -60,6 +60,8 @@
     - {url: /tools/shears.html, name: Shears}
     - {url: /tools/bucket.html, name: Bucket}
     - {url: /tools/fishing-rod.html, name: Fishing rod}
+    - {url: /tools/sword.html, name: Sword}
+    - {url: /tools/armour.html, name: Armour}
 
 - title: Machines and furniture
   pages:
@@ -67,6 +69,7 @@
     - {url: /devices/crafting-table.html, name: Crafting table}
     - {url: /devices/mine-shaft.html, name: Mine shaft}
     - {url: /devices/furnace.html, name: Furnace}
+    - {url: /devices/smithing-forge.html, name: Smithing forge}
     - {url: /devices/chest.html, name: Chest}
     - {url: /devices/trash-chest.html, name: Trash chest}
     - {url: /devices/disassembly-bench.html, name: Disassembly bench}

@@ -58,6 +58,7 @@ Anywhere, any time. Deliberately short — finding wood is enough to get started
 | **Cheese maker** | 7 planks | ↔ |
 | **Sausage maker** | **9 iron ingots** | ↔ |
 | **Kitchen stove** *(places a stove and a chest)* | 3 iron ingots + **6 stone** + 8 planks | ↔ |
+| **Smithing forge** *(places a forge and a chest)* | **12 diamonds** + 10 planks | — |
 | **Bed** | 3 wool + 3 planks | ↔ |
 | **3 fences** | 2 planks + 4 sticks | ↔ |
 | **Fence gate** | 2 planks + 4 sticks | ↔ |
@@ -137,6 +138,30 @@ The pizza appears twice in the picker — once for a real sausage, once for the 
 Either makes the same pizza.
 
 See [Every food](food.html) for what those numbers mean.
+
+## At a [smithing forge](devices/smithing-forge.html)
+
+**One item per press of Start**, and the time is set by the metal: **an in-game day** for
+iron, **two** for titanium. The ingots come out of **the chest beside the forge** and are
+committed the moment the job starts. None of this is reversible — a bench will not give the
+ingots back.
+
+| Make | From | Time |
+|---|---|---|
+| **Iron sword** | 2 iron ingots | 1 day |
+| **Iron helmet** | 4 iron ingots | 1 day |
+| **Iron chestplate** | 6 iron ingots | 1 day |
+| **Iron leggings** | 5 iron ingots | 1 day |
+| **Iron boots** | 3 iron ingots | 1 day |
+| **Titanium sword** | 2 titanium ingots | 2 days |
+| **Titanium helmet** | 4 titanium ingots | 2 days |
+| **Titanium chestplate** | 6 titanium ingots | 2 days |
+| **Titanium leggings** | 5 titanium ingots | 2 days |
+| **Titanium boots** | 3 titanium ingots | 2 days |
+
+A full set of armour and a sword is **20 ingots and ten jobs**. See
+[Smithing forge](devices/smithing-forge.html), [Sword](tools/sword.html) and
+[Armour](tools/armour.html).
 
 ## Not a recipe: where things come from
 

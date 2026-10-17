@@ -51,10 +51,13 @@ typedef enum {
     SM_INFO,        // the coordinates-and-heading overlay
     SM_SCREENSHOT,  // save what is on screen to screenshots/ on the card
     SM_CRAFT,       // open the crafting book (ui/craft_ui.h)
+    SM_CONFIRM,     // "Enter" -- the one action that means "do it to
+                    // what is selected", which the inventory needs to
+                    // put armour on and the smithing forge needs to
+                    // start a job (Part S, D-158)
     SM_ACTION_COUNT
 } sm_action_t;
-
-// The per-tick mask. 24 actions, so a uint32 with room to spare.
+// The per-tick mask. 25 actions, so a uint32 with room to spare.
 typedef uint32_t sm_actions_t;
 
 static inline bool act_held(sm_actions_t m, sm_action_t a) {

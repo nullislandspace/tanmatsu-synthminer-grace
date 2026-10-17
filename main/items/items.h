@@ -193,6 +193,31 @@ enum {
     ITEM_PICK_TITANIUM,
     ITEM_AXE_TITANIUM,
     ITEM_SHOVEL_TITANIUM,
+
+    // --- Weapons and armour (Part S) ---------------------------------
+    //
+    // THE AXE IS NO LONGER A WEAPON (D-158), so fighting gets an item of
+    // its own and surviving gets gear of its own. Two tiers only -- the
+    // user named iron and titanium, and a wooden sword would be a weapon
+    // buildable before the machine that is supposed to make weapons.
+    //
+    // A SWORD IS NOT A TOOL: `tool` stays TOOL_NONE and `tool_level` 0, so
+    // it digs nothing and item_tool_for() can never suggest one for a
+    // block. What it is worth to a creature is the `attack` column below.
+    //
+    // FOUR PIECES OF ARMOUR, and each one knows which of the four places
+    // on the body it belongs to (the `wear_slot` column below) rather than
+    // having it inferred from where its id happens to sit.
+    ITEM_SWORD_IRON,
+    ITEM_SWORD_TITANIUM,
+    ITEM_HELMET_IRON,
+    ITEM_HELMET_TITANIUM,
+    ITEM_CHESTPLATE_IRON,
+    ITEM_CHESTPLATE_TITANIUM,
+    ITEM_LEGGINGS_IRON,
+    ITEM_LEGGINGS_TITANIUM,
+    ITEM_BOOTS_IRON,
+    ITEM_BOOTS_TITANIUM,
     ITEM_COUNT
 };
 
@@ -248,7 +273,52 @@ typedef struct {
     // places is a number that will disagree with itself.
     uint8_t     hunger;
     uint8_t     saturation;
+
+    // WHAT IT DOES TO A LIVING THING, AND WHAT IT DOES BACK (Part S).
+    //
+    // THREE COLUMNS, ON THE END, for the same reason `compost` is on the
+    // end: the rows in items.c are positional, and a column inserted in
+    // the middle would move every row after it -- argb into `fuel`, a
+    // pickaxe burning for four billion ticks.
+    //
+    // `attack` is the whole of the axe decision (D-158). It is not a
+    // flag saying "this one is allowed to hit" with a damage number
+    // written somewhere else: an item damages a creature if and only if
+    // it has an attack value, so a new weapon is a row here and nothing
+    // in game/mob.c has to learn about it. 0 for every tool, every block
+    // and every meal -- which is what "a tool does nothing to a creature"
+    // becomes once it is data rather than a sentence.
+    //
+    // `guard` is a PERCENTAGE of the blow it takes off, not a number
+    // subtracted from it (D-159): titanium is exactly twice iron piece
+    // for piece, no mob's number has to move when a third tier appears,
+    // and a full titanium set turns a zombie's 10 into 1 -- half a heart.
+    // 0 for anything that is not armour.
+    //
+    // `wear_slot` is which of the four places on the body a piece belongs
+    // to (equip_slot_t, 0 for "not armour"). It could have been inferred
+    // from the order of the ids above, and a fact about an item that lives
+    // in the order of a table is a fact that changes when the table does.
+    uint8_t     attack;
+    uint8_t     guard;
+    uint8_t     wear_slot;
 } item_def_t;
+
+// The four places armour goes (player_t::equip, ui/hud.c, fred.c). Order
+// is the order the inventory screen draws them in, top to bottom.
+typedef enum {
+    EQUIP_HEAD = 1,
+    EQUIP_CHEST,
+    EQUIP_LEGS,
+    EQUIP_FEET,
+    EQUIP_COUNT  // one more than the last slot; a 0 means "not armour"
+} equip_slot_t;
+
+// How many places there are to wear something, i.e. the size of the array a
+// player and the save need. The enum above is 1-based so that 0 can keep
+// meaning "this item is not armour" in item_def_t::wear_slot, and the array
+// is indexed `slot - 1`.
+#define EQUIP_SLOTS (EQUIP_COUNT - 1)
 
 // Everything about an item, blocks included. For a block id this is
 // synthesised from the block table rather than stored twice.
@@ -256,6 +326,25 @@ item_def_t item_def(uint16_t id);
 
 static inline bool item_is_block(uint16_t id) {
     return id != BLK_AIR && id < BLK_COUNT;
+}
+
+// THE ONE PREDICATE Part S turns on (D-158): an item hurts a creature if
+// and only if it is a weapon. Not "if it is a weapon and the creature is
+// hostile" -- the user's sentence is "Axes can't kill monsters or animals
+// anymore", so a cow and a pig are inside the rule and mob_def_t::hostile
+// is not the line.
+static inline bool item_is_weapon(uint16_t id) {
+    return item_def(id).attack > 0;
+}
+
+// Is it a piece of armour, and which place on the body it belongs to
+// (EQUIP_HEAD..EQUIP_FEET, 0 for anything that is not armour).
+static inline bool item_is_armour(uint16_t id) {
+    return item_def(id).guard > 0;
+}
+
+static inline uint8_t item_wear_slot(uint16_t id) {
+    return item_def(id).wear_slot;
 }
 
 // The block this item places, or BLK_AIR if it places nothing.

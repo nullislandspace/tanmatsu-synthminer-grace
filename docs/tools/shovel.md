@@ -38,4 +38,5 @@ head.</p>
 
 ## As a weapon
 
-1 + its tier, same as a pickaxe: 2, 3, 4, 5. Use the axe.
+**It is not one.** Zero damage, at every tier, same as every other tool in the game.
+The only thing that hurts a creature is a [sword](sword.html).

@@ -1,13 +1,13 @@
 ---
 title: Zombie
-summary: The one that hits hardest. Twenty health, three damage a swing, and it is coming.
+summary: The one that hits hardest. Twenty health, ten damage a swing, and it is coming.
 ---
 
 | | |
 |---|---|
 | **Found in** | The [Deep Mine](../world/deep-mine.html) only — 60% of a pack's members |
 | **Health** | 20 — 10 hearts |
-| **Damage** | **3 per swing**, one swing a second |
+| **Damage** | **10 per swing** — five hearts, one swing a second |
 | **Notices you at** | 16 blocks, and gives up at 26 |
 | **Walks** | 1.2 blocks a second, **1.7 when it is coming at you** |
 | **Size** | 0.6 wide, 1.8 tall |
@@ -17,7 +17,8 @@ summary: The one that hits hardest. Twenty health, three damage a swing, and it 
 
 **It walks at you.** Inside 16 blocks it picks a target — you, or one other creature —
 and comes. It stops when it is within a swing (1.7 blocks) and swings once a second,
-which is 3 health: **one and a half hearts**.
+which is **10 health: five of your twenty**. Two swings and you are dead, unless you are
+wearing something.
 
 **It is slower than you.** 1.7 blocks a second against your 4.3. From the edge of its
 range it takes it about ten seconds to reach you, and you can spend those ten seconds
@@ -35,25 +36,28 @@ player in one corridor is three-way business.
 
 | In hand | Damage | Swings | Seconds |
 |---|---|---|---|
-| Fist, or a hoe | 1 | 20 | 20 |
-| Wooden pickaxe | 2 | 10 | 10 |
-| Stone pickaxe | 3 | 7 | 7 |
-| **Iron pickaxe** | 4 | 5 | 5 |
-| Stone axe | 4 | 5 | 5 |
-| **Iron axe** | **5** | **4** | **4** |
+| Everything that is not a sword | **0** | never | never |
+| [Iron sword](../tools/sword.html) | 7 | 3 | 3 |
+| [Titanium sword](../tools/sword.html) | **11** | **2** | **2** |
 
-**An iron axe and a zombie trade 5 and 3 health a second.** Four swings against six
-damage taken: you win a single zombie with an iron axe and lose a fight with two of
-them, which is the whole difficulty curve of the Deep Mine in one line.
+**Unarmoured, a single zombie is a fight you lose.** It needs two swings to kill you and
+you need three of an iron sword to kill it. With a full [iron armour](../tools/armour.html)
+set its 10 lands as 6 and it takes four swings to kill you instead of two, so three
+swings of your sword wins; with a full **titanium** set its 10 lands as **1** and the
+fight is a chore.
 
-It costs hunger to hit, the same as mining does, and healing afterwards is the expensive
-part. See [Health, falling and death](../mechanics/health.html).
+That is the whole difficulty curve of the Deep Mine in one line: **the gear decides
+whether a corridor is yours.**
+
+Swinging costs no hunger in this game — mining does. What a fight costs is health, and
+healing afterwards is the expensive part. See [Health, falling and death](../mechanics/health.html).
 
 ## Against a skeleton
 
-A zombie hits a skeleton for 3, and a skeleton has 16 health: **six swings, six seconds**,
-while the skeleton answers with 2. A zombie outlasts a skeleton in a straight fight, and
-if you can get the two of them to notice each other instead of you, let them.
+A zombie hits a skeleton for its full **10**, and a skeleton has 16 health: **two swings,
+two seconds**. The skeleton answers with 8 against 20 health, which is three swings. So
+the zombie wins a straight fight by one swing, and if you can get the two of them to
+notice each other instead of you, let them.
 
 <p class="note"><b>It drops nothing, and that is the rule, not an omission.</b> Nothing a
 mob drops may be the only source of anything in the game. You kill a zombie because it is

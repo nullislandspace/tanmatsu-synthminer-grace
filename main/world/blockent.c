@@ -27,12 +27,13 @@ static char const* kind_name(uint8_t kind) {
         case BE_CHEESE: return "cheese_maker";
         case BE_SAUSAGE: return "sausage_maker";
         case BE_STOVE: return "stove";
+        case BE_SMITH: return "smith";
         default: return "";
     }
 }
 
 static uint8_t kind_by_name(char const* s) {
-    for (uint8_t k = BE_FURNACE; k <= BE_STOVE; k++) {
+    for (uint8_t k = BE_FURNACE; k <= BE_SMITH; k++) {
         if (strcmp(kind_name(k), s) == 0) return k;
     }
     return BE_NONE;
@@ -156,6 +157,8 @@ static int slots_used(uint8_t kind) {
     if (kind == BE_FURNACE || kind == BE_COMPOST) return 3;
     if (kind == BE_CHEESE || kind == BE_SAUSAGE) return 4;  // two in, two out
     if (kind == BE_STOVE) return 2;                        // fuel and output; the chest holds the rest
+    // Fuel, output, and the ingots the job is made of (D-160).
+    if (kind == BE_SMITH) return 3;
     return BE_SLOTS;
 }
 
@@ -167,15 +170,21 @@ static void write_record(tag_writer_t* w, blockent_t const* b) {
     tag_put_i32(w, "y", b->y);
     tag_put_i32(w, "z", b->z);
     tag_put_i32(w, "stamp", (int32_t)b->stamp);
-    if (b->kind == BE_FURNACE || b->kind == BE_STOVE) {
+    if (b->kind == BE_FURNACE || b->kind == BE_STOVE || b->kind == BE_SMITH) {
         tag_put_i16(w, "burn", (int16_t)b->burn_left);
         tag_put_i16(w, "burnmax", (int16_t)b->burn_max);
         tag_put_i16(w, "cook", (int16_t)b->cook);
     }
+    // THE FORGE'S JOB, in an i32 for the reason blockent.h gives: a
+    // titanium item is 48000 ticks, and `cook`'s signed 16-bit tag stops
+    // at 32767. A forge never writes `cook`, so the two fields never
+    // disagree about anything.
+    if (b->kind == BE_SMITH) tag_put_i32(w, "job", (int32_t)b->job);
     // WHAT THE STOVE IS SET TO COOK, by the dish's stable name. Not the
     // recipe's index: inserting a row in recipes.c would otherwise
     // repoint every stove ever saved (blockent.h).
-    if (b->kind == BE_STOVE && b->pick != 0) tag_put_str(w, "pick", item_def(b->pick).name);
+    if ((b->kind == BE_STOVE || b->kind == BE_SMITH) && b->pick != 0)
+        tag_put_str(w, "pick", item_def(b->pick).name);
     int const n = slots_used(b->kind);
     for (int i = 0; i < n; i++) {
         inv_slot_t const* s = &b->slot[i];
@@ -312,6 +321,8 @@ static void read_record(uint8_t const* data, size_t len) {
             tmp.burn_max = (uint16_t)tag_get_i16(&r);
         } else if (t == TAG_I16 && strcmp(name, "cook") == 0) {
             tmp.cook = (uint16_t)tag_get_i16(&r);
+        } else if (t == TAG_I32 && strcmp(name, "job") == 0) {
+            tmp.job = (uint32_t)tag_get_i32(&r);
         } else if (t == TAG_STR && strcmp(name, "pick") == 0) {
             char buf[32];
             tag_get_str(&r, buf, sizeof(buf));

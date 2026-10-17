@@ -615,6 +615,95 @@ bed.spawn_set = You will wake up here
 # %s is the tool it wants, e.g. "a stone pickaxe"
 hud.needs_tool = Needs %s
 
+# --- Weapons and armour (Part S) ---------------------------------------------
+# The axe is no longer a weapon (D-158), so a tool swung at a creature has to
+# say why it did nothing -- the same argument as the line naming the pickaxe a
+# block wants.
+item.sword_iron = Iron sword
+item.sword_titanium = Titanium sword
+item.helmet_iron = Iron helmet
+item.helmet_titanium = Titanium helmet
+item.chestplate_iron = Iron chestplate
+item.chestplate_titanium = Titanium chestplate
+item.leggings_iron = Iron leggings
+item.leggings_titanium = Titanium leggings
+item.boots_iron = Iron boots
+item.boots_titanium = Titanium boots
+item.smithing_forge = Smithing forge
+# Said when the crosshair is on a creature and what is in hand cannot hurt it
+animal.tool = A tool will not hurt it
+
+# --- The smithing forge ------------------------------------------------------
+forge.title = Smithing forge
+forge.item = Item
+forge.fuel = Fuel
+forge.output = Output
+forge.metal = Metal
+# The row that is not a slot you fill: the button the whole machine turns on
+forge.start = Start crafting
+forge.empty = - empty -
+forge.none = - choose one -
+# a slot with something in it: %d how many, %s what
+forge.slot = %d %s
+forge.hint = enter chooses, fuels or takes out   esc closes
+# %d is how far through the current item, 0 to 100
+forge.working = forging, %d%%
+# ... and what it is making, so a half-done chestplate is not a mystery
+forge.making = making a %s
+# ... and how long a job takes, in in-game days: 1 or 2
+forge.takes = a day
+forge.takes_two = two days
+# Said on the chest row, so the metal is never a mystery
+forge.from_chest = it takes its metal from the chest beside it
+# Why it is standing still
+forge.no_pick = choose what to forge
+forge.no_chest = no chest beside it
+# %d how many more, %s what
+forge.no_metal = the chest is short of %d %s
+forge.no_fuel = nothing to burn
+forge.full = the output is full
+# Everything is there and the button has not been pressed -- the one idle
+# state that is not a complaint
+forge.ready = ready
+# The selector is read-only while a job runs (D-160), and a key that is
+# refused has to say so rather than click and change nothing
+forge.locked = it is working -- the item is fixed until it finishes
+# ... and when Start is pressed on a forge that cannot start
+forge.cannot = It cannot start yet
+# ... and when it does
+forge.started = You start forging a %s
+# ... and when the metal ran out mid-job and the job is waiting (D-160)
+forge.waiting = it is waiting for fuel -- the job keeps its progress
+forge.took = Took %d %s
+forge.pick_title = What to forge
+forge.pick_hint = enter chooses   esc goes back
+forge.pick_fuel = What to burn
+forge.pick_none_fuel = Nothing here burns
+# Under a fuel stack: how many items it would see through, which is the
+# only number that makes one fuel comparable with another (coal covers
+# fifteen iron jobs, a bucket of lava one)
+forge.burns = enough for %d items
+# Under the item being chosen: what it costs, and how long it takes
+forge.needs = %d %s
+forge.cost = %s, %s
+
+# --- Wearing it --------------------------------------------------------------
+# The four places on the player figure in the inventory screen
+equip.head = Head
+equip.chest = Chest
+equip.legs = Legs
+equip.feet = Feet
+equip.empty = - nothing -
+equip.hint = enter puts armour on or takes it off
+equip.on = You put on the %s
+equip.off = You take off the %s
+# ... and when the piece under the cursor is not armour at all
+equip.not_armour = That is not armour
+# ... and when there is nowhere in the pack to put a piece being taken off
+equip.no_room = No room to take it off
+# ... and when a worn piece came apart
+equip.broke = Your %s wore out
+
 # --- The things a key can be bound to ---------------------------------------
 # These are the Controls list, one row each.
 action.forward = Forward
@@ -641,3 +730,4 @@ action.drop = Drop
 action.info = Show position
 action.screenshot = Screenshot
 action.craft = Crafting
+action.confirm = Confirm

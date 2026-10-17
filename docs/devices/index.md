@@ -8,6 +8,7 @@ summary: Everything you put down and then use, and what each one costs.
 | [**Crafting table**](crafting-table.html) | 4 planks | Unlocks most recipes |
 | [**Mine shaft**](mine-shaft.html) | **16 iron ingots** | The door to the [Deep Mine](../world/deep-mine.html). Places a 3×3 frame, 16 blocks |
 | [**Furnace**](furnace.html) | 8 cobblestone | Smelts ore, sand and cobble; makes coal out of logs |
+| [**Smithing forge**](smithing-forge.html) | **12 diamonds + 10 planks** | Forges [swords](../tools/sword.html) and [armour](../tools/armour.html), one item per press of Start |
 | [**Chest**](chest.html) | 8 planks | 27 stacks of storage |
 | [**Trash chest**](trash-chest.html) | 8 planks + 1 coal | Destroys what you put in it, ten minutes later |
 | [**Disassembly bench**](disassembly-bench.html) | 4 planks + 1 coal | Takes things apart and gives the materials back |
@@ -30,8 +31,8 @@ than to your items.</p>
 
 ## The machines never tick
 
-Five of these are machines with a timer: the furnace, the composter, the two makers
-and the stove. None of them is *running* in any real sense.
+Six of these are machines with a timer: the furnace, the composter, the two makers,
+the stove and the forge. None of them is *running* in any real sense.
 
 Instead, each one remembers when it was last looked at, and works out what should have
 happened the moment you open it, draw it, or the game saves it. That has three
@@ -45,6 +46,11 @@ consequences that are all in your favour:
   measured against the world clock jumps with it — see
   [Time, growth and sleeping](../mechanics/time.html).
 
+**The forge is the exception inside that rule.** It still catches up from a timestamp
+rather than ticking, but it is the one machine with a **Start** button: it makes exactly
+one item and stops, and it will not change its mind about what it is making while a job
+is running. See [Smithing forge](smithing-forge.html).
+
 ## How long each one takes
 
 | Machine | Per item |
@@ -55,6 +61,7 @@ consequences that are all in your favour:
 | **Trash chest** | 10 minutes of playing, then it empties |
 | **Composter** | **1 in-game day** (20 minutes of playing) |
 | **Cheese maker** | **1 in-game day** |
+| **Smithing forge** | **1 in-game day** for iron, **2** for titanium |
 
 "An in-game day" and "a minute of playing" are genuinely different clocks. A minute of
 playing is a minute on your wrist. An in-game day is twenty minutes of playing — or one

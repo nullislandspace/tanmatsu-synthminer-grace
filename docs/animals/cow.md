@@ -6,7 +6,7 @@ summary: Beef, and milk — which is the only food you can drink and the only wa
 | | |
 |---|---|
 | **Found in** | Plains (about 1 chunk in 25), forests (1 in 50) |
-| **Health** | 10 — two blows of an iron axe |
+| **Health** | 10 — two swings of an [iron sword](../tools/sword.html) |
 | **Drops** | **1–3 beef** |
 | **Eats** | **Wheat** |
 | **Size** | 0.9 wide, 1.4 tall |

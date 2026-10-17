@@ -396,7 +396,13 @@ enum {
     // pickaxe -- which puts it behind the shaft twice over: you need the
     // shaft to find it and an iron tool to move it.
     BLK_TITANIUM_ORE    = 55,
-    // New blocks here: BLK_SOMETHING = 56, and a line in tools/ids.txt.
+    // THE SMITHING FORGE (Part S, D-158). Two ids for the stove's reason
+    // (D-110): one item puts down a forge AND the chest it takes its
+    // metal from, and the chest half is a chest in every way except the
+    // facing that says whose it is.
+    BLK_SMITH           = 56,
+    BLK_SMITH_CHEST     = 57,
+    // New blocks here: BLK_SOMETHING = 58, and a line in tools/ids.txt.
     BLK_COUNT
 };
 

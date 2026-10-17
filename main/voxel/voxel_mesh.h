@@ -180,6 +180,11 @@ typedef enum {
     // it has its own picture: a vein that looks like the iron one next to
     // it is a vein you mine with the wrong tool and get nothing for.
     VM_TITANIUM_ORE,
+    // THE SMITHING FORGE (Part S): a furnace in blue diamond, one picture
+    // for its top and one for its front, exactly the stove's two. Its
+    // chest half borrows VM_CHEST_*, as BLK_STOVE_CHEST does.
+    VM_SMITH_TOP,
+    VM_SMITH_FRONT,
     VM_COUNT
 } vox_mat_t;
 

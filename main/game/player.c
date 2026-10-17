@@ -87,6 +87,8 @@ void player_reset(player_t* p) {
     p->mining     = false;
     p->mine_ticks = 0;
     p->hit_mob    = -1;
+    p->attack_anim = 0;
+    p->attack_hit  = false;
     p->sneaking    = false;
     p->crouch      = 0.0f;
     p->prev_crouch = 0.0f;
@@ -94,6 +96,11 @@ void player_reset(player_t* p) {
     p->hurt_msg       = PLAYER_HURT_NONE;
     p->hurt_msg_ticks = 0;
     p->lava_cd        = 0;
+    p->equip_cursor   = -1;
+    p->equip_msg      = EQUIP_MSG_NOTHING;
+    p->equip_msg_ticks = 0;
+    p->equip_msg_item  = 0;
+    for (int i = 0; i < EQUIP_SLOTS; i++) p->equip[i] = (inv_slot_t){0, 0, 0};
 
     // NOTHING. The starting kit is gone, the day a crafting table can
     // make what was in it (the user's call, 2026-09-23): punch a tree,
@@ -110,6 +117,109 @@ float player_mine_progress(player_t const* p) {
     return f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
 }
 
+// --- Armour: putting it on and taking it off (Part S, D-158) ----------
+//
+// FOUR PLACES ON THE BODY, not four more grid slots, so nothing in
+// items/inventory.c changed: `inv_add`, `inv_take`, stacking, the hotbar and
+// the Tab grid all still see 24 slots. What changed is that the Tab screen
+// has somewhere to point that is not one of them.
+
+static void equip_say(player_t* p, uint8_t what, uint16_t item) {
+    p->equip_msg       = what;
+    p->equip_msg_item  = item;
+    p->equip_msg_ticks = USE_MSG_TICKS;
+}
+
+// How much of a blow the worn set takes off, in percent (D-159). A
+// PERCENTAGE rather than a number subtracted: a skeleton's 8 has to still
+// land for something through the best gear in the game, and a fixed
+// reduction would make every mob's number a number chosen to be beaten.
+static int player_guard(player_t const* p) {
+    int g = 0;
+    for (int i = 0; i < EQUIP_SLOTS; i++) g += item_def(p->equip[i].item).guard;
+    return g > 100 ? 100 : g;
+}
+
+// Move the Tab screen's selection. The grid keeps `inv_move_cursor` and its
+// clamping exactly as they were; the figure is one more place the cursor can
+// be, reached by stepping RIGHT out of the last column and left back into it.
+//
+// The row the cursor was in decides which of the four places it lands on --
+// head at the top -- because arriving at the figure from its top row and
+// finding yourself pointing at the boots is the sort of thing that only
+// feels right once it is wrong.
+static void equip_move(player_t* p, int dx, int dy) {
+    if (p->equip_cursor >= 0) {
+        if (dx < 0) {
+            p->equip_cursor = -1;
+            return;
+        }
+        if (dy > 0) {
+            p->equip_cursor = p->equip_cursor + dy > EQUIP_SLOTS - 1 ? EQUIP_SLOTS - 1 : p->equip_cursor + dy;
+        } else if (dy < 0) {
+            p->equip_cursor = p->equip_cursor + dy < 0 ? 0 : p->equip_cursor + dy;
+        }
+        return;
+    }
+    if (dx > 0 && p->inv.cursor % INV_HOTBAR == INV_HOTBAR - 1) {
+        int const row = inv_screen_row(p->inv.cursor);  // 0 top storage .. INV_ROWS hotbar
+        p->equip_cursor = row > EQUIP_SLOTS - 1 ? EQUIP_SLOTS - 1 : row;
+        return;
+    }
+    inv_move_cursor(&p->inv, dx, dy);
+}
+
+// ENTER ON THE GRID: put it on. Whatever was worn there comes off into the
+// same slot, which is why this needs no room to look for -- and why a piece
+// can be swapped for a better one in one press.
+static void equip_put_on(player_t* p) {
+    inv_slot_t*  const g     = &p->inv.slot[p->inv.cursor];
+    uint8_t const place = item_wear_slot(g->item);
+    if (g->item == 0 || place == 0) {
+        equip_say(p, EQUIP_MSG_NOT_ARMOUR, g->item);
+        sfx_play(SFX_DENY);
+        return;
+    }
+    inv_slot_t* const w   = &p->equip[place - 1];
+    inv_slot_t const was  = *w;
+    *w = *g;
+    *g = was;
+    equip_say(p, EQUIP_MSG_ON, w->item);
+    sfx_play(SFX_PICKUP);
+}
+
+// ENTER ON THE FIGURE: take it off. It wants an EMPTY grid slot, and takes
+// the cursor's own when that is one. It does not swap with whatever the
+// cursor happens to be on: the cursor's armour is for a different place on
+// the body more often than not, and a chestplate silently landing on the
+// head is worse than a refusal.
+static void equip_take_off(player_t* p) {
+    inv_slot_t* const w = &p->equip[p->equip_cursor];
+    if (w->item == 0) {
+        sfx_play(SFX_DENY);
+        return;
+    }
+    int into = p->inv.slot[p->inv.cursor].item == 0 ? p->inv.cursor : -1;
+    if (into < 0) {
+        for (int i = 0; i < INV_SLOTS; i++) {
+            if (p->inv.slot[i].item == 0) {
+                into = i;
+                break;
+            }
+        }
+    }
+    if (into < 0) {
+        equip_say(p, EQUIP_MSG_NO_ROOM, w->item);
+        sfx_play(SFX_DENY);
+        return;
+    }
+    uint16_t const item = w->item;
+    p->inv.slot[into] = *w;
+    *w                = (inv_slot_t){0, 0, 0};
+    equip_say(p, EQUIP_MSG_OFF, item);
+    sfx_play(SFX_PICKUP);
+}
+
 // TAKE DAMAGE (D-156).
 //
 // The reason this is a function of its own instead of `food_hurt` called
@@ -123,6 +233,37 @@ float player_mine_progress(player_t const* p) {
 // asking "what just happened to me".
 void player_hurt(player_t* p, int n, uint8_t why) {
     if (p == NULL || n <= 0) return;
+
+    // ARMOUR GUARDS A BLOW, NOT THE CAVE (D-159). Only a creature's swing
+    // is reduced: lava and a fall are exactly what armour was deliberately
+    // left useless against, because gear that made a lava sea survivable
+    // would undo the reason the lava sea is there.
+    //
+    // Rounded HALF UP, which is what makes the numbers in the design brief
+    // come out as written: a zombie's 10 through a full iron set (45%) is
+    // 6 -- four swings to die -- and through titanium (90%) it is 1, half a
+    // heart. A skeleton's 8 lands for 4 and for 1. Never zero: the best gear
+    // in the game does not make the player immune to being hit.
+    if (why == PLAYER_HURT_MOB) {
+        int const guard = player_guard(p);
+        if (guard > 0) {
+            n = (n * (100 - guard) + 50) / 100;
+            if (n < 1) n = 1;
+            // A BLOW TAKEN COSTS THE PIECE WEAR. The one the brief left
+            // open, decided: durability that nothing spends is a permanent
+            // stat boost, which is the thing the durability column exists
+            // to prevent. Every worn piece gives up one use per swing it
+            // stood, so a full set is four times the wear of a single piece.
+            for (int i = 0; i < EQUIP_SLOTS; i++) {
+                inv_slot_t* const w   = &p->equip[i];
+                int const           max = item_def(w->item).durability;
+                if (w->item == 0 || max <= 0) continue;
+                if (++w->wear < max) continue;
+                equip_say(p, EQUIP_MSG_BROKE, w->item);
+                *w = (inv_slot_t){0, 0, 0};
+            }
+        }
+    }
 
     food_event_t const e = food_hurt(&p->food, n);
     if (e == FOOD_NOTHING) return;  // already dead; nothing left to take
@@ -213,6 +354,7 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
     if (p->mob_msg_ticks > 0 && --p->mob_msg_ticks == 0) p->mob_msg = MOB_USE_NOTHING;
     if (p->food_msg_ticks > 0 && --p->food_msg_ticks == 0) p->food_msg = FOOD_NOTHING;
     if (p->hurt_msg_ticks > 0 && --p->hurt_msg_ticks == 0) p->hurt_msg = PLAYER_HURT_NONE;
+    if (p->equip_msg_ticks > 0 && --p->equip_msg_ticks == 0) p->equip_msg = EQUIP_MSG_NOTHING;
 
     // --- The inventory screen ----------------------------------------
     //
@@ -242,13 +384,17 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
                        (act_held(pressed, SM_LEFT) || act_held(pressed, SM_LOOK_LEFT) ? 1 : 0);
         int const dy = (act_held(pressed, SM_BACK) || act_held(pressed, SM_LOOK_DOWN) ? 1 : 0) -
                        (act_held(pressed, SM_FORWARD) || act_held(pressed, SM_LOOK_UP) ? 1 : 0);
-        if (!p->ui_open && (dx || dy)) inv_move_cursor(&p->inv, dx, dy);
+        if (!p->ui_open && (dx || dy)) equip_move(p, dx, dy);
 
         // A hotbar key SWAPS the cursor's stack into that slot -- the
         // one operation the screen has to support, since without it
         // everything past the sixth slot is unreachable.
         for (int i = 0; i < INV_HOTBAR && !p->ui_open; i++) {
             if (!act_held(pressed, (sm_action_t)(SM_SLOT1 + i))) continue;
+            // ... and only while the cursor is ON THE GRID. Swapping a hotbar
+            // key into the figure's chest would be a way to lose a piece of
+            // armour, and F1-F6 have never meant anything but the six slots.
+            if (p->equip_cursor >= 0) break;
             inv_swap(&p->inv, p->inv.cursor, i);
             // AND SELECT IT. Putting a thing on the hotbar is almost
             // always followed by wanting it in hand, and the user asked
@@ -258,6 +404,22 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
             // selected hotbar."
             p->inv.selected = i;
         }
+
+        // ENTER puts armour on or takes it off (D-158). Where the cursor is
+        // decides which: on the grid it puts, on the figure it takes. That is
+        // the whole of the user's rule -- "to take off a piece of armour, we
+        // select it in the inventory view on the player and press enter. To
+        // put it on, we select it in its inventory slot and press enter."
+        if (!p->ui_open && act_held(pressed, SM_CONFIRM)) {
+            if (p->equip_cursor >= 0) equip_take_off(p);
+            else equip_put_on(p);
+        }
+
+        // Closing the screen closes the figure with it. A cursor left pointing
+        // at the chest would be invisible the next time Tab is pressed, and an
+        // invisible cursor is the bug the crafting book already had -- see the
+        // comment at the top of this function.
+        if (!p->ui_open && act_held(pressed, SM_INVENTORY)) p->equip_cursor = -1;
 
         // Still fall while reading: standing over a hole and opening
         // the inventory must not make you hover.
@@ -449,7 +611,22 @@ void player_tick(player_t* p, sm_actions_t mask, sm_actions_t pressed) {
         // until it is let go and pressed again.
         p->mining = false;
         if (act_held(pressed, SM_ATTACK)) {
-            if (mob_hit(p->hit_mob, mob_damage_of(held), p->body.x, p->body.z)) p->hit_mob = -1;
+            // THE SWING IS REPORTED BEFORE IT IS RESOLVED (D-161), and
+            // `hit` means "what is in the hand can hurt something", not
+            // "the creature survived it": an axe aimed at a zombie and a
+            // sword aimed at a zombie look identical on screen and have to
+            // sound different, which is the whole of the user's rule that
+            // axes stopped being weapons.
+            int const damage = mob_damage_of(held);
+            p->attack_anim++;
+            p->attack_hit = damage >= 1;
+            if (mob_hit(p->hit_mob, damage, p->body.x, p->body.z)) p->hit_mob = -1;
+            // A SWORD SPENDS ONE USE PER BLOW THAT LANDS. The durability
+            // column exists to be spent -- a weapon that never wears is a
+            // permanent stat, which is the thing the column is there to
+            // prevent (and the same reasoning that makes armour wear when
+            // it is hit). A swing at nothing costs nothing.
+            if (damage >= 1) inv_wear_held(&p->inv, 1);
         }
     } else
 

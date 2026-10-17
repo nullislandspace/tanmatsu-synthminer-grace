@@ -1,6 +1,6 @@
 ---
 title: Axe
-summary: Wood, everything made of wood, and the closest thing to a weapon in the game.
+summary: Wood, and everything made of wood. It is not a weapon — only a sword is.
 ---
 
 | | Wooden | Stone | Iron | [Titanium](../ores/titanium.html) |
@@ -8,7 +8,6 @@ summary: Wood, everything made of wood, and the closest thing to a weapon in the
 | **Recipe** | 3 planks + 2 sticks | 3 cobblestone + 2 sticks | 3 iron ingots + 2 sticks | 3 titanium ingots + 2 sticks |
 | **Uses** | 60 | 130 | 250 | **400** |
 | **Speed** | 2× | 4× | 6× | **8×** |
-| **Damage** | **3** | **4** | **5** | **6** |
 
 Made at a [crafting table](../devices/crafting-table.html).
 
@@ -27,27 +26,28 @@ Everything wooden. Nothing *requires* an axe — you can pull a tree down bare-h
 Remember that **one swing fells a whole tree**: a stone axe on a trunk is half a
 second for thirty or forty logs. See [Trees and saplings](../plants/trees.html).
 
-## It is the weapon
+## It is not a weapon
 
-There is no sword in SynthMiner. The axe hits hardest because it is the heaviest
-thing in the game:
+**An axe does zero damage to a living thing.** Not a cow, not a zombie, not a skeleton.
+Swinging at an animal with an axe swings and changes nothing, and the HUD says **"A tool
+will not hurt it"**.
+
+That is the [sword](sword.html)'s job now, and only the sword's:
 
 | | Damage | Pig or cow (10 health) | Sheep or dog (8) |
 |---|---|---|---|
-| Fist | 1 | 10 hits | 8 |
-| Wooden axe | 3 | 4 | 3 |
-| Stone axe | 4 | 3 | 2 |
-| **Iron axe** | 5 | **2** | **2** |
-| Titanium axe | 6 | 2 | 2 |
+| Anything except a sword | **0** | never | never |
+| [Iron sword](sword.html) | 7 | 2 swings | 2 |
+| [Titanium sword](sword.html) | **11** | **1** | **1** |
 
-Animals are briefly unhittable after each blow, so this is about two hits a second
-at best.
+So a sword is what stands between a farm and a supply of meat, and the forge that makes
+one is what stands between a sword and [12 diamonds](../ores/diamond.html).
 
 ## Which one to carry
 
-A **stone axe** covers everything. The iron axe is worth it mainly for the damage —
-two hits to kill a cow instead of three — and for clearing a lot of forest. A titanium
-axe hits for 6, which is no better than iron against an 8- or 10-health animal, so
-buy one for the digging speed rather than the killing.
+A **stone axe** covers everything. An iron axe is worth it for clearing a lot of forest:
+6× the speed and 250 uses instead of 130. A titanium axe is 8× and 400 uses, which is a
+logging machine rather than a better way to kill something — killing is not what axes do
+any more.
 
 Wooden tools burn: a spent wooden axe is 200 ticks of furnace fuel.

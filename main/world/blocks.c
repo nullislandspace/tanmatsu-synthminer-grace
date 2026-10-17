@@ -611,6 +611,38 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                          .hardness = 120,
                          .tool     = TOOL_PICK,
                          .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_STONE},
+
+    // --- The smithing forge and its chest (Part S, D-158, D-110) ------
+    //
+    // The stove's shape, reused rather than reinvented: two cells, ONE
+    // item, and the item is the forge. The chest half is a real chest --
+    // the same record, the same twenty-seven slots, the same screen --
+    // and only the facing in its state byte says whose it is.
+    //
+    // A furnace in blue diamond, which is one new material for its top
+    // and one for its front, and a chest half that borrows VM_CHEST_*
+    // exactly as BLK_STOVE_CHEST does.
+    //
+    // NO TOOL LEVEL, for the stove's reason: a pair breaks as ONE thing,
+    // so whichever half is swung at takes both, and the two halves want
+    // different tools. A level on either would mean that breaking a forge
+    // from the chest end destroyed it and dropped nothing, at twelve
+    // diamonds.
+    [BLK_SMITH] = {.name     = "smith", .drop_item = BLK_SMITH, .drop_min = 1, .drop_max = 1,
+                   .kind     = K_CUBE,
+                   .mat      = M3(VM_SMITH_TOP, VM_SMITH_FRONT, VM_SMITH_TOP),
+                   .hardness = 180,
+                   .tool     = TOOL_PICK,
+                   .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_STONE,
+                   .flags2   = BF2_USABLE | BF2_RECORD},
+
+    [BLK_SMITH_CHEST] = {.name     = "smith_chest",
+                         .kind     = K_CUBE,
+                         .mat      = M3(VM_CHEST_TOP, VM_CHEST_SIDE, VM_CHEST_TOP),
+                         .hardness = 50,
+                         .tool     = TOOL_AXE,
+                         .flags    = BF_SOLID | BF_OPAQUE, .sound = SND_WOOD,
+                         .flags2   = BF2_USABLE | BF2_RECORD},
 };
 
 // Which kind of record each block keeps. A function rather than a
@@ -630,6 +662,9 @@ uint8_t block_record_kind(uint8_t id) {
         // same screen. Only the facing in its state byte says whose it
         // is (D-110).
         case BLK_STOVE_CHEST: return BE_CHEST;
+        // The forge and its chest: the same pair, the same rule.
+        case BLK_SMITH: return BE_SMITH;
+        case BLK_SMITH_CHEST: return BE_CHEST;
         default: return BE_NONE;
     }
 }

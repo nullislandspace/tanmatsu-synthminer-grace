@@ -118,9 +118,9 @@ static bool inside_body(phys_body_t const* avoid, int32_t x, int32_t y, int32_t 
     return fl(x0) <= x && x <= fl(x1) && fl(y0) <= y && y <= fl(y1 - 1e-9) && fl(z0) <= z && z <= fl(z1);
 }
 
-bool interact_stove_other(int32_t x, int32_t y, int32_t z, int32_t* ox, int32_t* oy, int32_t* oz) {
+bool interact_pair_other(int32_t x, int32_t y, int32_t z, int32_t* ox, int32_t* oy, int32_t* oz) {
     uint8_t const b = world_block(x, y, z);
-    if (b != BLK_STOVE && b != BLK_STOVE_CHEST) return false;
+    if (b != BLK_STOVE && b != BLK_STOVE_CHEST && b != BLK_SMITH && b != BLK_SMITH_CHEST) return false;
     // EACH HALF'S FACING POINTS AT THE OTHER -- the stove's at its
     // chest, the chest's back at its stove (interact_place_dir writes
     // the opposite into the second cell). So there is no sign to get
@@ -315,12 +315,19 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
         }
     }
 
-    // AND THE OTHER HALF OF A STOVE, which is the bed's rule again with
-    // one difference that matters: both halves hold THINGS. The chest
-    // has twenty-seven slots of a farm's produce in it and the stove
-    // has fuel and a finished dish, so both are emptied onto the ground
-    // -- and only the STOVE half pays out the item, because the recipe
-    // made one item out of two blocks (D-110).
+    // AND THE OTHER HALF OF A STOVE OR A FORGE, which is the bed's rule
+    // again with one difference that matters: both halves hold THINGS.
+    // The chest has twenty-seven slots of a farm's produce in it and the
+    // machine has fuel, its finished dish, and -- on a forge -- the
+    // ingots a running job already paid for, so both are emptied onto the
+    // ground -- and only the MACHINE half pays out the item, because the
+    // recipe made one item out of two blocks (D-110).
+    //
+    // A BROKEN FORGE COSTS THE TIME, NOT THE METAL (D-160). The ingots
+    // live in the forge's own record from the moment Start is pressed,
+    // and empty_record() is what puts them back on the ground; the job
+    // clock is what is lost. That is the deliberate trade: a forge buried
+    // by a collapsed tunnel does not also swallow twenty-four iron.
     //
     // That asymmetry is also what makes this safe at a chunk border. If
     // the partner is not resident, `other` is the barrier or something
@@ -328,15 +335,19 @@ break_result_t interact_break(int32_t x, int32_t y, int32_t z, uint16_t tool_ite
     // leaves an orphan chest, breaking the chest leaves an orphan stove
     // that says "no chest" when it is opened. Neither can duplicate the
     // item, because only one of the two ever drops it.
-    if (b == BLK_STOVE || b == BLK_STOVE_CHEST) {
+    if (b == BLK_STOVE || b == BLK_STOVE_CHEST || b == BLK_SMITH || b == BLK_SMITH_CHEST) {
         uint8_t const face = (uint8_t)(st_data(st) & 0x03u);
         int32_t const sx = x + face_step_x(face), sz = z + face_step_z(face);
         uint8_t const other = world_block(sx, y, sz);
-        if ((b == BLK_STOVE && other == BLK_STOVE_CHEST) || (b == BLK_STOVE_CHEST && other == BLK_STOVE)) {
+        bool const pair = (b == BLK_STOVE && other == BLK_STOVE_CHEST) ||
+                          (b == BLK_STOVE_CHEST && other == BLK_STOVE) ||
+                          (b == BLK_SMITH && other == BLK_SMITH_CHEST) ||
+                          (b == BLK_SMITH_CHEST && other == BLK_SMITH);
+        if (pair) {
             uint8_t const ost = world_state(sx, y, sz);
             empty_record(sx, y, sz);
             world_set(sx, y, sz, BLK_AIR, 0);
-            if (other == BLK_STOVE) drop_for(other, ost, sx, y, sz, tool_item);
+            if (other == BLK_STOVE || other == BLK_SMITH) drop_for(other, ost, sx, y, sz, tool_item);
             r.felled++;
         }
     }
@@ -512,6 +523,30 @@ bool interact_place_dir(ray_hit_t const* hit, uint8_t block, phys_body_t const* 
         }
         world_set(x, y, z, BLK_STOVE, (uint8_t)(ST_PLACED | (uint8_t)(face << ST_DATA_SHIFT)));
         world_set(cx, y, cz, BLK_STOVE_CHEST,
+                  (uint8_t)(ST_PLACED | (uint8_t)(face_opposite(face) << ST_DATA_SHIFT)));
+        return true;
+    }
+
+    // A SMITHING FORGE IS THE SAME SHAPE (D-158): the working cell and the
+    // chest its recipe is told to eat out of, put down as one item and
+    // taken up as one item. The forge's chest is not an extra purchase the
+    // way the stove's eight planks were -- the twelve diamonds and ten wood
+    // ARE the machine and its chest together -- but it is the same two
+    // cells, the same facings, and the same all-or-nothing rule, because a
+    // forge with no chest can never be told to make anything.
+    if (block == BLK_SMITH) {
+        uint8_t const face = face_left_of(dx, dz);
+        int32_t const cx = x + face_step_x(face), cz = z + face_step_z(face);
+        if (chunk_find(chunk_of(cx), chunk_of(cz)) == NULL) return false;
+        if (!block_replaceable(world_block(cx, y, cz))) return false;
+        if (inside_body(avoid, cx, y, cz)) return false;
+        if (blockent_add(x, y, z, BE_SMITH) == NULL) return false;
+        if (blockent_add(cx, y, cz, BE_CHEST) == NULL) {
+            blockent_remove(x, y, z);  // the forge's record goes back, or the pool leaks
+            return false;
+        }
+        world_set(x, y, z, BLK_SMITH, (uint8_t)(ST_PLACED | (uint8_t)(face << ST_DATA_SHIFT)));
+        world_set(cx, y, cz, BLK_SMITH_CHEST,
                   (uint8_t)(ST_PLACED | (uint8_t)(face_opposite(face) << ST_DATA_SHIFT)));
         return true;
     }

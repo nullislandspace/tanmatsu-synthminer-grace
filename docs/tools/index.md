@@ -1,6 +1,6 @@
 ---
 title: Tools
-summary: Four digging tools, four tiers, and three other things that are held like tools.
+summary: Four digging tools, four tiers, a sword, four pieces of armour — and the rule that only a weapon hurts anything.
 ---
 
 Every tool in the game costs **2 sticks plus its material**, and the amount of
@@ -18,13 +18,13 @@ Plus 2 sticks, every time. All of them are made at a
 
 ## The four tiers
 
-| Tier | Uses | Digging speed | Damage (axe) |
-|---|---|---|---|
-| Bare hands | — | 1× | 1 |
-| **Wooden** | 60 | **2×** | 3 |
-| **Stone** | 130 | **4×** | 4 |
-| **Iron** | 250 | **6×** | 5 |
-| **Titanium** | **400** | **8×** | **6** |
+| Tier | Uses | Digging speed |
+|---|---|---|
+| Bare hands | — | 1× |
+| **Wooden** | 60 | **2×** |
+| **Stone** | 130 | **4×** |
+| **Iron** | 250 | **6×** |
+| **Titanium** | **400** | **8×** |
 
 A tier buys you two things: **how long the tool lasts** and **how fast it digs**.
 It does not change what the tool drops — with one exception:
@@ -42,8 +42,8 @@ which is what makes carrying more than one worth the slots.
 
 | Tool | Speeds up | *Required* for |
 |---|---|---|
-| **Pickaxe** | Stone, cobblestone, sandstone, coal ore, iron ore, titanium ore, furnace, sausage maker, stove | Stone, cobblestone, sandstone, coal ore, **iron ore (stone+)**, **titanium ore (iron+)**, furnace, sausage maker |
-| **Axe** | Logs, planks, and everything wooden — table, chest, trash chest, bench, composter, fences, gates, bed, signs | nothing |
+| **Pickaxe** | Stone, cobblestone, sandstone, coal ore, iron ore, titanium ore, furnace, sausage maker, stove, smithing forge | Stone, cobblestone, sandstone, coal ore, **iron ore (stone+)**, **titanium ore (iron+)**, furnace, sausage maker, smithing forge |
+| **Axe** | Logs, planks, and everything wooden — table, chest, trash chest, bench, composter, fences, gates, bed, signs, the chest half of a forge | nothing |
 | **Shovel** | Dirt, grass, sand, gravel, snow, farmland | nothing |
 | **Shears** | Leaves | nothing |
 
@@ -82,5 +82,13 @@ the ore they were smelted from.
 | [**Bucket**](bucket.html) | 3 iron ingots. Carries water, and milks cows. Never wears out. |
 | [**Fishing rod**](fishing-rod.html) | 3 sticks + 2 string. Never wears out; it costs worms instead. |
 
-There is **no sword**. An axe is the weapon — see
-[Animals](../animals/index.html#killing-them).
+## The two that are not tools at all
+
+| | |
+|---|---|
+| [**Sword**](sword.html) | 7 or 11 damage. Iron or titanium, made in the [smithing forge](../devices/smithing-forge.html). **The only thing in the game that can hurt a creature.** |
+| [**Armour**](armour.html) | Helmet, chestplate, leggings, boots. A percentage off every creature blow: 45% in iron, 90% in titanium. |
+
+**A tool does zero damage to a living thing.** Not an axe, not a pickaxe, not a shovel,
+not your fist. That is the whole of the axe's story as a weapon — see
+[Animals](../animals/index.html#killing-them) and [Hostile mobs](../mobs/index.html).

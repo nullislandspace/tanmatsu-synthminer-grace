@@ -19,6 +19,7 @@ where you moved it to.
 | <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | Look |
 | <kbd>F1</kbd>…<kbd>F6</kbd> | Pick hotbar slot 1 to 6 |
 | <kbd>Tab</kbd> | Inventory |
+| <kbd>Enter</kbd> | **Confirm** — with the inventory open, puts armour on or takes it off. Rebindable like every other key |
 | <kbd>C</kbd> | The crafting book |
 | <kbd>G</kbd> | Drop what you are holding |
 | <kbd>Backspace</kbd> | Show where you are: coordinates and heading |
@@ -94,6 +95,9 @@ because it is usually the reason something did not happen.
 | **"The lava burns"** | You are standing in lava |
 | **"You fall hard"** | Fall damage |
 | **"Crossing over"** | The loading screen between dimensions |
+| **"A tool will not hurt it"** | You swung at a creature with something that is not a [sword](tools/sword.html) |
+| **"You put on the iron chestplate"** / **"You take off the iron helmet"** | Armour, see [Armour](tools/armour.html) |
+| **"Your iron boots wore out"** | A piece of armour spent its last use |
 
 ## The optional VFD display
 

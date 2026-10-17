@@ -85,6 +85,46 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     [ITEM_SHOVEL_TITANIUM - BLK_COUNT] = {"shovel_titanium", SM_STR_ITEM_SHOVEL_TITANIUM, 1, TOOL_SHOVEL, 4, 400, 0,
                                           0xFFC2CAD6u},
 
+    // WEAPONS AND ARMOUR (Part S). Every number here is provisional -- the
+    // shape is the user's (D-158, D-159) and the arithmetic is ours.
+    //
+    // A SWORD DIGS NOTHING: TOOL_NONE, level 0. Its whole entry is the
+    // `attack` column, which is also what makes it a weapon -- there is no
+    // second place that decides what may hurt a creature.
+    //
+    // 250 and 400 uses are not new numbers: they are what an iron and a
+    // titanium pickaxe already cost to keep alive, so a sword wears out on
+    // the same clock as the tool carried down the shaft.
+    [ITEM_SWORD_IRON - BLK_COUNT] = {"sword_iron", SM_STR_ITEM_SWORD_IRON, 1, TOOL_NONE, 0, 250, 0, 0xFFDEDEE4u,
+                                     0, 0, 0, 7, 0, 0},
+    [ITEM_SWORD_TITANIUM - BLK_COUNT] = {"sword_titanium", SM_STR_ITEM_SWORD_TITANIUM, 1, TOOL_NONE, 0, 400, 0,
+                                         0xFFC2CAD6u, 0, 0, 0, 11, 0, 0},
+
+    // ARMOUR, and the guard is a PERCENTAGE of the blow rather than a number
+    // taken off it (D-159). Titanium is exactly twice iron piece for piece --
+    // 9/18, 16/32, 12/24, 8/16 -- so a full set is 45% iron and 90% titanium,
+    // and a zombie's 10 lands for 1 through a full titanium set: half a heart.
+    //
+    // 150 and 300 durability, which is roughly a day of being hit and half a
+    // day for the better metal. Nothing about a piece stacks: one per slot,
+    // `wear` like a tool.
+    [ITEM_HELMET_IRON - BLK_COUNT] = {"helmet_iron", SM_STR_ITEM_HELMET_IRON, 1, TOOL_NONE, 0, 150, 0, 0xFFDEDEE4u,
+                                      0, 0, 0, 0, 9, EQUIP_HEAD},
+    [ITEM_HELMET_TITANIUM - BLK_COUNT] = {"helmet_titanium", SM_STR_ITEM_HELMET_TITANIUM, 1, TOOL_NONE, 0, 300, 0,
+                                          0xFFC2CAD6u, 0, 0, 0, 0, 18, EQUIP_HEAD},
+    [ITEM_CHESTPLATE_IRON - BLK_COUNT] = {"chestplate_iron", SM_STR_ITEM_CHESTPLATE_IRON, 1, TOOL_NONE, 0, 150, 0,
+                                          0xFFDEDEE4u, 0, 0, 0, 0, 16, EQUIP_CHEST},
+    [ITEM_CHESTPLATE_TITANIUM - BLK_COUNT] = {"chestplate_titanium", SM_STR_ITEM_CHESTPLATE_TITANIUM, 1, TOOL_NONE, 0,
+                                              300, 0, 0xFFC2CAD6u, 0, 0, 0, 0, 32, EQUIP_CHEST},
+    [ITEM_LEGGINGS_IRON - BLK_COUNT] = {"leggings_iron", SM_STR_ITEM_LEGGINGS_IRON, 1, TOOL_NONE, 0, 150, 0,
+                                        0xFFDEDEE4u, 0, 0, 0, 0, 12, EQUIP_LEGS},
+    [ITEM_LEGGINGS_TITANIUM - BLK_COUNT] = {"leggings_titanium", SM_STR_ITEM_LEGGINGS_TITANIUM, 1, TOOL_NONE, 0, 300, 0,
+                                            0xFFC2CAD6u, 0, 0, 0, 0, 24, EQUIP_LEGS},
+    [ITEM_BOOTS_IRON - BLK_COUNT] = {"boots_iron", SM_STR_ITEM_BOOTS_IRON, 1, TOOL_NONE, 0, 150, 0, 0xFFDEDEE4u,
+                                     0, 0, 0, 0, 8, EQUIP_FEET},
+    [ITEM_BOOTS_TITANIUM - BLK_COUNT] = {"boots_titanium", SM_STR_ITEM_BOOTS_TITANIUM, 1, TOOL_NONE, 0, 300, 0,
+                                         0xFFC2CAD6u, 0, 0, 0, 0, 16, EQUIP_FEET},
+
     // Compost, and the worms that come out of the same box.
     [ITEM_COMPOST - BLK_COUNT] = {"compost", SM_STR_ITEM_COMPOST, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF54402Cu},
     [ITEM_WORM - BLK_COUNT]    = {"worm", SM_STR_ITEM_WORM, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC08078u},
@@ -280,6 +320,8 @@ static uint32_t const BLOCK_ARGB[BLK_COUNT] = {
     [BLK_LAVA] = 0xFFD85A22u,          [BLK_DIAMOND_ORE] = 0xFF5A8E9Cu,
     [BLK_SHAFT_COLUMN] = 0xFF8E8278u,  [BLK_SHAFT_TRUSS] = 0xFF7E7268u,
     [BLK_TITANIUM_ORE] = 0xFF8E96A8u,
+    // THE FORGE, in blue diamond, and its chest in the chest's own wood.
+    [BLK_SMITH] = 0xFF4E7EA6u,         [BLK_SMITH_CHEST] = 0xFF926A3Au,
 };
 
 // What each block is CALLED on screen, beside the colour above. A
@@ -334,6 +376,11 @@ static sm_str_t const BLOCK_LABEL[BLK_COUNT] = {
     // not a thing anybody owns (D-110).
     [BLK_STOVE] = SM_STR_ITEM_STOVE,
     [BLK_STOVE_CHEST] = SM_STR_ITEM_STOVE,
+    // ONE NAME FOR BOTH HALVES, as for the stove and the bed: it is one
+    // item and one thing, and "Smithing forge chest" is not a thing
+    // anybody owns (D-110).
+    [BLK_SMITH] = SM_STR_ITEM_SMITHING_FORGE,
+    [BLK_SMITH_CHEST] = SM_STR_ITEM_SMITHING_FORGE,
     // A NAME EACH, unlike the two halves of the bed or the stove: these
     // are two different things a player chooses between, and "Sapling"
     // on both would make a birch wood an accident.

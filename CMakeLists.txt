@@ -66,6 +66,7 @@ set(APP_SOURCES
     main/game/composter.c
     main/game/maker.c
     main/game/stove.c
+    main/game/forge.c
     main/game/food.c
     main/game/mob.c
     main/game/fishing.c
@@ -95,6 +96,7 @@ set(APP_SOURCES
     main/ui/composter_ui.c
     main/ui/maker_ui.c
     main/ui/stove_ui.c
+    main/ui/smith_ui.c
     main/ui/chest_ui.c
     main/ui/bench_ui.c
     main/ui/amount_ui.c
@@ -232,7 +234,9 @@ set(ENGINE_DEPS "")
 #       per frame. Flat triangles stay on the 4096 default. (D-09)
 #   SE_BINDINGS_MAX  the default 16 is below the ~20 actions SynthMiner
 #       declares, and se_bindings_init() CLAMPS rather than complaining,
-#       so the last actions would simply never fire. (F-11)
+#       so the last actions would simply never fire. (F-11) Raised to 32
+#       with the 25th action (SM_CONFIRM, Part S) -- the headroom is two
+#       more actions' worth of a uint32 mask, and the array is 64 bytes.
 # The near clip plane, down from the engine's default 0.5.
 #
 # THE PLAYER'S EYE IS 0.3 FROM A WALL THEY ARE TOUCHING (half of a
@@ -263,7 +267,7 @@ add_compile_definitions(SE_SCENE_TEXTURED_TRI_CAP=4096)
 # every covered pixel reads it, so it is the one buffer here touched at
 # random; the lists it displaces are written and read in order.
 add_compile_definitions(SE_SCENE_DEPTH16_INTERNAL=1)
-add_compile_definitions(SE_BINDINGS_MAX=24)
+add_compile_definitions(SE_BINDINGS_MAX=32)
 
 # STREAMING AUDIO, OFF BY DEFAULT (claudeplans F-108). pdmp2 is correct and
 # cheap on average, and unusable in practice on this badge: 6.4 ms to encode

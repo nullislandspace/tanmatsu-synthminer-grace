@@ -225,6 +225,14 @@
           "target_file": "textures/item_bone.png"
         },
         {
+          "source_file": "textures/item_boots_iron.png",
+          "target_file": "textures/item_boots_iron.png"
+        },
+        {
+          "source_file": "textures/item_boots_titanium.png",
+          "target_file": "textures/item_boots_titanium.png"
+        },
+        {
           "source_file": "textures/item_bread.png",
           "target_file": "textures/item_bread.png"
         },
@@ -243,6 +251,14 @@
         {
           "source_file": "textures/item_cheese.png",
           "target_file": "textures/item_cheese.png"
+        },
+        {
+          "source_file": "textures/item_chestplate_iron.png",
+          "target_file": "textures/item_chestplate_iron.png"
+        },
+        {
+          "source_file": "textures/item_chestplate_titanium.png",
+          "target_file": "textures/item_chestplate_titanium.png"
         },
         {
           "source_file": "textures/item_coal.png",
@@ -277,6 +293,14 @@
           "target_file": "textures/item_grilled_tomatoes.png"
         },
         {
+          "source_file": "textures/item_helmet_iron.png",
+          "target_file": "textures/item_helmet_iron.png"
+        },
+        {
+          "source_file": "textures/item_helmet_titanium.png",
+          "target_file": "textures/item_helmet_titanium.png"
+        },
+        {
           "source_file": "textures/item_hoe_iron.png",
           "target_file": "textures/item_hoe_iron.png"
         },
@@ -295,6 +319,14 @@
         {
           "source_file": "textures/item_kebab.png",
           "target_file": "textures/item_kebab.png"
+        },
+        {
+          "source_file": "textures/item_leggings_iron.png",
+          "target_file": "textures/item_leggings_iron.png"
+        },
+        {
+          "source_file": "textures/item_leggings_titanium.png",
+          "target_file": "textures/item_leggings_titanium.png"
         },
         {
           "source_file": "textures/item_mine_shaft.png",
@@ -407,6 +439,14 @@
         {
           "source_file": "textures/item_string.png",
           "target_file": "textures/item_string.png"
+        },
+        {
+          "source_file": "textures/item_sword_iron.png",
+          "target_file": "textures/item_sword_iron.png"
+        },
+        {
+          "source_file": "textures/item_sword_titanium.png",
+          "target_file": "textures/item_sword_titanium.png"
         },
         {
           "source_file": "textures/item_titanium_ingot.png",
@@ -607,6 +647,14 @@
         {
           "source_file": "textures/sign_wolfie.png",
           "target_file": "textures/sign_wolfie.png"
+        },
+        {
+          "source_file": "textures/smith_front.png",
+          "target_file": "textures/smith_front.png"
+        },
+        {
+          "source_file": "textures/smith_top.png",
+          "target_file": "textures/smith_top.png"
         },
         {
           "source_file": "textures/snow.png",

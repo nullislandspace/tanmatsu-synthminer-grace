@@ -206,3 +206,74 @@ void fred_build_shovel(mesh_t* m) {
     mesh_box(m, v3(-0.035f, -0.035f, -0.12f), v3(0.035f, 0.035f, 0.56f), FM_WOOD, 1.0f);
     mesh_box(m, v3(-0.10f, -0.02f, 0.54f), v3(0.10f, 0.02f, 0.78f), FM_IRON, 1.0f);
 }
+
+// THE SWORD (step 70). A weapon is not a tool (D-158), and the model says
+// so: a tool is a head on a handle, and this is a blade with a guard, a
+// grip and a pommel. Held the way the tools are held, because a swing is
+// the same gesture -- but long enough that it reads as the thing that can
+// actually hurt something, which is the whole difference the user asked
+// for when axes stopped killing animals.
+void fred_build_sword(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_sword";
+    // Grip, guard, pommel: wood and iron, the same two materials every
+    // tool in his fist already uses.
+    mesh_box(m, v3(-0.03f, -0.03f, -0.16f), v3(0.03f, 0.03f, 0.10f), FM_WOOD, 1.0f);
+    mesh_box(m, v3(-0.10f, -0.055f, 0.10f), v3(0.10f, 0.055f, 0.16f), FM_IRON, 1.0f);
+    mesh_box(m, v3(-0.045f, -0.045f, -0.22f), v3(0.045f, 0.045f, -0.16f), FM_IRON, 1.0f);
+    // The blade, in the metal of the item: two boxes narrowing to the
+    // point, because a taper is what a blade is and a box is not.
+    mesh_box(m, v3(-0.028f, -0.048f, 0.16f), v3(0.028f, 0.048f, 0.58f), FM_ARMOUR, 1.0f);
+    mesh_box(m, v3(-0.016f, -0.030f, 0.58f), v3(0.016f, 0.030f, 0.74f), FM_ARMOUR, 1.0f);
+}
+
+// --- Armour, as shells (step 70, D-161) ------------------------------------
+//
+// "When the player is wearing armor, this should be visible in third
+// person view." The cheap way is a second figure; the right way is a
+// SHELL over the part it covers, built in that part's own frame -- the
+// helmet round the neck joint, the chestplate round the hips, the
+// leggings and boots round a leg's hip. Then a posed Fred in armour is a
+// posed Fred with armour on, and every joint, swing and crouch fred.c
+// already has applies without a second set of them.
+//
+// Each shell is a hair bigger than what it covers and stops short of the
+// joint, so the join is inside the piece it slides over. The helmet
+// deliberately does NOT cover the hard hat: the hat is Fred (fred.h), and
+// a miner who lost his hat under a helmet would not be recognisable.
+
+void fred_build_helmet(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_helmet";
+    // The skull, up to the hat's brim at 0.42.
+    mesh_box(m, v3(-0.28f, 0.02f, -0.28f), v3(0.28f, 0.42f, 0.28f), FM_ARMOUR, 1.0f);
+    // The brow, out over the brim so the profile reads as a helmet and
+    // not as a grey head.
+    mesh_box(m, v3(-0.30f, 0.34f, 0.26f), v3(0.30f, 0.44f, 0.32f), FM_ARMOUR, 1.0f);
+}
+
+void fred_build_chestplate(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_chestplate";
+    mesh_box(m, v3(-0.29f, 0.02f, -0.19f), v3(0.29f, 0.68f, 0.19f), FM_ARMOUR, 1.0f);
+    // The pauldrons, one at each shoulder -- the shape that tells a
+    // chestplate from a grey torso at a glance, and the only part of this
+    // set that sticks out past the body it covers.
+    mesh_box(m, v3(-0.42f, 0.54f, -0.17f), v3(-0.27f, 0.70f, 0.17f), FM_ARMOUR, 1.0f);
+    mesh_box(m, v3(0.27f, 0.54f, -0.17f), v3(0.42f, 0.70f, 0.17f), FM_ARMOUR, 1.0f);
+}
+
+void fred_build_leggings(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_leggings";
+    // Built in the LEG's frame, hip at the origin, so it swings with it.
+    mesh_box(m, v3(-0.135f, -0.58f, -0.145f), v3(0.135f, 0.03f, 0.145f), FM_ARMOUR, 1.0f);
+}
+
+void fred_build_boots(mesh_t* m) {
+    mesh_init(m);
+    m->name = "fred_boots";
+    // Also the leg's frame, but only over the boot: the legging above it
+    // ends where this one begins, so the two read as one suit.
+    mesh_box(m, v3(-0.145f, -0.735f, -0.155f), v3(0.145f, -0.50f, 0.17f), FM_ARMOUR, 1.0f);
+}

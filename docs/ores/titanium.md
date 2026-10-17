@@ -74,20 +74,34 @@ round blobs. That is the tell, and it is worth learning.
 All three are reversible at a [disassembly bench](../devices/disassembly-bench.html)
 — the metal comes back, the ore does not.
 
-| Tier | Uses | Digging speed | Damage (axe) |
-|---|---|---|---|
-| **Wooden** | 60 | 2× | 3 |
-| **Stone** | 130 | 4× | 4 |
-| **Iron** | 250 | 6× | 5 |
-| **Titanium** | **400** | **8×** | **6** |
+And at the [smithing forge](../devices/smithing-forge.html), with no sticks involved:
+
+| Make | From | Where |
+|---|---|---|
+| **Titanium sword** | 2 titanium ingots | [smithing forge](../devices/smithing-forge.html) |
+| **Titanium helmet** | 4 titanium ingots | [smithing forge](../devices/smithing-forge.html) |
+| **Titanium chestplate** | 6 titanium ingots | [smithing forge](../devices/smithing-forge.html) |
+| **Titanium leggings** | 5 titanium ingots | [smithing forge](../devices/smithing-forge.html) |
+| **Titanium boots** | 3 titanium ingots | [smithing forge](../devices/smithing-forge.html) |
+
+None of those five is reversible.
+
+| Tier | Uses | Digging speed |
+|---|---|---|
+| **Wooden** | 60 | 2× |
+| **Stone** | 130 | 4× |
+| **Iron** | 250 | 6× |
+| **Titanium** | **400** | **8×** |
 
 There is **no titanium hoe**. The hoe is not a digging tool — it tills — and a
 tier for it would buy nothing a farm needs.
 
-<p class="note"><b>Titanium is not a weapon.</b> A titanium axe is the hardest
-thing you can swing in this game, at 6 damage, but it is still an axe and not a
-sword. Hostile mobs are a matter of light and distance, not of gear — see
-<a href="../mobs/index.html">Hostile mobs</a>.</p>
+<p class="note"><b>A titanium axe is not a weapon.</b> It digs faster than anything in
+the game and it does <em>zero</em> damage to a living thing, because only a
+<a href="../tools/sword.html">sword</a> can hurt a creature. Titanium is worth chasing
+for the <a href="../tools/sword.html">sword</a> and the <a href="../tools/armour.html">armour</a>
+more than for the pickaxe — a full titanium set turns a zombie's 10 damage into
+<b>half a heart</b>. See <a href="../mobs/index.html">Hostile mobs</a>.</p>
 
 ## How it compares to diamond
 
@@ -97,7 +111,7 @@ sword. Hostile mobs are a matter of light and distance, not of gear — see
 | How rare | 0.06% of the rock | **0.05%** |
 | Tool | Stone pickaxe or better | **Iron pickaxe or better** |
 | Drops | The gem, ready | The ore block, smelt it |
-| What it becomes | Nothing yet | **Tools** |
+| What it becomes | **A [smithing forge](../devices/smithing-forge.html)**, and through it swords and armour | **Tools, [a sword](../tools/sword.html) and [armour](../tools/armour.html)** |
 
 They are rolled independently, so a cave can hold both in the same wall — and
 where both land on the same cell, the diamond wins.

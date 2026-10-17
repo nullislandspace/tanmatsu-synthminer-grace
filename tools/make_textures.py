@@ -2188,6 +2188,83 @@ def sm_stove_front():
     return rgb
 
 
+# --- The smithing forge (step 69) ------------------------------------------
+#
+# "The smithing furnace looks like a normal furnace but made out of blue
+# diamond material" (D-158). So it is the furnace's SHAPE -- a box with a
+# fire in it -- in the gem's colour, and the one thing it has that the
+# furnace does not is an open top, because a forge that is working has
+# flames coming out of it (D-159).
+#
+# The tint is the diamond icon's own blue darkened a little: a whole block
+# of a gem is not a gem held up to the light, and a bright cyan box next to
+# a chest would read as water.
+
+
+DIAMOND_BLOCK = (78, 126, 166)
+
+
+def _diamond_face(lum, gen):
+    """The block's facets: a big lozenge per face, lighter towards the top
+    left, with the seams between them darker. Plain noise tinted blue reads
+    as a coloured stone, not as a gem, and this is the difference."""
+    for y in range(B):
+        for x in range(B):
+            facet = ((x + y) // 5 + (x - y + 16) // 7) % 2
+            lum[y, x] += 16 if facet else -14
+    for k in range(B):                       # the two seams
+        lum[k, k] -= 30
+        lum[k, B - 1 - k] -= 22
+    lum[0:2, :] += 14                        # a rim, so it reads as a box
+    lum[14:16, :] -= 18
+    lum[:, 0:2] += 10
+    lum[:, 14:16] -= 14
+    return lum, gen
+
+
+def sm_smith_top():
+    """The top: a blue diamond plate with a square mouth in the middle.
+    The mouth is the whole picture -- it is where the flames come from
+    while a job runs, and from above it is also the one thing telling a
+    forge from the chest standing next to it."""
+    lum, gen = sm_stone_lum(63)
+    lum, gen = _diamond_face(lum, gen)
+    for y in range(4, 12):                   # the mouth, dark and recessed
+        for x in range(4, 12):
+            edge = y in (4, 11) or x in (4, 11)
+            lum[y, x] = -74 + int(gen.integers(-6, 7)) if edge else -58 + int(gen.integers(-8, 9))
+    return sm_rgb(lum, DIAMOND_BLOCK)
+
+
+def sm_smith_front():
+    """The face: the furnace's opening, square rather than arched, with a
+    hot firebox behind it and an iron band across the top. The furnace is
+    a fire behind three bars; this one is a mouth with a glow in it, which
+    is what a forge looks like when it is lit."""
+    lum, gen = sm_stone_lum(64)
+    lum, gen = _diamond_face(lum, gen)
+    rgb = sm_rgb(lum, DIAMOND_BLOCK)
+    # The opening: rows 6..13, inset two, hottest at the bottom where the
+    # metal sits. Kept the same footprint as the stove's window so the two
+    # machines read as a family.
+    for y in range(6, 14):
+        for x in range(3, 13):
+            edge = y in (6, 13) or x in (3, 12)
+            d = int(gen.integers(-12, 13))
+            if edge:
+                rgb[y, x] = np.clip(np.array([34 + d, 44 + d, 58 + d]), 0, 255)
+            else:
+                hot = 40 if y >= 11 else 16
+                rgb[y, x] = np.clip(np.array([120 + hot + d, 74 + hot // 2 + d, 40 + d]), 0, 255)
+    # The band the tongs hang on, and the two brackets holding it.
+    for x in range(2, 14):
+        rgb[3, x] = np.clip(np.array([188, 192, 200]), 0, 255)
+        rgb[4, x] = np.clip(np.array([124, 128, 138]), 0, 255)
+    for x in (2, 13):
+        rgb[5, x] = np.clip(np.array([146, 150, 160]), 0, 255)
+    return rgb
+
+
 # --- The eleven dishes (step 11) --------------------------------------------
 #
 # Every one of these has to be told from the others in a 16 px hotbar
@@ -2643,6 +2720,89 @@ def sm_item_mine_shaft():
     return img
 
 
+# --- Swords and armour (step 70) -----------------------------------------
+#
+# Both metals are the same five shapes, so the only thing telling an iron
+# chestplate from a titanium one in the slot grid is the colour -- exactly
+# the job the tier-4 tools already do. Iron is the warm bright grey the
+# tools use; titanium is the cooler, darker one.
+IRON_METAL = (222, 222, 228)
+TITANIUM_METAL = (194, 202, 214)
+
+
+def sm_item_sword(rgb):
+    """Blade up, crossguard, short grip. Deliberately VERTICAL while every
+    tool in the game is a diagonal handle: a sword that leaned like an axe
+    would be an axe at a glance, and step 71 is precisely the step where
+    the difference stops being cosmetic."""
+    img = _icon()
+    for y in range(1, 10):
+        _rect(img, 6, y, 9, y + 1, _shade(rgb, -10))
+        _dot(img, 7, y, _shade(rgb, 24))
+    _dot(img, 7, 0, _shade(rgb, 14))
+    # The guard is wider than the blade, which is what makes it a sword.
+    _rect(img, 3, 10, 12, 11, _shade(rgb, -30))
+    _rect(img, 4, 11, 11, 12, _shade(rgb, -48))
+    for y in range(12, 15):
+        _rect(img, 6, y, 9, y + 1, HANDLE)
+        _dot(img, 7, y, _shade(HANDLE, -20))
+    _rect(img, 6, 15, 9, 16, _shade(rgb, -22))
+    return img
+
+
+def _bands(img, spans, rgb):
+    """Rows of (y, x0, x1, shade) -- armour is a pile of bands, and a band
+    is the only thing a 16 px silhouette can afford."""
+    for y, x0, x1, d in spans:
+        _rect(img, x0, y, x1, y + 1, _shade(rgb, d))
+
+
+def sm_item_helmet(rgb):
+    img = _icon()
+    _bands(img, ((2, 6, 10, 22), (3, 5, 11, 12), (4, 4, 12, 4),
+                 (5, 3, 13, 0), (6, 3, 13, -8), (7, 3, 13, -8),
+                 (8, 3, 13, 0), (9, 4, 12, -16)), rgb)
+    # The opening for the face, and the rim under it.
+    _bands(img, ((6, 5, 11, -66), (7, 5, 11, -66)), rgb)
+    _bands(img, ((10, 3, 13, -34), (11, 4, 12, -46)), rgb)
+    return img
+
+
+def sm_item_chestplate(rgb):
+    img = _icon()
+    _bands(img, ((2, 3, 13, 20), (3, 2, 14, 10), (4, 2, 14, 2),
+                 (5, 3, 13, -4), (6, 4, 12, -8), (7, 4, 12, -8),
+                 (8, 4, 12, -6), (9, 4, 12, -10), (10, 4, 12, -14),
+                 (11, 5, 11, -22)), rgb)
+    # Pauldrons: the two ends of the top band read darker, so the shape is
+    # shoulders and not a barrel.
+    _bands(img, ((2, 2, 5, -20), (2, 11, 14, -20),
+                 (3, 2, 4, -30), (3, 12, 14, -30)), rgb)
+    return img
+
+
+def sm_item_leggings(rgb):
+    img = _icon()
+    _bands(img, ((3, 4, 12, 18), (4, 4, 12, 8), (5, 3, 13, 0)), rgb)
+    for y in range(6, 14):
+        d = -6 - 2 * (y - 6)
+        _bands(img, ((y, 3, 7, d), (y, 9, 13, d)), rgb)
+    _bands(img, ((14, 3, 7, -30), (14, 9, 13, -30)), rgb)
+    return img
+
+
+def sm_item_boots(rgb):
+    img = _icon()
+    for y in range(3, 11):
+        d = 12 - 3 * (y - 3)
+        _bands(img, ((y, 3, 7, d), (y, 9, 13, d)), rgb)
+    # The foot turns to the right on both, so a pair is not two columns.
+    _bands(img, ((11, 3, 8, -22), (11, 9, 14, -22),
+                 (12, 3, 8, -34), (12, 9, 14, -34),
+                 (13, 3, 8, -52), (13, 9, 14, -52)), rgb)
+    return img
+
+
 TEXTURES = {
     "grass_top.png": sm_grass_top,
     "grass_side.png": sm_grass_side,
@@ -2702,6 +2862,17 @@ TEXTURES = {
     "item_pickaxe_titanium.png": lambda: sm_item_pickaxe((194, 202, 214)),
     "item_axe_titanium.png": lambda: sm_item_axe((194, 202, 214)),
     "item_shovel_titanium.png": lambda: sm_item_shovel((194, 202, 214)),
+    # Swords and armour (step 70): five shapes x two metals.
+    "item_sword_iron.png": lambda: sm_item_sword(IRON_METAL),
+    "item_sword_titanium.png": lambda: sm_item_sword(TITANIUM_METAL),
+    "item_helmet_iron.png": lambda: sm_item_helmet(IRON_METAL),
+    "item_helmet_titanium.png": lambda: sm_item_helmet(TITANIUM_METAL),
+    "item_chestplate_iron.png": lambda: sm_item_chestplate(IRON_METAL),
+    "item_chestplate_titanium.png": lambda: sm_item_chestplate(TITANIUM_METAL),
+    "item_leggings_iron.png": lambda: sm_item_leggings(IRON_METAL),
+    "item_leggings_titanium.png": lambda: sm_item_leggings(TITANIUM_METAL),
+    "item_boots_iron.png": lambda: sm_item_boots(IRON_METAL),
+    "item_boots_titanium.png": lambda: sm_item_boots(TITANIUM_METAL),
     "item_stick.png": sm_item_stick,
     # The same water without its holes, for SE_TRI_BLEND (M in game).
     "water_blend.png": lambda: sm_water(cut=False),
@@ -2808,6 +2979,11 @@ TEXTURES = {
     # chest (world/blocks.c).
     "stove_top.png": sm_stove_top,
     "stove_front.png": sm_stove_front,
+    # The smithing forge and its chest half (step 69). The CHEST half
+    # borrows the chest's textures exactly as the stove's does -- it is a
+    # chest (world/blocks.c).
+    "smith_top.png": sm_smith_top,
+    "smith_front.png": sm_smith_front,
     "item_baked_potato.png": sm_item_baked_potato,
     "item_grilled_tomatoes.png": sm_item_grilled_tomatoes,
     "item_baked_beans.png": sm_item_baked_beans,

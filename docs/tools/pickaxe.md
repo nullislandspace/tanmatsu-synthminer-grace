@@ -58,5 +58,9 @@ not worth it for the surface.
 
 ## As a weapon
 
-A pickaxe does **1 + its tier** damage: 2 wooden, 3 stone, 4 iron, 5 titanium. That is
-worse than an axe of the same tier. If you are planning to kill something, hold the axe.
+**It is not one.** A pickaxe does **zero** damage to a living thing, at every tier.
+Swinging at a cow or a zombie with one lands as nothing, and the HUD says so.
+
+What hurts a creature is a [sword](sword.html), and only a sword. Switch to one before
+something reaches you, and switch back before you mine anything — a sword digs nothing,
+and mining wears it exactly like it wears a pickaxe.

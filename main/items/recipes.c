@@ -399,6 +399,67 @@ static recipe_t const RECIPES[] = {
     {.out     = ITEM_MINE_SHAFT, .out_n = 1, .station = RS_TABLE,
      .n_in    = 1,
      .in      = {{ITEM_IRON_INGOT, 16}}},
+
+    // THE SMITHING FORGE ITSELF (Part S, D-158), made at the crafting
+    // table: twelve diamonds and ten planks. "Wood" is planks because
+    // every recipe in this game that means wood says BLK_PLANKS.
+    //
+    // NOT RF_REVERSIBLE. A machine that makes a sword should not come back
+    // as twelve gems, and the bench's rule is that it undoes things made of
+    // ordinary materials -- which a diamond-and-wood forge is not.
+    //
+    // DIAMOND FINALLY HAS A USE (D-157 closed): until this row the gem came
+    // out of the cave and led nowhere.
+    {.out     = BLK_SMITH, .out_n = 1, .station = RS_TABLE,
+     .n_in    = 2,
+     .in      = {{ITEM_DIAMOND, 12}, {BLK_PLANKS, 10}}},
+
+    // --- At the smithing forge ---------------------------------------
+    //
+    // EVERY NUMBER HERE IS PROVISIONAL (D-158, D-159). The ingot costs are
+    // the ones Part S wrote down "so that there is something to argue
+    // with": 2 / 4 / 6 / 5 / 3, which is 20 ingots for a full set and a
+    // sword. Iron is 44x richer than titanium in the cave (F-162), so an
+    // iron set is a trip and a titanium set is a project.
+    //
+    // None is RF_REVERSIBLE: the forge spends a day and a pile of coal to
+    // make these, and the bench would be minting ingots out of a day's
+    // work. And none is at RS_TABLE, which is the user's rule rather than
+    // an implication of it.
+    {.out     = ITEM_SWORD_IRON, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_IRON_INGOT, 2}}},
+    {.out     = ITEM_HELMET_IRON, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_IRON_INGOT, 4}}},
+    {.out     = ITEM_CHESTPLATE_IRON, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_IRON_INGOT, 6}}},
+    {.out     = ITEM_LEGGINGS_IRON, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_IRON_INGOT, 5}}},
+    {.out     = ITEM_BOOTS_IRON, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_IRON_INGOT, 3}}},
+
+    // The same five in the better metal, at the same prices. Titanium is
+    // worth more because of the two columns on `item_def_t`, not because
+    // it costs more to make.
+    {.out     = ITEM_SWORD_TITANIUM, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_TITANIUM_INGOT, 2}}},
+    {.out     = ITEM_HELMET_TITANIUM, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_TITANIUM_INGOT, 4}}},
+    {.out     = ITEM_CHESTPLATE_TITANIUM, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_TITANIUM_INGOT, 6}}},
+    {.out     = ITEM_LEGGINGS_TITANIUM, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_TITANIUM_INGOT, 5}}},
+    {.out     = ITEM_BOOTS_TITANIUM, .out_n = 1, .station = RS_SMITH,
+     .n_in    = 1,
+     .in      = {{ITEM_TITANIUM_INGOT, 3}}},
 };
 
 #define RECIPE_N ((int)(sizeof(RECIPES) / sizeof(RECIPES[0])))

@@ -6,7 +6,7 @@ summary: Pork, and the only source of the bone that tames a dog.
 | | |
 |---|---|
 | **Found in** | Plains and forests (about 1 chunk in 25), birch woods (1 in 33) |
-| **Health** | 10 — two blows of an iron axe |
+| **Health** | 10 — two swings of an [iron sword](../tools/sword.html) |
 | **Drops** | **1–3 pork** |
 | **Eats** | A **potato** *or* a handful of **beans** |
 | **Size** | 0.9 × 0.9 blocks |

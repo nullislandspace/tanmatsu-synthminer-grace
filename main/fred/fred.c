@@ -18,12 +18,15 @@
 #include "world/chunk_render.h"
 
 static bool       s_ready;
-static mesh_t     s_head, s_body, s_arm, s_fp_arm, s_leg, s_pick, s_axe, s_shovel, s_hoe, s_bucket, s_rod, s_bone,
-    s_bed, s_cube, s_sprite, s_torch;
+static mesh_t     s_head, s_body, s_arm, s_fp_arm, s_leg, s_pick, s_axe, s_shovel, s_hoe, s_sword, s_bucket, s_rod,
+    s_bone, s_bed, s_cube, s_sprite, s_torch, s_helmet, s_chestplate, s_leggings, s_boots;
 static mesh_mat_t s_mats[FM_COUNT];
 
 // The head of a tool, by level.
-static uint32_t const HEAD_ARGB[4] = {0xFF9AA0A8u, 0xFF8A6238u, 0xFF8C9096u, 0xFFD2D6DCu};
+// Five now, because titanium tools exist (items/items.h, tool_level 4)
+// and this table had four: a titanium pickaxe was falling through to
+// index 0 and being drawn in iron.
+static uint32_t const HEAD_ARGB[5] = {0xFF9AA0A8u, 0xFF8A6238u, 0xFF8C9096u, 0xFFD2D6DCu, 0xFFC2CAD6u};
 
 void fred_init(void) {
     if (s_ready) return;
@@ -40,6 +43,8 @@ void fred_init(void) {
     // Overwritten per draw with whatever is being carried.
     s_mats[FM_FLUID]    = (mesh_mat_t){NULL, 0xFF3A3E46u, 0};
     s_mats[FM_PALE]     = (mesh_mat_t){NULL, 0xFFE8E4D8u, 0};
+    // Set per draw from the item being worn or held, like FM_FLUID's.
+    s_mats[FM_ARMOUR]   = (mesh_mat_t){NULL, 0xFF9AA0A8u, 0};
     fred_build_head(&s_head);
     fred_build_body(&s_body);
     fred_build_arm(&s_arm);
@@ -49,6 +54,11 @@ void fred_init(void) {
     fred_build_axe(&s_axe);
     fred_build_shovel(&s_shovel);
     fred_build_hoe(&s_hoe);
+    fred_build_sword(&s_sword);
+    fred_build_helmet(&s_helmet);
+    fred_build_chestplate(&s_chestplate);
+    fred_build_leggings(&s_leggings);
+    fred_build_boots(&s_boots);
     fred_build_bucket(&s_bucket);
     fred_build_rod(&s_rod);
     fred_build_bone(&s_bone);
@@ -108,6 +118,11 @@ void fred_shutdown(void) {
     // not freed since step 55, which nothing noticed because fred is
     // shut down once, when the app exits.
     mesh_free(&s_hoe);
+    mesh_free(&s_sword);
+    mesh_free(&s_helmet);
+    mesh_free(&s_chestplate);
+    mesh_free(&s_leggings);
+    mesh_free(&s_boots);
     mesh_free(&s_bucket);
     mesh_free(&s_rod);
     mesh_free(&s_bone);
@@ -139,6 +154,14 @@ fred_hold_t fred_hold_for(uint16_t item) {
         h.kind  = FRED_HOLD_TOOL;
         h.tool  = d.tool;
         h.level = d.tool_level;
+        return h;
+    }
+    // A SWORD IS A SHAPE, and the one thing in the hotbar a cube would
+    // describe worst: it is almost all length and none of that survives
+    // being a coloured dice (D-158). Its blade takes the item's metal.
+    if (item_is_weapon(item)) {
+        h.kind = FRED_HOLD_SWORD;
+        h.argb = d.argb;
         return h;
     }
     // A BUCKET IS A SHAPE, not a lump, so it gets a model rather than a
@@ -207,6 +230,14 @@ static void submit_held(xform_t const* arm, fred_hold_t const* hold, mesh_mat_t 
                              : hold->tool == TOOL_HOE    ? &s_hoe
                                                          : &s_pick;
         mesh_submit(tool, &fist, m, FM_COUNT);
+    } else if (hold->kind == FRED_HOLD_SWORD) {
+        // In the fist exactly as a tool is: a swing is the same gesture
+        // whatever caused it (D-161). Only the blade's metal differs.
+        xform_t const fist = joint(arm, v3(0.0f, FRED_FIST_Y, 0.0f), ident());
+        mesh_mat_t    m[FM_COUNT];
+        for (int i = 0; i < FM_COUNT; i++) m[i] = mats[i];
+        m[FM_ARMOUR].argb = hold->argb;
+        mesh_submit(&s_sword, &fist, m, FM_COUNT);
     } else if (hold->kind == FRED_HOLD_SPRITE || hold->kind == FRED_HOLD_TORCH) {
         // Held out of the fist the way the tools are, top end forward.
         xform_t const at = joint(arm, v3(0.0f, FRED_FIST_Y, 0.02f), mat3_rot_x(1.57f));
@@ -272,6 +303,25 @@ void fred_submit(xform_t const* root, fred_pose_t const* p, uint8_t light) {
     mesh_submit(&s_leg, &leg_r, mats, FM_COUNT);
     mesh_submit(&s_leg, &leg_l, mats, FM_COUNT);
 
+    // LEGGINGS AND BOOTS, on the same two joints. They are built in the
+    // leg's frame for exactly this reason: a suit that does not swing
+    // with the legs is a statue wearing a suit (D-161).
+    if (p->armour & (FRED_ARM_LEGS | FRED_ARM_FEET)) {
+        mesh_mat_t am[FM_COUNT];
+        for (int i = 0; i < FM_COUNT; i++) am[i] = mats[i];
+        xform_t const legs[2] = {leg_r, leg_l};
+        for (int k = 0; k < 2; k++) {
+            if (p->armour & FRED_ARM_LEGS) {
+                am[FM_ARMOUR].argb = p->armour_argb[2];
+                mesh_submit(&s_leggings, &legs[k], am, FM_COUNT);
+            }
+            if (p->armour & FRED_ARM_FEET) {
+                am[FM_ARMOUR].argb = p->armour_argb[3];
+                mesh_submit(&s_boots, &legs[k], am, FM_COUNT);
+            }
+        }
+    }
+
     // Everything above the waist hangs off the TORSO, which is the hips
     // until he crouches and then slides down and tips forward over
     // them.
@@ -279,6 +329,10 @@ void fred_submit(xform_t const* root, fred_pose_t const* p, uint8_t light) {
     xform_t const torso  = joint(&hips, v3(0.0f, -FRED_CROUCH_DROP * crouch, 0.0f),
                                  mat3_rot_x(FRED_CROUCH_LEAN * crouch));
     mesh_submit(&s_body, &torso, mats, FM_COUNT);
+    if (p->armour & FRED_ARM_CHEST) {
+        mats[FM_ARMOUR].argb = p->armour_argb[1];
+        mesh_submit(&s_chestplate, &torso, mats, FM_COUNT);
+    }
 
     // Arms swing against the legs; the tool arm also lifts the tool (a
     // turn about x of -angle swings the hand forward and up).
@@ -309,6 +363,10 @@ void fred_submit(xform_t const* root, fred_pose_t const* p, uint8_t light) {
     mat3_t const  unlean = mat3_rot_x(-FRED_CROUCH_LEAN * crouch);
     xform_t const head   = joint(&torso, v3(0.0f, FRED_BODY_H, 0.0f), mat3_mul(&unlean, &look));
     mesh_submit(&s_head, &head, mats, FM_COUNT);
+    if (p->armour & FRED_ARM_HEAD) {
+        mats[FM_ARMOUR].argb = p->armour_argb[0];
+        mesh_submit(&s_helmet, &head, mats, FM_COUNT);
+    }
 }
 
 // First person. The showreel put the shoulder 0.9 blocks in front of the

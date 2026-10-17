@@ -2367,11 +2367,13 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 
 Added 2026-10-17 by the user (D-158), with the armour and mob-damage numbers retuned the same day
 by D-159, the forge's clock corrected by the user's own arithmetic, and the forge's job rules and
-the player figure's armour and swing added the same day (D-160, D-161). **Design only -- nothing in
-this part is built, and no line of code mentions any of it yet.** Every number below is a proposal
-written down so that a playtest has something to move, in the same spirit as Part M: the shape is
-the user's, the arithmetic is ours, and the arithmetic is labelled as provisional wherever the
-design did not give it.
+the player figure's armour and swing added the same day (D-160, D-161). **Built 2026-10-18**
+(F-163, steps 69 / 70 / 71), and the build had to settle two things the brief left open: what
+spends a sword's durability, and whether "Start" means anything on a forge with nothing to burn
+(D-162, D-163). Every number below is still a proposal written down so that a playtest has
+something to move, in the same spirit as Part M: the shape is the user's, the arithmetic is ours,
+and the arithmetic is labelled as provisional wherever the design did not give it. **Nothing in
+this part has been seen on a device yet.**
 
 **The change in one line:** the axe stops being a weapon. Fighting gets its own item, surviving
 gets its own gear, and both are made in a new machine that spends a day to make one thing.
@@ -2747,68 +2749,81 @@ are and how soon they notice -- rather than the sword, which is the whole point 
 | | |
 |---|---|
 | Blocks | 2 (`BLK_SMITH`, `BLK_SMITH_CHEST`): `BLK_COUNT` 56 -> 58, appended, never renumbered (D-74) |
-| Items | 10: 2 swords and 4 armour pieces in 2 tiers. `ITEM_COUNT` 60 -> 70 |
+| Items | 10: 2 swords and 4 armour pieces in 2 tiers. `ITEM_COUNT` 118 -> 128 |
 | Materials | 2 new `VM_` (the forge's top and front, in blue diamond). The chest half reuses `VM_CHEST_*`, exactly as `BLK_STOVE_CHEST` does |
-| Textures | 12 new PNGs: 10 item icons and the 2 block faces. `TEX_BY_NAME` is derived from the item table, so it moves by itself: 76 allowed with 6 to spare today, and the cache assert sits at 163 of 192. `worldcheck` is what notices when the slack runs out (F-120) |
-| Strings | 11 new, English first -- 10 items and the station, whose two blocks share one label the way the stove's do. The file is 403 x 32 with 25 untranslated per language |
+| Textures | 12 new PNGs: 10 item icons and the 2 block faces. `TEX_BY_NAME` is derived from the item table, so it moves by itself: **86 allowed, 6 to spare**, and the cache assert sits at **181 of 192** (95 materials + 86). `worldcheck` is what notices when the slack runs out (F-120) |
+| Strings | **57 new**, not 11, because the machine has to talk: 11 labels (10 items and the station, whose two blocks share one label the way the stove's do), 33 forge rows and messages, 11 equip messages, the `Confirm` keybind row, and the line that says a tool will not hurt a creature. The file is **460 x 32**, English-only for these 57, which puts every other language at 82 fallbacks (25 of them Part M's) |
 | Recipes | 1 at `RS_TABLE` (the station itself), 10 at a new `RS_SMITH` |
-| Item table | 2 new columns -- the attack value and the guard percentage -- appended last |
+| Item table | **3** new columns, appended last: `attack`, `guard` (a percentage, D-159) and `wear_slot` -- the last so a piece names the place on the body it belongs to instead of having it inferred from where its id happens to sit |
 | Mobs | 2 numbers retuned in `main/game/mob.c` (zombie 3 -> 10, skeleton 2 -> 8, D-159), and the guard applied where a blow is dealt |
-| Flame | 0 new PNGs if `voxel_fx_flame()` is used: `torch_flame.png` is already generated and installed, but `main/voxel/voxel_fx.c` is not in `APP_SOURCES` |
-| Forge state | a job that is idle / running / **waiting for fuel**, the committed ingots in the forge's own slot, and progress wide enough for 48000 ticks -- `blockent_t::cook` is `uint16_t` in RAM and an `i16` tag on the card (D-160) |
-| Input | 1 new action `SM_CONFIRM`, plus a keybind row and a saved binding |
+| Flame | **not built** (F-163). `voxel_fx_flame()` exists and `torch_flame.png` is already generated and installed, but `main/voxel/voxel_fx.c` is not in `APP_SOURCES` and `chunk_render.c` has no sight of block-entity state, so a flame that knows a job is running needs plumbing this round did not buy. `smith_top.png` was drawn with a dark mouth for one to come out of |
+| Forge state | a job that is idle / running / **waiting for fuel**, the committed ingots in the forge's own slot (`BE_SMITH_FUEL` / `BE_SMITH_OUT` / `BE_SMITH_METAL`), and progress wide enough for 48000 ticks. `cook` is left alone -- the forge never writes it -- and the job is a new `uint32_t` on `blockent_t` saved as a `TAG_I32` named `job`, because `cook`'s `i16` tag stops at 32767 (D-160) |
+| Input | 1 new action `SM_CONFIRM` at the end of `sm_action_t` -- the 25th -- plus a keybind row (Enter) and a saved binding. `SE_BINDINGS_MAX` 24 -> 32, because the engine's default of 16 was passed long ago and the next action would have had nowhere to go |
 | UI | 1 new screen modelled on `main/ui/stove_ui.c`, and the player figure in the Tab screen. The selector is greyed out while a job runs and answers `SFX_DENY` (D-160) |
-| Fred | 4 new meshes (helmet, chest, leggings, boots) over the existing head/body/leg pieces, 1 new `fred_mat_t` (`FM_TITANIUM`; iron reuses `FM_IRON`), and a second stroke driver for the attack swing. The same meshes serve the Tab-screen figure (D-161) |
+| Fred | 4 new meshes (helmet, chest, leggings, boots) built as shells in the covered part's own frame, so they ride the existing pose for free; 1 new `fred_mat_t` (`FM_ARMOUR`) whose `argb` is set per submit from the item worn, which is what lets an iron helmet sit on a titanium chestplate; and a second stroke driver for the attack swing. A sword is a modelled `FRED_HOLD_SWORD`, not a coloured cube. **The Tab-screen figure is not these meshes** -- it is a 2D figure, see the deviation under F-163 |
 | Sounds | 2 new rows in `SFX[]` (`main/audio/sfx.c`): a swing that misses and a sword that lands. No new assets and no new module (D-161) |
-| Save | 4 equipment tags in `level.smw` (D-30, additive, no version bump), and the forge's job fields in its block-record tags, where `cook`'s `i16` is too narrow for a titanium job (D-160). `main/game/replay.h`'s `inv[INV_SLOTS]` has to decide whether a replay carries equipment at all |
+| Save | a 4th additive compound `equip` inside `level.smw`'s inventory compound, keyed `0..3` (D-30, no version bump: an old save simply has no `equip` and reads as wearing nothing), and the forge's `job` tag in its block-record tags. `main/game/replay.h`'s `inv[INV_SLOTS]` does **not** carry equipment, so a replay sees a player in his shirt whatever he wore |
 | Docs | new pages for the sword, the four pieces and the forge, and the six pages listed above that currently call an axe a weapon |
 
-### Open, and to be decided
+### Settled by the build
 
-- **Whether a mob swinging another mob feels the same number.** Armour guards the player only, so
-  a zombie at 10 clears a skeleton in two swings and a cow in one (D-159). That either thins a
-  pack before the player reaches it or empties the cave before the player gets there; a separate,
+Not in the brief, so the build had to decide them. Each one is in the code and in
+`tools/worldcheck.c` now, which is what makes them harder to change than they look (F-163).
+
+- **"10 wood" is 10 planks**, not logs -- the same reading every other recipe in this game that
+  means wood already uses.
+- **The ingot costs are the proposed ones**: sword 2, helmet 4, chestplate 6, leggings 5, boots 3,
+  identical for both metals, **20 ingots for a set and a sword**. Nothing in Part S is reversible
+  at the disassembly bench, including the station itself: 12 diamonds back would make it furniture
+  you move around, and every reversible row in `recipes.c` is a shape that can be taken back apart.
+- **A blow taken wears the gear** (D-159 left it open): one use off **every** worn piece per swing
+  it stood, so a full set burns four times as fast as a single piece. **A sword spends one use per
+  blow that lands** (D-162); a swing at nothing costs nothing.
+- **A job may be left running while you are away**, and it makes exactly one item however long you
+  are away -- seven days out returns one chestplate, not seven. That is the clamp the brief's
+  "crafts exactly one item, then the process automatically stops" has to mean on a catch-up model.
+- **A forge broken mid-job gives back the committed ingots and nothing else** (D-160): the metal
+  sits in the record's own slot, so breaking either half spills it. A broken forge costs the time.
+- **The animation does not gate the blow** (D-161): damage on the press, the stroke laid over it.
+- **Two sound rows, not four** (D-161): `SFX_SWING` for a swing that finds nothing, `SFX_CLANG` for
+  one that lands, both tier-blind. The tiers already differ in every other column of the item table.
+- **Damage rounds half up and never below 1**: a zombie's 10 lands for 6 through iron and 1 through
+  titanium, a skeleton's 8 for 4 and 1. That is what makes the brief's "half a heart" come out as
+  written rather than one heart short of it.
+- **Armour guards `PLAYER_HURT_MOB` only.** Lava, falls and starving go through the gear untouched,
+  which is what keeps the lava sea a threat after you are armoured (D-156).
+- **The forge may stand in the Deep Mine.** Nothing forbids it, and the clock runs downstairs
+  (D-139) while the bed does not (D-145) -- so a forge down there works, and a titanium job down
+  there takes two days you have to spend upstairs.
+- **A dark forge has to read as "out of fuel" in words, not flames.** No flame is drawn anywhere in
+  Part S (see the cost above), so the forge says it in the HUD instead: `forge.waiting` on a job
+  that is starving, and Start refusing a forge with nothing to burn (D-163).
+
+### Still open
+
+Playtest questions, not implementation questions. None of them blocks anything above.
+
+- **Whether a mob swinging another mob feels the same number.** Armour guards the player only, so a
+  zombie at 10 clears a skeleton in two swings and a cow in one (D-159). That either thins a pack
+  before the player reaches it or empties the cave before the player gets there; a separate,
   smaller mob-vs-mob number is the alternative.
-- **Whether 45% and 90% are the right two numbers**, and whether a blow rounds down as proposed or
-  up. Both are provisional in the same way every other Part M and Part S number is.
-- **"10 wood" -- logs or planks?** Planks assumed, because that is what every recipe in this game
-  that means wood says.
-- **The ingot costs**, and whether the forge is reversible at the disassembly bench -- 12 diamonds
-  back would make it an object you move around, which may or may not be wanted.
-- **What a worn piece does when you die.** Death in the cave already sends the player home and
-  death keeps the inventory (F-159); whether armour comes off, stays on, or loses wear is not in
-  the brief.
-- **Whether the forge may stand in the Deep Mine.** Beds cannot (D-145), because there is no night
-  down there. The forge needs no night, so nothing forbids it -- but a station that eats diamonds
-  and makes the cave survivable changes what a cave visit is, and that is a decision rather than an
-  implication.
+- **Whether 45% and 90% are the right two numbers.** Provisional in the same way every other Part M
+  and Part S number is, and the lever a playtest would move first.
+- **What a worn piece does when you die.** Death in the cave sends the player home and keeps the
+  inventory (F-159); the gear stays on and keeps its wear today, which is a build decision rather
+  than a brief one.
 - **How armour shows on the HUD.** The hearts are there; the four pieces and their wear are not.
-  Whether the pieces show on Fred in third person is decided (D-161); what the player can see about
-  them without opening the inventory is not.
+  They show on Fred in third person (D-161); what the player can see without opening the inventory
+  is not decided.
 - **Whether first person shows armour at all.** Only his arm is drawn in first person, so the honest
-  answer is a sleeve -- and whether that is worth a mesh is a playtest question (D-161).
-- **Whether the swing animation gates the blow.** Written down as *no*: damage on the press, the
-  stroke laid over it. Damage at the bottom of the arm's arc is the alternative, and it changes what
-  a missed click means (D-161).
-- **Whether an iron and a titanium sword sound different.** Two rows are proposed (D-161); four is
-  the alternative, and the two tiers already differ in every other column of the item table.
+  answer is a sleeve -- and whether that is worth a mesh (D-161).
 - **Whether a mob can disarm you**, or whether a piece only ever leaves the player's own hand.
-- **Whether a blow costs the piece wear.** Durability is written down (150 / 300) but nothing says
-  what spends it: a swing taken, a swing dealt, or only lava and falls.
-- **Whether a job is meant to be left running while you are away.** On the catch-up model an iron
-  job started at sunset finishes at the next sunset whether or not anybody sleeps; whether the
-  forge should instead want the player standing there is not in the brief.
-- **What a forge broken mid-job gives back.** Part S recommends the committed ingots and nothing
-  else -- a broken forge costs the time, not the metal (D-160). Whether a half-finished job refunds
-  partially is not in the brief.
-- **Whether a dark forge reads as "out of fuel".** The flame follows `burn_left`, so a starved job
-  stops showing flames for free (D-160). Whether that is legible without a line of HUD text is a
-  playtest question.
-- **Whether the flame is worth the draw.** The suggestion is the user's; the cheap version is the
-  forge the player is standing at, and the version that reads from across the cave is a register of
-  every running forge.
-- **Whether lava is still the right number** now that a zombie takes 10 a swing and lava still
-  takes 2 every half second (D-156). Recorded as a gap, deliberately not retuned here.
+  Today it is only ever the player's own hand, and a broken piece simply vanishes with a message.
+- **Whether the flame is worth the draw.** The suggestion is the user's (D-159); the cheap version
+  is the forge the player is standing at, the version that reads from across the cave is a register
+  of every running forge, and neither is built.
+- **Whether lava is still the right number** now that a zombie takes 10 a swing and lava still takes
+  2 every half second (D-156). Recorded as a gap, deliberately not retuned here.
 
 ---
 
@@ -2951,9 +2966,9 @@ are and how soon they notice -- rather than the sword, which is the whole point 
 | 66 | **The optional external VFD** (from synthracer): the item in hand in a world, the game's name in a menu, powered down on exit | done, **device test pending** | 2026-10-12, the user: *"Port that over here ... The VFD should display the name of the current item held in hand (or be blank otherwise). In the Menu, it should display "SynthMiner". Make sure the VFD is powered off when exiting the app."* `main/vfd.{c,h}`, D-152 and F-152. Costs 9.7 KiB of text and does nothing at all on a badge that has no tube. **Unverified here**: the probe, the scrolled names and the power-down all need a device with the display fitted. |
 | 67 | **Saving a world is a round a frame, and a refusal is on the screen** | done, **device test pending** | 2026-10-12 (D-153, F-153). `save_pass(&p, max_ask)` bounds a round and reports `saved` from the worker's own counter; `saving_step()` runs **one round per frame at 8 writes in flight**, so the bar fills as the chunks go out; `save_dirty_chunks()` stops after a round that saved nothing; `draw_saving()` prints `loading.saving_refused` under the bar and holds the screen 2 s when it has to say it. The measurement behind it: **~520 ms per refused chunk** (the loader's 5 tries + 372 ms of backoff + this file's 100 ms pace) x 49 chunks x 8 sweeps = **200 s of a screen drawn once**. **The other half of this is not in this repo**: the badge is still running graceloader 2.6.x, whose disk layer retries `ESP_ERR_NOT_SUPPORTED` five times instead of bouncing the buffer (F-147, F-148) -- `cd ../tanmatsu-graceloader && make install`. This is the hardening around that, not the fix for it. |
 | 68 | **Titanium**: the cave's fourth ore, the iron-pickaxe gate, and the tier-4 tools it smelts into | done, **device test pending** | Part M, 2026-10-17 (D-157, F-162). `BLK_TITANIUM_ORE` id 55, hardness 240 (diamond's number), `TOOL_PICK` at level 3 -- the first block in the game at that level, built on the existing "too weak a tool still breaks it and drops nothing" rule rather than a new one. Four items at tier 4 / 400 uses: the ingot plus pickaxe, axe and shovel at iron's prices (3 / 3 / 1 ingots + 2 sticks), all reversible; **no hoe**, because the user named three tools and a hoe does not dig. Rolled in `deepmine.c` **after diamond and before iron**, at each district's diamond odds. Measured over 144 cave chunks: **0.05% of the rock against diamond's 0.06% (0.82x), iron 44x either**; **12.0 s by hand / 6.0 wooden / 3.0 stone, all three dropping nothing, 2.0 iron, 1.5 titanium**. Five new textures, five new English strings, one new docs page, and six pages that said "three tiers" now saying four. Like every other Deep Mine number, these odds are provisional until played. |
-| 69 | **The smithing furnace**: two blocks and a chest, `RS_SMITH`, the selector, the fuel slot, and a job that makes exactly one item and stops | todo | Part S, 2026-10-17 (D-158, D-159, D-160). **Not built.** The station is the stove's shape (D-110) with a new material and a new rule: every machine in this game is `now - stamp` and runs as long as the clock allows, and this one has an explicit Start and a fixed end. Costs 12 diamonds + 10 planks at the crafting table; an iron job is `DAY_TICKS` (20 playing minutes), a titanium job 2 x `DAY_TICKS` (40). A bed advances at most 13000 ticks -- 54% of a day -- so a sleep pays just over half an iron job and never a whole one (D-159). Fuel burns the furnace's way: **15 coal** an iron job, **30** a titanium one. The job's rules are decided (D-160): the ingots leave the chest **at Start** and belong to the job, the selector is locked while a job runs, and a forge out of coal **keeps its progress and waits** -- the one place it disagrees with `furnace_catch_up()` and `stove_catch_up()`, both of which zero `cook` when they go cold. `blockent_t::cook` (u16, saved as `i16`) cannot hold a 48000-tick job, so the progress needs a wider field. Flames while a job runs are recommended (D-159). Still undecided: the ingot costs. |
-| 70 | **Swords and armour**, the player figure in the Tab screen, `SM_CONFIRM`, and four equipment slots on the save | todo | Part S, 2026-10-17 (D-158, D-159, D-161). **Not built.** 10 items, 2 new columns on `item_def_t` (attack, guard %, appended last), 1 new action at the end of `sm_action_t`, 4 additive tags in `level.smw` (D-30). The blocking decision is made: **armour is a percentage off the blow (iron 45%, titanium 90%) and the mobs' swings go up to zombie 10 / skeleton 8**, so a full titanium set turns a swing into 1 health -- half a heart (D-159). The retune lands in `main/game/mob.c` as much as in the item table: what is built today is still 3 and 2 (D-156). Fred wears what the player wears (D-161): 4 armour shells over his existing head/body/leg meshes, one new `fred_mat_t` with iron reusing `FM_IRON`, and an attack stroke on `fred_pose_t::swing` -- a field today only digging drives, so a blow at a cow is thrown with the arm at rest. 2 new `SFX[]` rows tell a miss from a hit, and `player_t::hit_mob` is already the branch that knows which. |
-| 71 | **The axe stops being a weapon**: only a weapon damages a creature, and the documentation that calls an axe one gets rewritten | todo | Part S, 2026-10-17 (D-158). **Not built.** One predicate in `mob_damage_of()`, and it covers animals as well as hostiles -- the user's sentence says "monsters or animals", so `mob_def_t::hostile` is not the line. Six places currently say the opposite: `docs/tools/axe.md`, `docs/tools/index.md`, `docs/tools/pickaxe.md`, `docs/tools/shovel.md`, `docs/animals/index.md`, `docs/ores/titanium.md`. Consequence worth watching: pork, beef and mutton move behind the sword, and the first cave trips have no weapon in the game at all. |
+| 69 | **The smithing forge**: two blocks and a chest, `RS_SMITH`, the selector, the fuel slot, and a job that makes exactly one item and stops | done, **device test pending** | Part S, built 2026-10-18 (F-163, D-158, D-159, D-160, D-163). `main/game/forge.{c,h}` and `main/ui/smith_ui.{c,h}`; `BLK_SMITH` 56 and `BLK_SMITH_CHEST` 57 reuse the stove's pair rules (`interact_pair_other()`, renamed from `interact_stove_other`). 12 diamonds + 10 planks at the crafting table. Iron `DAY_TICKS` (20 playing minutes), titanium 2 x `DAY_TICKS`, and it is the **metal** that sets the clock, not the piece. Fuel is the furnace's own model with one item lit at a time: **15 coal** an iron job, **30** a titanium one. The progress is a new `uint32_t job` on `blockent_t` saved as `TAG_I32` -- `cook` (u16, `i16` on disk) cannot hold 48000 ticks, and `check_forge()` walks a job past the old 32767 ceiling and resumes it to a finished chestplate. Start commits the ingots into `BE_SMITH_METAL`, locks the selector, allows one job at a time, and **refuses a forge with nothing to burn** (D-163); a job starved mid-way keeps its progress and waits. Exactly one item per Start, clamped however long the player is away. Breaking either half gives the committed ingots back and nothing else. No flames drawn -- `forge.waiting` in the HUD is the answer instead. |
+| 70 | **Swords and armour**, armour on Fred, `SM_CONFIRM`, and four equipment slots on the save | done, **device test pending** | Part S, built 2026-10-18 (F-163, D-158, D-159, D-161, D-162). 10 items and **3** new columns appended to `item_def_t` (`attack`, `guard`, `wear_slot`), `SM_CONFIRM` as the 25th action (`SE_BINDINGS_MAX` 24 -> 32), and an additive `equip` compound in `level.smw` keyed `0..3` (D-30: an old save has none and reads as wearing nothing). Armour is a **percentage** off the blow -- 9 / 16 / 12 / 8 iron and exactly double in titanium, so 45% and 90% -- and the mobs moved to **zombie 10 / skeleton 8**. Measured through the check: 10 lands for 6 through iron and 1 through titanium, 8 for 4 and 1, never 0. A blow taken costs 1 use off every worn piece; a sword costs 1 per blow that lands (D-162). Fred wears four shells over his existing head/body/leg meshes under one `FM_ARMOUR` whose `argb` is set per submit -- an iron helmet on a titanium chestplate -- plus a second stroke driver for the swing, and `SFX_SWING` / `SFX_CLANG` tell a miss from a hit. **Deviation from D-161:** the Tab-screen figure is a 2D figure, not these meshes. |
+| 71 | **The axe stops being a weapon**: only a weapon damages a creature, and the documentation that calls an axe one gets rewritten | done, **device test pending** | Part S, built 2026-10-18 (F-163, D-158). `mob_damage_of()` is now `item_def(item).attack` and the sword is the only item in the game with a nonzero one, so the predicate covers animals as well as hostiles -- the user's sentence says "monsters or animals", and `mob_def_t::hostile` is not the line. A tool swing is a *miss* rather than a no-op: `mob_hit()` refuses `damage < 1`, so it sounds like a miss, wears nothing and costs no hunger. Rewritten: `docs/tools/{axe,pickaxe,shovel,hoe,index}.md`, `docs/animals/{index,cow,pig}.md`, `docs/ores/titanium.md`; new: `docs/tools/{sword,armour}.md` and `docs/devices/smithing-forge.md`. Consequence to watch on a device: pork, beef and mutton now sit behind the sword, and the first cave trips have no weapon in the game at all. |
 
 ---
 
@@ -9646,7 +9661,7 @@ are and how soon they notice -- rather than the sword, which is the whole point 
   what a zombie or skeleton *is* -- D-159 changes how hard they hit, not what they are. No change
   to the axe's actual job -- trees, planks, and everything made of wood -- and no change to
   shears, which is how wool has always been got and is untouched by a rule about killing. And
-  nothing is built: Part S is a design, and steps 69, 70 and 71 are `todo`.
+  Part S was a design when this was written; it is built now (F-163), steps 69, 70 and 71.
 
 - **D-159** 2026-10-17, **the user**: **the mobs hit much harder, armour is a percentage of the
   blow, a night is at most half a day, fifteen coal is fine, and a working forge should look like
@@ -9830,10 +9845,121 @@ are and how soon they notice -- rather than the sword, which is the whole point 
   `SFX_BEAST_HURT`, a hostile -> `SFX_GROWL`), so these two rows are the sword rather than the
   impact.
 
-  **What this does NOT say**: nothing is built -- step 70 is still `todo`, and third person today
-  draws Fred in his shirt and overalls whatever the player is carrying. Whether first person shows
-  armour at all (only his arm is drawn down there), whether the two tiers sound different, and
-  whether worn pieces show on the HUD are left open. **No change to how or when damage is dealt.**
+  **What this does NOT say** (written 2026-10-17; built 2026-10-18, see F-163): whether first person
+  shows armour at all (only his arm is drawn down there), whether the two tiers sound different, and
+  whether worn pieces show on the HUD are left open, and all three are still open. **No change to how
+  or when damage is dealt** -- and none was made: the blow is still dealt on the press, with the
+  stroke laid over it.
+
+- **D-162** 2026-10-18, **from the build, to confirm with the user**: **a sword spends one use per
+  blow that lands.**
+
+  D-158 gave the sword a durability column -- 250 iron, 400 titanium, the same two numbers an iron and
+  a titanium pickaxe already carry -- and nothing in the brief says what spends it. The build had to
+  pick something, because a durability column nothing spends is a permanent stat, which is exactly what
+  the column exists to prevent and the same reasoning that makes armour wear when it is hit.
+
+  So: **a blow that lands costs the weapon 1 use; a swing at nothing costs nothing.** One line after
+  `mob_hit()` in `main/game/player.c`, keyed on `damage >= 1` rather than on the hit landing, which is
+  also what makes a tool swing cost nothing at all -- an axe has no `attack`, so it never reaches the
+  line. 250 landed blows is 12 zombies at 20 health or 15 skeletons at 16: the sword wears out on the
+  same clock as the tools it sits next to in the pack, and it is cheaper than any of them.
+
+  **What this does NOT say**: whether a sword should also wear when *you* get hit (it does not -- the
+  worn pieces take that wear), whether anything can repair it (nothing in the game can), and whether
+  250 / 400 are the right two numbers. Recorded as a build decision rather than the user's, and the
+  first number to argue with after a playtest.
+
+- **D-163** 2026-10-18, **from the build**: **"Start" means nothing on a forge with nothing to burn.**
+
+  Found by `check_forge()`, not by play. `forge_start()` checked the recipe, the chest and the output
+  slot -- and not the fuel. `FORGE_IDLE_NO_FUEL` and `FORGE_IDLE_READY` both let the button through,
+  so a player could commit five titanium ingots to a job on a cold forge, watch the selector lock, and
+  watch nothing happen until somebody put coal in.
+
+  Start now requires `burn_left > 0` **or** something burnable in the fuel slot, and refuses with the
+  line the documentation already promised (`docs/devices/smithing-forge.md`: *"When it will not start
+  ... nothing to burn"*). The documentation was right and the code was out of step with it, which is
+  the good direction for this to happen in. Mid-job starvation is untouched and still waits with its
+  progress (D-160).
+
+- **F-163** 2026-10-18, measured and built: **Part S on the machine -- the forge, the sword, four
+  pieces of armour, and the axe demoted.**
+
+  Steps 69, 70 and 71. `make build` and `make check` are green. **Nothing in Part S has been seen on a
+  device yet**, which is why all three rows say *device test pending* rather than *done*.
+
+  **THE FORGE IS THE STOVE'S SHAPE PLUS ONE FIELD.** `main/game/forge.{c,h}` and
+  `main/ui/smith_ui.{c,h}`; `BLK_SMITH` 56 and `BLK_SMITH_CHEST` 57, appended before `BLK_COUNT` 58
+  and never renumbered (D-74). The two-block placement, the two-block break, the drop-as-one and the
+  "which half am I looking at" question are the stove's, so `interact_stove_other()` became
+  `interact_pair_other()` rather than gaining a twin. `cook` is untouched: the forge's progress is a
+  new `uint32_t job` on `blockent_t`, written as `TAG_I32`, because a 48000-tick titanium job does not
+  fit a u16 in RAM or a signed i16 on the card. `BE_RECORD_WORST` moved to **1306 B** for it.
+
+  **THE WIDER FIELD IS TESTED PAST THE OLD CEILING, NOT JUST BELOW IT.** `check_forge()` runs a job to
+  `job == 40001`, encodes the record, decodes it, and resumes it to a finished titanium chestplate.
+  Under the old `cook` that number does not exist: it is 32767 ticks of progress that silently were
+  not. That is the regression this step was most likely to ship, and it is now the cheapest thing in
+  the file to notice.
+
+  **THE JOB'S RULES, AS BUILT.** Start commits the recipe's ingots from the chest into
+  `BE_SMITH_METAL`, locks the selector, and allows one job at a time; it refuses a forge with nothing
+  to burn (D-163). A job starved mid-way keeps its progress and waits -- the one place the forge
+  disagrees with `furnace_catch_up()` and `stove_catch_up()`, which both zero `cook` when they go cold.
+  `forge_catch_up()` clamps at **one item** however long the player was away, so a week out returns one
+  chestplate and not seven. Breaking either half spills every slot, so the committed ingots come back
+  and the time is what a broken forge costs (D-160). Idle reasons, in the order the UI reads them:
+  no recipe chosen, no chest half, no metal, output full, nothing to burn, ready.
+
+  **THE DAMAGE LADDER, MEASURED.** Armour is a percentage off the blow and the mobs moved up to
+  **zombie 10 / skeleton 8** (D-159). Guard is 9 / 16 / 12 / 8 for iron and exactly double for
+  titanium, so a full set is 45% and 90%, and the check reads out what that means: **10 lands for 6
+  through iron -- four swings to die -- and for 1 through titanium, half a heart; 8 lands for 4 and
+  for 1.** Rounded half up, floored at 1, so the best gear in the game does not make the player
+  immune. Armour applies to `PLAYER_HURT_MOB` only; lava, falls and starving walk straight through it,
+  which is what keeps the lava sea a threat after you are armoured.
+
+  **EVERY DURABILITY COLUMN HAS SOMETHING SPENDING IT.** A blow taken costs 1 use off **every** worn
+  piece that stood it, so a full set burns four times as fast as one piece, and a piece that runs out
+  says so and vanishes. A blow dealt costs the sword 1 (D-162). A swing at nothing costs nothing, and
+  a tool swing does not reach either line.
+
+  **THE AXE IS NOT A WEAPON, AND THE GAME NOW SAYS SO EVERYWHERE.** `mob_damage_of()` is
+  `item_def(item).attack`, and the sword is the only item in the game with a nonzero one. The line is
+  "a tool does nothing to a creature", not "nothing to a hostile" -- the user's sentence covers
+  animals, so `mob_def_t::hostile` is not the boundary. A tool swing is a *miss* rather than a no-op:
+  `mob_hit()` refuses `damage < 1`, so it sounds like a miss, wears nothing and costs no hunger. Six
+  pages that used to sell an axe as the weapon were rewritten and three new pages replaced them.
+
+  **WHAT IT COSTS THE GAME, AS BUILT.** 2 blocks, 10 items (`ITEM_COUNT` 118 -> 128), 2 new `VM_`
+  materials, 12 new PNGs, 11 recipes (1 at the table, 10 at a new `RS_SMITH`), **3** new columns
+  appended to `item_def_t` (`attack`, `guard`, `wear_slot`), 1 new action (`SM_CONFIRM`, the 25th, with
+  `SE_BINDINGS_MAX` 24 -> 32), 2 new `SFX[]` rows, 4 new Fred meshes and 1 new `fred_mat_t`, and
+  **57 new strings** rather than the 11 the plan guessed -- the machine has to talk. The language file
+  is **460 rows x 32 languages**, English-only for those 57, which puts every other language at 82
+  fallbacks. `TEX_BY_NAME` allows 86 with **6 to spare** and the texture-cache assert sits at **181 of
+  192**; `worldcheck` is what notices when that slack runs out (F-120).
+
+  **THE SAVE ONLY GAINS.** Equipment is a 4th additive compound inside `level.smw`'s inventory
+  compound, keyed `0..3` (D-30): an old save has no `equip` and reads as a player in his shirt, so no
+  version bump and no migration. `main/game/replay.h`'s `inv[INV_SLOTS]` does not carry equipment, so a
+  replay shows the run as it was fought rather than as it was dressed.
+
+  **THREE THINGS BUILT DIFFERENTLY THAN WRITTEN.** (1) **The Tab-screen figure is 2D, not Fred's
+  meshes.** D-161 said "one model, two places"; the inventory screen draws a flat figure with the four
+  pieces as flat plates, because the Tab screen has no camera, no lighting and no room for a 3D figure
+  at that size. Third person is the 3D one. (2) **No flames are drawn.** `voxel_fx.c` is still not in
+  `APP_SOURCES` (step 3.5) and `chunk_render.c` cannot see block-entity state, so the forge says what
+  it is doing in the HUD instead -- `forge.waiting` on a starving job (D-163). (3) **`HEAD_ARGB` grew
+  to five entries**, because the tier-4 tools added by F-162 were silently rendering in iron's grey:
+  the array that colours Fred's held tool had nothing to say about titanium.
+
+  **Unverified here:** all of it. Whether a forge is understandable without a flame, whether Start and
+  the selector read as a machine rather than a menu, whether 45% and 90% feel right against a zombie
+  that now takes two swings off an armoured player, whether the sword's sound is legible over the
+  mining sound that plays 1.8 times a second, and whether an unarmed first cave trip is survivable at
+  all (D-159, D-146) are device questions, and none of them is answered by a green check.
 
 ## Verification
 

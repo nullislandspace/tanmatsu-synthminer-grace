@@ -604,6 +604,81 @@ void hud_slot_name(pax_buf_t* fb, inv_slot_t const* sl, int y) {
     rendertext_draw(fb, 0xFFFFE8A0u, NULL, 20.0f, x, (float)y, name);
 }
 
+// --- The player figure in the inventory screen (Part S, D-158) ----------
+//
+// A flat drawing, not a render of Fred. Putting the third-person model into
+// this screen would mean a second camera pointed at a figure standing in the
+// middle of the world -- occluded by whatever the player is standing in, lit
+// by whatever light is there, and drawn into a panel that is already a dimmed
+// screenshot of the same world. The design brief hoped one set of meshes
+// would serve both places; what it would actually cost is a camera, an
+// occlusion answer and a lighting answer, for a screen whose whole job is to
+// let you take a chestplate off.
+//
+// So: the same four pieces, the same tier colours (item_def().argb, which is
+// what the icons are made of), and a figure made of the rectangles this file
+// already draws. It is Fred in the same sense that the block icons are the
+// blocks -- his colours and his proportions, not his triangles.
+#define FIGURE_W 96
+
+static void draw_figure(pax_buf_t* fb, int x, int y, inv_slot_t const* equip) {
+    uint32_t const skin    = 0xFFDEAA80u;  // fred.c FM_SKIN
+    uint32_t const shirt   = 0xFFB8302Au;  // ... FM_SHIRT
+    uint32_t const overall = 0xFF2E4C8Cu;  // ... FM_OVERALLS
+    uint32_t const boots   = 0xFF4A3020u;  // ... FM_BOOTS
+    uint32_t const hardhat = 0xFFF0C020u;  // ... FM_HAT
+
+    // Head, hat, body, arms, legs, boots. Left to right, top to bottom, in a
+    // 96 x 178 box -- the same stack of parts Fred is built from, flattened.
+    box(fb, x + 22, y, 52, 14, hardhat);            // the hat
+    box(fb, x + 16, y + 12, 64, 6, hardhat);        // ... and its brim
+    box(fb, x + 28, y + 18, 40, 34, skin);          // the face
+    box(fb, x + 6, y + 56, 12, 56, shirt);          // the arms
+    box(fb, x + 78, y + 56, 12, 56, shirt);
+    box(fb, x + 18, y + 54, 60, 62, shirt);         // the body
+    box(fb, x + 26, y + 60, 44, 56, overall);       // ... in overalls
+    box(fb, x + 26, y + 118, 18, 44, overall);      // the legs
+    box(fb, x + 52, y + 118, 18, 44, overall);
+    box(fb, x + 24, y + 162, 22, 16, boots);        // the boots
+    box(fb, x + 50, y + 162, 22, 16, boots);
+
+    // A WORN PIECE IS DRAWN OVER THE PART IT COVERS, in the tier's own
+    // colour, which is the same colour its icon is -- so the thing on the
+    // figure and the thing in the slot are visibly the same thing. The
+    // outline is the darker edge of the same hue rather than a black line,
+    // because a black line on a dimmed world reads as a hole.
+    for (int i = 0; i < EQUIP_SLOTS; i++) {
+        uint32_t const argb = item_def(equip[i].item).argb;
+        if (equip[i].item == 0 || argb == 0) continue;
+        uint32_t const edge = 0xFF000000u | ((argb & 0x00FFFFFFu) >> 1);
+        switch (i) {
+            case 0:  // head: the face and the brim, not the crown of the hat
+                box(fb, x + 28, y + 18, 40, 34, argb);
+                frame(fb, x + 28, y + 18, 40, 34, 1, edge);
+                break;
+            case 1:  // chest: the body and both sleeves
+                box(fb, x + 18, y + 54, 60, 62, argb);
+                box(fb, x + 6, y + 56, 12, 56, argb);
+                box(fb, x + 78, y + 56, 12, 56, argb);
+                frame(fb, x + 18, y + 54, 60, 62, 1, edge);
+                break;
+            case 2:  // legs
+                box(fb, x + 26, y + 118, 18, 44, argb);
+                box(fb, x + 52, y + 118, 18, 44, argb);
+                frame(fb, x + 26, y + 118, 18, 44, 1, edge);
+                frame(fb, x + 52, y + 118, 18, 44, 1, edge);
+                break;
+            case 3:  // feet
+                box(fb, x + 24, y + 162, 22, 16, argb);
+                box(fb, x + 50, y + 162, 22, 16, argb);
+                frame(fb, x + 24, y + 162, 22, 16, 1, edge);
+                frame(fb, x + 50, y + 162, 22, 16, 1, edge);
+                break;
+            default: break;
+        }
+    }
+}
+
 void hud_inventory(pax_buf_t* fb, player_t const* p) {
     if (fb == NULL || p == NULL || !p->inv.open) return;
     hud_begin(fb);
@@ -612,7 +687,11 @@ void hud_inventory(pax_buf_t* fb, player_t const* p) {
     int const sw   = INV_SLOT_W;
     int const gw   = cols * sw + (cols - 1) * SLOT_GAP;
     int const gh   = rows * sw + (rows - 1) * SLOT_GAP;
-    int const gx   = ((int)DISPLAY_LOG_W - gw) / 2;
+    // Shifted left of centre to make room for the figure and its four places
+    // on the right (Part S, D-158). Centring the GRID is what used to centre
+    // the screen; centring the whole composition is what centres it now, and
+    // the name and hint lines below stay centred on the display itself.
+    int const gx   = ((int)DISPLAY_LOG_W - gw) / 2 - 90;
     int const gy   = ((int)DISPLAY_LOG_H - gh) / 2 - 10;
 
     // A dim sheet over the world, so the grid reads as a panel rather
@@ -621,8 +700,12 @@ void hud_inventory(pax_buf_t* fb, player_t const* p) {
     // over it: same effect, no per-pixel alpha maths, and it keeps the
     // hue so the screen still reads as "the world, dimmed".
     direct_565_dim_rect(s_px, s_rev, 0, 0, (int)DISPLAY_LOG_W, (int)DISPLAY_LOG_H);
-    box(fb, gx - 12, gy - 34, gw + 24, gh + 46, 0xFF2A2A32u);
-    frame(fb, gx - 12, gy - 34, gw + 24, gh + 46, 2, 0xFF606068u);
+    int const esw = 44;                        // an equip slot, smaller than a grid slot
+    int const ex  = gx + gw + 24;              // ... and the column they sit in
+    int const fx  = ex + esw + 16;             // ... and the figure, beside them
+    int const pw  = (fx + FIGURE_W + 12) - (gx - 12);
+    box(fb, gx - 12, gy - 34, pw, gh + 46, 0xFF2A2A32u);
+    frame(fb, gx - 12, gy - 34, pw, gh + 46, 2, 0xFF606068u);
     rendertext_draw(fb, 0xFFFFFFFFu, NULL, 22.0f, (float)(gx - 4), (float)(gy - 30), T(SM_STR_HUD_INVENTORY));
 
     for (int i = 0; i < INV_SLOTS; i++) {
@@ -643,6 +726,24 @@ void hud_inventory(pax_buf_t* fb, player_t const* p) {
     // dynamic legend that displays the name of the currently
     // highlighted icon."
     hud_slot_name(fb, &p->inv.slot[p->inv.cursor], gy + gh + 8);
+
+    // THE FIGURE AND THE FOUR PLACES ON IT (D-158). Drawn after the name
+    // line so a worn piece wins the argument with a slot name when the two
+    // overlap, which they should never do -- but the panel is laid out by
+    // arithmetic, and arithmetic that is one pixel out is invisible until it
+    // isn't.
+    draw_figure(fb, fx, gy, p->equip);
+    for (int i = 0; i < EQUIP_SLOTS; i++) {
+        int const y = gy + i * (esw + 16);
+        one_slot(fb, ex, y, esw, &p->equip[i], p->equip_cursor == i, false, true);
+        char const* const what = T(i == 0 ? SM_STR_EQUIP_HEAD : i == 1 ? SM_STR_EQUIP_CHEST
+                                           : i == 2 ? SM_STR_EQUIP_LEGS : SM_STR_EQUIP_FEET);
+        rendertext_draw(fb, 0xFFB0B0B8u, NULL, 12.0f, (float)ex, (float)(y + esw + 3), what);
+    }
+    {
+        char const* const hint = T(SM_STR_EQUIP_HINT);
+        rendertext_draw(fb, 0xFF8A8A92u, NULL, 12.0f, (float)ex, (float)(gy + gh - 14), hint);
+    }
 
     // CENTRED ON THE SCREEN, not on the panel: the line is wider than
     // the grid, and hung off the panel's left edge it ran off the right
