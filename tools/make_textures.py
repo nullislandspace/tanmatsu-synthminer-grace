@@ -810,10 +810,11 @@ def sm_item_shovel(rgb):
     return img
 
 
-def sm_item_ingot():
-    """A bar: a flat-topped trapezium with a highlight along the top."""
+def sm_item_ingot(rgb=(214, 214, 220)):
+    """A bar: a flat-topped trapezium with a highlight along the top. The
+    colour is a parameter because there are two ingots in the game and one
+    shape; iron's is the default so the registry line for it is unchanged."""
     img = _icon()
-    rgb = (214, 214, 220)
     for i, y in enumerate(range(6, 11)):
         x0 = 3 + i // 2
         x1 = 13 - i // 2
@@ -2545,6 +2546,36 @@ def sm_diamond_ore():
     return rgb
 
 
+TITANIUM_CHIP = (152, 162, 180)
+TITANIUM_EDGE = (206, 216, 232)
+
+
+def sm_titanium_ore():
+    """Stone with angular silver chips in it.
+
+    Iron ore is round tan blobs and diamond ore is round blue ones, and all
+    three sit in the same cave wall a metre apart. So titanium is told apart
+    by SHAPE as well as colour: flat-sided diamonds of metal with a bright
+    edge down one side, in a cool silver nothing else down there has. A vein
+    you cannot recognise is a vein you mine with a stone pickaxe and get
+    nothing for, which is the one mistake this ore makes expensive."""
+    lum, gen = sm_stone_lum(55)
+    rgb = sm_rgb(lum, (122, 122, 124))
+    chips = ((5, 4, 2), (11, 5, 2), (4, 11, 2), (11, 12, 2))
+    for cx, cy, r in chips:
+        for y in range(cy - r, cy + r + 1):
+            for x in range(cx - r, cx + r + 1):
+                if abs(x - cx) + abs(y - cy) <= r + 1 and 0 <= x < B and 0 <= y < B:
+                    d = int(gen.integers(-16, 17))
+                    rgb[y, x] = np.clip(np.array([c + d for c in TITANIUM_CHIP]), 0, 255)
+    for cx, cy, r in chips:
+        for k in range(2 * r + 1):
+            y, x = cy - r + k, cx - r + k
+            if 0 <= x < B and 0 <= y < B:
+                rgb[y, x] = np.clip(np.array(TITANIUM_EDGE), 0, 255)
+    return rgb
+
+
 SHAFT_IRON = (142, 130, 120)
 
 
@@ -2626,6 +2657,7 @@ TEXTURES = {
     "gate.png": sm_gate,
     "lava.png": sm_lava,
     "diamond_ore.png": sm_diamond_ore,
+    "titanium_ore.png": sm_titanium_ore,
     "shaft_column.png": sm_shaft_column,
     "shaft_truss.png": sm_shaft_truss,
     "leaves.png": sm_leaves,
@@ -2659,11 +2691,17 @@ TEXTURES = {
     "bench_top.png": sm_bench_top,
     "item_coal.png": sm_item_coal,
     "item_iron_ingot.png": sm_item_ingot,
+    "item_titanium_ingot.png": lambda: sm_item_ingot((180, 188, 200)),
     "item_diamond.png": sm_item_diamond,
     "item_mine_shaft.png": sm_item_mine_shaft,
     "item_pickaxe_iron.png": lambda: sm_item_pickaxe((222, 222, 228)),
     "item_axe_iron.png": lambda: sm_item_axe((222, 222, 228)),
     "item_shovel_iron.png": lambda: sm_item_shovel((222, 222, 228)),
+    # Titanium tools: the same three shapes, a cooler and slightly darker
+    # metal, so a tier-4 pickaxe in the hotbar is not an iron one.
+    "item_pickaxe_titanium.png": lambda: sm_item_pickaxe((194, 202, 214)),
+    "item_axe_titanium.png": lambda: sm_item_axe((194, 202, 214)),
+    "item_shovel_titanium.png": lambda: sm_item_shovel((194, 202, 214)),
     "item_stick.png": sm_item_stick,
     # The same water without its holes, for SE_TRI_BLEND (M in game).
     "water_blend.png": lambda: sm_water(cut=False),

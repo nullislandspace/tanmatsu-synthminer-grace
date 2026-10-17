@@ -250,6 +250,11 @@ typedef enum {
     SM_STR_ITEM_SHAFT_TRUSS,            // item.shaft_truss
     SM_STR_ITEM_DIAMOND,                // item.diamond
     SM_STR_ITEM_MINE_SHAFT,             // item.mine_shaft
+    SM_STR_ITEM_TITANIUM_ORE,           // item.titanium_ore
+    SM_STR_ITEM_TITANIUM_INGOT,         // item.titanium_ingot
+    SM_STR_ITEM_PICKAXE_TITANIUM,       // item.pickaxe_titanium
+    SM_STR_ITEM_AXE_TITANIUM,           // item.axe_titanium
+    SM_STR_ITEM_SHOVEL_TITANIUM,        // item.shovel_titanium
     SM_STR_LOADING_CROSSING,            // loading.crossing
     SM_STR_HUD_DEEP_MINE,               // hud.deep_mine
     SM_STR_HUD_SURFACE,                 // hud.surface

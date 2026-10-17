@@ -2496,6 +2496,7 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
 | 65 | **Zombies and skeletons**, in the Deep Mine only | partly done -- **population, pathing and aggression** | Built 2026-10-11 (F-150): two rows in `MOBS[]`, `PACKS[]` (60 zombie / 40 skeleton), one roll per chunk from the world's hash, a pack inside one chunk, and nothing that comes back (D-146). Measured over 10000 chunks: **1226 packs, 12.3% against the design's 12%**, 3066 members, 0.31 a chunk; a Far ring holds 61 of the pool's 128, 40 zombie and 21 skeleton, so `s_refused` reads 0 -- the check that says whether the numbers are right. **Fixed 2026-10-12** (F-154): both kinds were drawn with the quadruped numbers, which gave a 1.8-tall humanoid a zero-length body and left what the user called "a few small floating squares" -- `beast.c` has an `upright` shape now (torso stood on end, two legs, two arms, head on top), and a pack is never placed on a lava lake. **Aggression is built since 2026-10-13** (D-156, F-158): `hostile` is a column something finally reads -- a fifth intent, `MOB_HUNT`, one target per creature, a swing worth 3 (zombie) or 2 (skeleton) health, friendly fire that turns the victim against its attacker, and lava that burns a mob and the player at the same rate. **What is not built**: ranged attack (a skeleton walks and swings like a zombie), pathfinding around obstacles rather than steering at a target, and any third kind. Drops are empty on purpose (D-144). |
 | 66 | **The optional external VFD** (from synthracer): the item in hand in a world, the game's name in a menu, powered down on exit | done, **device test pending** | 2026-10-12, the user: *"Port that over here ... The VFD should display the name of the current item held in hand (or be blank otherwise). In the Menu, it should display "SynthMiner". Make sure the VFD is powered off when exiting the app."* `main/vfd.{c,h}`, D-152 and F-152. Costs 9.7 KiB of text and does nothing at all on a badge that has no tube. **Unverified here**: the probe, the scrolled names and the power-down all need a device with the display fitted. |
 | 67 | **Saving a world is a round a frame, and a refusal is on the screen** | done, **device test pending** | 2026-10-12 (D-153, F-153). `save_pass(&p, max_ask)` bounds a round and reports `saved` from the worker's own counter; `saving_step()` runs **one round per frame at 8 writes in flight**, so the bar fills as the chunks go out; `save_dirty_chunks()` stops after a round that saved nothing; `draw_saving()` prints `loading.saving_refused` under the bar and holds the screen 2 s when it has to say it. The measurement behind it: **~520 ms per refused chunk** (the loader's 5 tries + 372 ms of backoff + this file's 100 ms pace) x 49 chunks x 8 sweeps = **200 s of a screen drawn once**. **The other half of this is not in this repo**: the badge is still running graceloader 2.6.x, whose disk layer retries `ESP_ERR_NOT_SUPPORTED` five times instead of bouncing the buffer (F-147, F-148) -- `cd ../tanmatsu-graceloader && make install`. This is the hardening around that, not the fix for it. |
+| 68 | **Titanium**: the cave's fourth ore, the iron-pickaxe gate, and the tier-4 tools it smelts into | done, **device test pending** | Part M, 2026-10-17 (D-157, F-162). `BLK_TITANIUM_ORE` id 55, hardness 240 (diamond's number), `TOOL_PICK` at level 3 -- the first block in the game at that level, built on the existing "too weak a tool still breaks it and drops nothing" rule rather than a new one. Four items at tier 4 / 400 uses: the ingot plus pickaxe, axe and shovel at iron's prices (3 / 3 / 1 ingots + 2 sticks), all reversible; **no hoe**, because the user named three tools and a hoe does not dig. Rolled in `deepmine.c` **after diamond and before iron**, at each district's diamond odds. Measured over 144 cave chunks: **0.05% of the rock against diamond's 0.06% (0.82x), iron 44x either**; **12.0 s by hand / 6.0 wooden / 3.0 stone, all three dropping nothing, 2.0 iron, 1.5 titanium**. Five new textures, five new English strings, one new docs page, and six pages that said "three tiers" now saying four. Like every other Deep Mine number, these odds are provisional until played. |
 
 ---
 
@@ -8800,6 +8801,56 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   And no target on the card: a creature that comes back off it has nobody to be angry at,
   which is the honest answer and needs no new tag in the entity record.
 
+- **D-157** 2026-10-17, **the user**: **a fourth ore in the cave -- titanium, at
+  diamond's rarity, and the only thing in the game that wants an iron pickaxe.**
+
+  *"Let's add a new ore to the Deep Mine: Titanium. It's just as rare as diamonds and can
+  only be mined using an iron pickaxe. Titanium ore can be smelted into titanium ingots in
+  the furnace. Titanium ingots can be crafted into titanium tools (axe, pickaxe, shovel)
+  with better stats than iron tools."*
+
+  **"JUST AS RARE AS DIAMONDS" IS A RELATIONSHIP, NOT A NUMBER.** The design gives no
+  percentage, so the ore takes diamond's odds in every district rather than a fifth column
+  of tuning nobody asked for, and the two are rolled independently -- a wall can hold both,
+  and where both land on the same cell diamond wins because it was already there. Measured
+  over 144 cave chunks: **titanium 0.05% of the rock against diamond's 0.06%, 0.82x**, and
+  **iron 44x either**, which is the sentence the user wrote read back as arithmetic. Like
+  every other Deep Mine number (D-149) this is provisional and gets moved after playing.
+
+  **THE IRON-PICKAXE GATE IS THE INTERESTING HALF.** "Can only be mined using an iron
+  pickaxe" is the first block in the game at that level, and it is built with the rule that
+  already exists rather than a new one: a tool that is too weak still breaks the block and
+  drops **nothing** (D-118's iron-ore line), so a stone pickaxe spends three seconds on a
+  titanium ore and you lose the vein. Combined with the cave being the only place it exists,
+  titanium sits behind two doors -- a shaft to get there and iron gear to move it -- and the
+  route is not a new one: iron is three times richer downstairs, so the shaft that was
+  already the way to iron is the way to titanium.
+
+  **THE CAVE'S SECOND RARE ORE IS THE FIRST ONE THAT IS FOR SOMETHING.** Diamond drops a
+  gem and, so far, leads nowhere (step 62). Titanium drops the **ore block**, which smelts
+  into an ingot, which makes tools. That is the user's whole second and third sentence, and
+  it changes what a cave visit is for: until now the reward for going down was iron and a
+  handful of blue gems with no use. It also means the ore has to be *recognisable in a
+  wall*, because mistaking it for iron costs nothing and mistaking iron for it costs a vein
+  you cannot get back -- which is why its texture is angular silver chips with a lit edge
+  rather than another set of round blobs.
+
+  **"BETTER STATS THAN IRON" IS THE TIER LADDER, NOT A NEW LADDER.** Tool speed has been
+  `2 x level` since F-105 (wood 2x, stone 4x, iron 6x), so a fourth tier is 8x by the rule
+  that is already written, and durability follows iron's shape at 400 against 250. The
+  recipes are at iron's prices -- 3 ingots for a pickaxe or axe, 1 for a shovel, 2 sticks
+  each -- because the cost of a tier-4 tool is meant to be the ingots, not a different
+  shape of crafting. All three are reversible at the disassembly bench, like every other
+  tool.
+
+  **What this does NOT say, and what the build therefore did not invent**: **no titanium
+  hoe** -- the user named axe, pickaxe and shovel, and a hoe is not a digging tool (D-106),
+  so a tier for it buys a farm nothing. No titanium armour, no titanium sword (there is no
+  sword, D-96), no titanium block or plate or wire. No new tool class and no new station.
+  No ore in the overworld: the design says the Deep Mine, and putting any of it upstairs
+  would delete the reason to build a shaft. And no change to diamond, which stays
+  decorative until somebody decides what it is for.
+
 - **F-158** 2026-10-13, measured and built: **the `hostile` column finally has something
   that reads it -- and a fall has been saying "You are starving" since it was written.**
 
@@ -9020,6 +9071,53 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   `BLK_RICE_TOP` as well and checks both halves (8 + 8 plant triangles) and the water
   over the cell: **4 water triangles at y 3.000**, where before the test passed with the
   same 4 and the real plant drew none.
+
+- **F-162** 2026-10-17, measured and built: **the fourth ore in the cave, and the first
+  thing down there that is worth bringing back.**
+
+  D-157. **`BLK_TITANIUM_ORE` is id 55** -- appended before `BLK_COUNT`, never renumbered
+  (D-74), and `tools/ids.txt` carries the block and the four items in the same commit.
+  Hardness **240**, the same number diamond carries, `TOOL_PICK` at **tool_level 3**, and
+  `drop_item` pointing at **the ore block itself** so the furnace has something to read.
+  Four items, tier **4**, durability **400**: the ingot, and the pickaxe, axe and shovel
+  made from it at iron's prices (3 / 3 / 1 ingots + 2 sticks), all reversible.
+
+  **THE ORE ROLL IS A BRANCH, AND ITS PLACE IN THE BRANCH IS THE DECISION.** A cell holds
+  one ore, so the order the generator tests them in decides who wins a contested cell.
+  Titanium goes **after diamond and before iron**, which is what "as rare as diamonds"
+  means in code: the rarer roll is asked first, and titanium never steals a cell from
+  something it is supposed to be as rare as. Each of the four districts carries its own
+  `titanium` / `titanium_r` pair, set equal to that district's diamond pair, so the
+  district shape (Lava Sea richest, Low Hall scarcest) is shared rather than retuned.
+
+  **MEASURED, 144 CAVE CHUNKS.** `ore 2.4% iron / 2.0% coal / 0.06% diamond / 0.05%
+  titanium of the rock`, and the check says the relationship out loud: **titanium is 0.82x
+  diamond, and iron is 44x either**. The assertion is a band, not an equality -- titanium
+  within 2x of diamond, iron above 4x both -- because these are hashes over a sample, and a
+  check that fails on sampling noise gets weakened by whoever runs it.
+
+  **THE GATE, MEASURED.** `titanium ore: 240 ticks by hand, 40 with iron, 30 with
+  titanium`: **12.0 s bare-handed, 6.0 wooden, 3.0 stone -- all three dropping nothing --
+  2.0 with an iron pickaxe, 1.5 with a titanium one.** `item_tool_for()` now answers
+  `ITEM_PICK_IRON` for the ore and `ITEM_PICK_TITANIUM` for a level-4 block, so the HUD's
+  "you need that tool before you start" line is right for it as well as for iron. The check
+  that used to be called `check_iron` is now **"iron and titanium: the blocks that refuse
+  the swing"** and covers both, including that a titanium pickaxe really is faster than an
+  iron one on the same block (8x a fist against 6x) and that 400 uses is more than 250.
+
+  **WHAT IT COSTS THE GAME.** Five new PNGs (`titanium_ore` plus the four item icons), so
+  `TEX_BY_NAME` allows 76 with **6 to spare**. Five new strings, English only, which puts
+  the file at **403 x 32 with 25 untranslated per language** -- the same 25 the rest of
+  Part M already carries, not a new debt. One new `VM_` mesher material and one row in the
+  renderer's texture table; the ore is drawn as an ordinary cube, so nothing about the
+  mesher changed and `meshcheck` did not have to move.
+
+  **Docs:** a new page at `docs/ores/titanium.md`, and the six pages that used to describe
+  a three-tier ladder or three ores now describe four -- tools, pickaxe, axe, shovel,
+  mining, recipes, plus the ore overview, the diamond page and the Deep Mine page.
+
+  **Unverified here:** everything on the device. The ore has to be findable in a real cave
+  and recognisable in a real wall, which is a playtest, not a check.
 
 ## Verification
 

@@ -176,6 +176,10 @@ typedef enum {
     VM_DIAMOND_ORE,
     VM_SHAFT_COLUMN,
     VM_SHAFT_TRUSS,
+    // TITANIUM ORE, the Deep Mine's other vein. Its own material because
+    // it has its own picture: a vein that looks like the iron one next to
+    // it is a vein you mine with the wrong tool and get nothing for.
+    VM_TITANIUM_ORE,
     VM_COUNT
 } vox_mat_t;
 

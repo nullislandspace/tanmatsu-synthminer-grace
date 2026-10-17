@@ -1,33 +1,34 @@
 ---
 title: Ores and stone
-summary: Three ores, where they are, and the rest of what you dig out of the ground.
+summary: Four ores, where they are, and the rest of what you dig out of the ground.
 ---
 
-There are **three ores** in SynthMiner. Two of them — coal and iron — unlock everything
-else. The third one only exists somewhere else.
+There are **four ores** in SynthMiner. Two of them — coal and iron — unlock everything
+else. The other two only exist somewhere else.
 
 | Ore | Found | Needs | Drops | Vein |
 |---|---|---|---|---|
 | [**Coal ore**](coal.html) | Anywhere below y = 40 | Any pickaxe | 1 coal | Fairly common, a handful of blocks |
 | [**Iron ore**](iron.html) | Below y = 28, and all over the [Deep Mine](../world/deep-mine.html) | **Stone** pickaxe or better | 1 iron ore, smelt for an ingot | Rarer and tighter |
 | [**Diamond ore**](diamond.html) | **The Deep Mine only** | **Stone** pickaxe or better | 1 diamond | Rare clusters, 2–3 blocks |
+| [**Titanium ore**](titanium.html) | **The Deep Mine only** | **Iron** pickaxe or better | 1 titanium ore, smelt for an ingot | Rare clusters, 2–3 blocks |
 
-<p class="note"><b>Two of the three are underground in the ordinary sense and one is a
-dimension away.</b> Coal and iron are found by digging down; diamond is not in the
-overworld at any depth, and the only way to it is a <a href="../devices/mine-shaft.html">mine
-shaft</a>.</p>
+<p class="note"><b>Two of the four are underground in the ordinary sense and two are a
+dimension away.</b> Coal and iron are found by digging down; diamond and titanium are not
+in the overworld at any depth, and the only way to either of them is a
+<a href="../devices/mine-shaft.html">mine shaft</a>.</p>
 
 ## Veins, not scatter
 
-No ore appears as single blocks. All three are generated as **lumpy blobs** on a coarse
+No ore appears as single blocks. All four are generated as **lumpy blobs** on a coarse
 grid, which means the same thing every time you meet one:
 
 > **When you find one block of ore, dig sideways, not onwards.** There are more of
 > them within two blocks in some direction.
 
-Coal veins are the biggest, iron veins smaller, diamond clusters smaller again. None of
-them is a sphere — they are deliberately irregular, so you can usually see which way the
-vein is going.
+Coal veins are the biggest, iron veins smaller, and the two rare ones smaller again. None
+of them is a sphere — they are deliberately irregular, so you can usually see which way
+the vein is going.
 
 ## Knowing how deep you are
 
@@ -52,9 +53,9 @@ Not ores, but this is where they live.
 
 <p class="note"><b>"Required" means required.</b> Stone, cobblestone, sandstone, iron ore
 and diamond ore will let you hit them with your fist all day and give you nothing at all
-when they break. Everything else in the table drops for bare hands; a tool just
-makes it quicker. See <a href="../mechanics/mining.html">Mining speed and
-tools</a>.</p>
+when they break — and <b>titanium ore refuses everything below an iron pickaxe</b>.
+Everything else in the table drops for bare hands; a tool just makes it quicker. See
+<a href="../mechanics/mining.html">Mining speed and tools</a>.</p>
 
 ## Glass
 

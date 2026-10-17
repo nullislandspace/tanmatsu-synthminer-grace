@@ -1,22 +1,22 @@
 ---
 title: Tools
-summary: Four digging tools, three tiers, and three other things that are held like tools.
+summary: Four digging tools, four tiers, and three other things that are held like tools.
 ---
 
 Every tool in the game costs **2 sticks plus its material**, and the amount of
 material is what tells the four kinds apart.
 
-| Tool | Material | Wooden | Stone | Iron |
-|---|---|---|---|---|
-| [**Pickaxe**](pickaxe.html) | 3 | 3 planks | 3 cobble | 3 ingots |
-| [**Axe**](axe.html) | 3 | 3 planks | 3 cobble | 3 ingots |
-| [**Hoe**](hoe.html) | 2 | 2 planks | 2 cobble | 2 ingots |
-| [**Shovel**](shovel.html) | 1 | 1 plank | 1 cobble | 1 ingot |
+| Tool | Material | Wooden | Stone | Iron | [Titanium](../ores/titanium.html) |
+|---|---|---|---|---|---|
+| [**Pickaxe**](pickaxe.html) | 3 | 3 planks | 3 cobble | 3 ingots | 3 titanium ingots |
+| [**Axe**](axe.html) | 3 | 3 planks | 3 cobble | 3 ingots | 3 titanium ingots |
+| [**Hoe**](hoe.html) | 2 | 2 planks | 2 cobble | 2 ingots | — no titanium hoe |
+| [**Shovel**](shovel.html) | 1 | 1 plank | 1 cobble | 1 ingot | 1 titanium ingot |
 
 Plus 2 sticks, every time. All of them are made at a
 [crafting table](../devices/crafting-table.html).
 
-## The three tiers
+## The four tiers
 
 | Tier | Uses | Digging speed | Damage (axe) |
 |---|---|---|---|
@@ -24,14 +24,16 @@ Plus 2 sticks, every time. All of them are made at a
 | **Wooden** | 60 | **2×** | 3 |
 | **Stone** | 130 | **4×** | 4 |
 | **Iron** | 250 | **6×** | 5 |
+| **Titanium** | **400** | **8×** | **6** |
 
 A tier buys you two things: **how long the tool lasts** and **how fast it digs**.
 It does not change what the tool drops — with one exception:
 
-<p class="note"><b>Two blocks care which tier you are holding.</b> Stone and
+<p class="note"><b>Three blocks care which tier you are holding.</b> Stone and
 everything made of it needs a pickaxe of <b>any</b> tier; <b>iron ore needs a stone
-pickaxe or better</b>. A wooden pickaxe will break iron ore and give you nothing at
-all for it.</p>
+pickaxe or better</b>; <b><a href="../ores/titanium.html">titanium ore</a> needs an
+iron pickaxe or better</b>. A tool that is too weak still breaks the block — it just
+gives you nothing at all for it.</p>
 
 ## Which tool for which block
 
@@ -40,7 +42,7 @@ which is what makes carrying more than one worth the slots.
 
 | Tool | Speeds up | *Required* for |
 |---|---|---|
-| **Pickaxe** | Stone, cobblestone, sandstone, coal ore, iron ore, furnace, sausage maker, stove | Stone, cobblestone, sandstone, coal ore, **iron ore (stone+)**, furnace, sausage maker |
+| **Pickaxe** | Stone, cobblestone, sandstone, coal ore, iron ore, titanium ore, furnace, sausage maker, stove | Stone, cobblestone, sandstone, coal ore, **iron ore (stone+)**, **titanium ore (iron+)**, furnace, sausage maker |
 | **Axe** | Logs, planks, and everything wooden — table, chest, trash chest, bench, composter, fences, gates, bed, signs | nothing |
 | **Shovel** | Dirt, grass, sand, gravel, snow, farmland | nothing |
 | **Shears** | Leaves | nothing |
@@ -57,6 +59,9 @@ the hotbar once it has been used. When it runs out it is gone.
 - **Stone**, at 130, is the workhorse. Cobblestone is free once you are underground.
 - **Iron**, at 250, is what you use when you have iron to spare. Given the other
   things iron makes, that is later than you think.
+- **Titanium**, at 400, is the best tool in the game and the hardest one to get:
+  the ore only exists in the [Deep Mine](../world/deep-mine.html) and only an iron
+  pickaxe will move it.
 
 **Wooden tools are fuel.** A worn-out wooden pickaxe burns in a furnace for 200
 ticks, which is two thirds of a plank. Nothing is wasted.
@@ -65,8 +70,9 @@ ticks, which is two thirds of a plank. Nothing is wasted.
 
 The [disassembly bench](../devices/disassembly-bench.html) takes a tool apart and
 gives the materials back. It works on every tool in the game, so a stone pickaxe you
-no longer want is 3 cobblestone and 2 sticks again — and iron tools are the reason
-the bench is worth building.
+no longer want is 3 cobblestone and 2 sticks again — and iron and titanium tools are
+the reason the bench is worth building. A titanium tool gives its ingots back, not
+the ore they were smelted from.
 
 ## The three that are not digging tools
 

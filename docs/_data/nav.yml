@@ -29,6 +29,7 @@
     - {url: /ores/coal.html, name: Coal ore}
     - {url: /ores/iron.html, name: Iron ore}
     - {url: /ores/diamond.html, name: Diamond ore}
+    - {url: /ores/titanium.html, name: Titanium ore}
 
 - title: Plants
   pages:

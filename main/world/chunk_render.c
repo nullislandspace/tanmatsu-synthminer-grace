@@ -44,6 +44,10 @@ static struct {
     [VM_DIAMOND_ORE]   = {"diamond_ore.png", 0xFF5A8E9Cu},
     [VM_SHAFT_COLUMN]  = {"shaft_column.png", 0xFF8E8278u},
     [VM_SHAFT_TRUSS]   = {"shaft_truss.png", 0xFF7E7268u},
+    // A cool grey with a blue in it: the metal, not the stone it sits in,
+    // because this colour is what shows when the texture will not load and
+    // a titanium vein that draws the same grey as its wall is invisible.
+    [VM_TITANIUM_ORE]  = {"titanium_ore.png", 0xFF8E96A8u},
     [VM_LEAVES]        = {"leaves.png", 0xFF3A7026u},
     [VM_COAL]          = {"coal_ore.png", 0xFF606062u},
     [VM_GLASS]         = {"glass.png", 0xFFC8D8DEu},

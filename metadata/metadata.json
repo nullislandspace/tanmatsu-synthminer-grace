@@ -193,6 +193,10 @@
           "target_file": "textures/item_axe_stone.png"
         },
         {
+          "source_file": "textures/item_axe_titanium.png",
+          "target_file": "textures/item_axe_titanium.png"
+        },
+        {
           "source_file": "textures/item_axe_wood.png",
           "target_file": "textures/item_axe_wood.png"
         },
@@ -313,6 +317,10 @@
           "target_file": "textures/item_pickaxe_stone.png"
         },
         {
+          "source_file": "textures/item_pickaxe_titanium.png",
+          "target_file": "textures/item_pickaxe_titanium.png"
+        },
+        {
           "source_file": "textures/item_pickaxe_wood.png",
           "target_file": "textures/item_pickaxe_wood.png"
         },
@@ -373,6 +381,10 @@
           "target_file": "textures/item_shovel_stone.png"
         },
         {
+          "source_file": "textures/item_shovel_titanium.png",
+          "target_file": "textures/item_shovel_titanium.png"
+        },
+        {
           "source_file": "textures/item_shovel_wood.png",
           "target_file": "textures/item_shovel_wood.png"
         },
@@ -395,6 +407,10 @@
         {
           "source_file": "textures/item_string.png",
           "target_file": "textures/item_string.png"
+        },
+        {
+          "source_file": "textures/item_titanium_ingot.png",
+          "target_file": "textures/item_titanium_ingot.png"
         },
         {
           "source_file": "textures/item_tomato.png",
@@ -619,6 +635,10 @@
         {
           "source_file": "textures/tall_grass.png",
           "target_file": "textures/tall_grass.png"
+        },
+        {
+          "source_file": "textures/titanium_ore.png",
+          "target_file": "textures/titanium_ore.png"
         },
         {
           "source_file": "textures/tomato_0.png",

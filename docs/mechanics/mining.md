@@ -16,9 +16,10 @@ A tool only helps on **its own class** of block. A pickaxe does nothing for dirt
 | **Wooden** tool of the right class | **2×** |
 | **Stone** | **4×** |
 | **Iron** | **6×** |
+| **Titanium** | **8×** |
 
-So an iron pickaxe is six times faster on stone than your fist, and exactly as fast as your
-fist on a log.
+So an iron pickaxe is six times faster on stone than your fist, a titanium one eight
+times, and both are exactly as fast as your fist on a log.
 
 ## Blocks that need a tool
 
@@ -32,42 +33,45 @@ drop. The game tells you what you need before you start.
 | Furnace | **Any pickaxe** |
 | Sausage maker | **Any pickaxe** |
 | **Iron ore** | **Stone pickaxe or better** |
+| **[Titanium ore](../ores/titanium.html)** | **Iron pickaxe or better** |
 | **Leaves** | **Shears** — anything else destroys them |
 
 Everything else in the game drops for bare hands. A tool just makes it faster.
 
-**Diamond ore is on the stone-pickaxe line as well**, and it is the one ore you cannot
-find in the overworld at all — see [Diamond ore](../ores/diamond.html).
+**Diamond ore is on the stone-pickaxe line as well**, and titanium ore is one step
+higher, behind an iron pickaxe. Both of those are found only in the
+[Deep Mine](../world/deep-mine.html) — see [Diamond ore](../ores/diamond.html).
 
 ## Every block, and how long it takes
 
 Seconds. A dash means the tool does not help.
 
-| Block | Hand | Wood | Stone | Iron | Tool |
-|---|---|---|---|---|---|
-| Flowers, tall grass, crops, saplings, torches | instant | — | — | — | — |
-| Snow | 0.5 | 0.25 | 0.13 | 0.08 | Shovel |
-| Leaves | 0.4 | 0.2 | — | — | **Shears** *(the only thing they drop for)* |
-| Sand | 0.75 | 0.4 | 0.2 | 0.1 | Shovel |
-| Gravel | 0.9 | 0.45 | 0.2 | 0.15 | Shovel |
-| Dirt, grass, farmland | 1.0 | 0.5 | 0.25 | 0.17 | Shovel |
-| Bed | 1.0 | 0.5 | 0.25 | 0.17 | Axe |
-| Cactus | 0.6 | — | — | — | — |
-| Glass | 0.6 | — | — | — | — |
-| Log, planks, birch log | 2.0 | 1.0 | 0.5 | 0.33 | Axe |
-| Fence, gate, sign | 2.0 | 1.0 | 0.5 | 0.33 | Axe |
-| Crafting table, chest, trash chest, bench, composter, cheese maker, stove's chest | 2.5 | 1.25 | 0.6 | 0.4 | Axe |
-| Sausage maker | 4.5 | 2.25 | 1.1 | 0.75 | **Pickaxe** |
-| Sandstone | 6.0 | 3.0 | 1.5 | 1.0 | **Pickaxe** |
-| Stone | 7.5 | 3.75 | **1.9** | 1.25 | **Pickaxe** |
-| Cobblestone | 8.0 | 4.0 | 2.0 | 1.3 | **Pickaxe** |
-| Kitchen stove | 9.0 | 4.5 | 2.25 | 1.5 | Pickaxe *(not required)* |
-| Furnace | 9.0 | 4.5 | 2.25 | 1.5 | **Pickaxe** |
-| Coal ore | 10.0 | 5.0 | 2.5 | 1.7 | **Pickaxe** |
-| Iron ore | 11.0 | 5.5 | **2.8** | 1.8 | **Pickaxe (stone+)** |
-| **Diamond ore** | 12.0 | 6.0 | **3.0** | 2.0 | **Pickaxe (stone+)** |
-| [Shaft post, shaft brace](../devices/mine-shaft.html) | 6.0 | 3.0 | 1.5 | 1.0 | Pickaxe *(not required — and they **drop nothing**)* |
-| Bedrock, water, lava | never | | | | |
+| Block | Hand | Wood | Stone | Iron | Titanium | Tool |
+|---|---|---|---|---|---|---|
+| Flowers, tall grass, crops, saplings, torches | instant | — | — | — | — | — |
+| Snow | 0.5 | 0.25 | 0.13 | 0.08 | 0.06 | Shovel |
+| Leaves | 0.4 | 0.2 | — | — | — | **Shears** *(the only thing they drop for)* |
+| Sand | 0.75 | 0.4 | 0.2 | 0.1 | 0.09 | Shovel |
+| Gravel | 0.9 | 0.45 | 0.2 | 0.15 | 0.11 | Shovel |
+| Dirt, grass, farmland | 1.0 | 0.5 | 0.25 | 0.17 | 0.13 | Shovel |
+| Bed | 1.0 | 0.5 | 0.25 | 0.17 | 0.13 | Axe |
+| Cactus | 0.6 | — | — | — | — | — |
+| Glass | 0.6 | — | — | — | — | — |
+| Log, planks, birch log | 2.0 | 1.0 | 0.5 | 0.33 | 0.25 | Axe |
+| Fence, gate, sign | 2.0 | 1.0 | 0.5 | 0.33 | 0.25 | Axe |
+| Crafting table, chest, trash chest, bench, composter, cheese maker, stove's chest | 2.5 | 1.25 | 0.6 | 0.4 | 0.31 | Axe |
+| Sausage maker | 4.5 | 2.25 | 1.1 | 0.75 | 0.56 | **Pickaxe** |
+| Sandstone | 6.0 | 3.0 | 1.5 | 1.0 | 0.75 | **Pickaxe** |
+| Stone | 7.5 | 3.75 | **1.9** | 1.25 | 0.94 | **Pickaxe** |
+| Cobblestone | 8.0 | 4.0 | 2.0 | 1.3 | 1.0 | **Pickaxe** |
+| Kitchen stove | 9.0 | 4.5 | 2.25 | 1.5 | 1.13 | Pickaxe *(not required)* |
+| Furnace | 9.0 | 4.5 | 2.25 | 1.5 | 1.13 | **Pickaxe** |
+| Coal ore | 10.0 | 5.0 | 2.5 | 1.7 | 1.25 | **Pickaxe** |
+| Iron ore | 11.0 | 5.5 | **2.8** | 1.8 | 1.38 | **Pickaxe (stone+)** |
+| **Diamond ore** | 12.0 | 6.0 | **3.0** | 2.0 | 1.5 | **Pickaxe (stone+)** |
+| **Titanium ore** | 12.0 | 6.0 | 3.0 | **2.0** | **1.5** | **Pickaxe (iron+)** |
+| [Shaft post, shaft brace](../devices/mine-shaft.html) | 6.0 | 3.0 | 1.5 | 1.0 | 0.75 | Pickaxe *(not required — and they **drop nothing**)* |
+| Bedrock, water, lava | never | | | | | |
 
 **Stone at 1.9 seconds with a stone pickaxe** is the number the early game is paced around.
 By hand it is seven and a half seconds and gives you nothing.
@@ -109,7 +113,7 @@ thing back.
 ## Wear
 
 One point of durability per block broken. 60 for a wooden tool, 130 stone, 220 for shears,
-250 iron. The bar under the item in the hotbar shows what is left.
+250 iron, 400 titanium. The bar under the item in the hotbar shows what is left.
 
 Wooden tools burn in a [furnace](../devices/furnace.html) for 200 ticks, worn out or not, so
 a spent wooden pickaxe is fuel rather than rubbish.

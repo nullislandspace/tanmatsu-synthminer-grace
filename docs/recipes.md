@@ -39,6 +39,9 @@ Anywhere, any time. Deliberately short — finding wood is enough to get started
 | Iron axe | 3 iron ingots + 2 sticks | ↔ |
 | Iron shovel | 1 iron ingot + 2 sticks | ↔ |
 | Iron hoe | 2 iron ingots + 2 sticks | ↔ |
+| [**Titanium pickaxe**](ores/titanium.html) | 3 titanium ingots + 2 sticks | ↔ |
+| [**Titanium axe**](ores/titanium.html) | 3 titanium ingots + 2 sticks | ↔ |
+| [**Titanium shovel**](ores/titanium.html) | 1 titanium ingot + 2 sticks | ↔ |
 | **Bucket** | 3 iron ingots | ↔ |
 | **Shears** | 2 iron ingots | ↔ |
 | **Fishing rod** | 3 sticks + 2 string | ↔ |
@@ -79,6 +82,7 @@ One item in, one out, 10 seconds each. Fuel goes in its own slot and is never an
 | Make | From |
 |---|---|
 | **Iron ingot** | 1 iron ore |
+| **Titanium ingot** | 1 titanium ore |
 | **Glass** | 1 sand |
 | **Stone** | 1 cobblestone |
 | **Coal** | 1 log |
@@ -152,3 +156,4 @@ Some things are not crafted at all.
 | **Yellow flowers** | Compost thrown on grass — a 3×3 patch |
 | **Coal, iron ore** | Digging. See [Ores](ores/index.html) |
 | **Diamond** | **The Deep Mine only.** See [Diamond ore](ores/diamond.html) |
+| **Titanium ore, titanium ingot** | **The Deep Mine only.** See [Titanium ore](ores/titanium.html) |

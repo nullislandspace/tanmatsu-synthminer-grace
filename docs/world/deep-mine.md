@@ -1,6 +1,6 @@
 ---
 title: The Deep Mine
-summary: The second dimension — one sealed cave, richer iron, diamond, lava, and the only place anything hunts you.
+summary: The second dimension — one sealed cave, richer iron, diamond, titanium, lava, and the only place anything hunts you.
 ---
 
 The Deep Mine is a **second dimension inside the same world save**. Not a second
@@ -50,7 +50,7 @@ for.
 They are chosen from slow fields of their own, so a district is a few minutes across on
 foot rather than something that flickers block by block.
 
-| District | What it is | Iron | Diamond |
+| District | What it is | Iron | Diamond and titanium |
 |---|---|---|---|
 | **Cavern** | The default, and the biggest room — up to 24 blocks of headroom, though the same district also holds squeezes | Rich | Occasional |
 | **Hills** | The rough one: real slopes, real drops, and a ceiling high enough that you can see the slope you are standing on | Rich | Occasional |
@@ -75,12 +75,19 @@ See [Lava](lava.html) — it flows, and it hurts.
 | **Iron** | **2.4% of the rock** | 0.8% |
 | **Coal** | Common, and richer in the Low Hall | Common up to y 40 |
 | **Diamond** | **0.06%, in clusters** | Does not exist |
+| **Titanium** | **0.05%, in clusters** | Does not exist |
 
 Iron in the Deep Mine is the same ore with the same tool requirement — a **stone
 pickaxe or better** — and it appears at a height you can reach without digging down,
 because the cave floor *is* the depth.
 
-[Coal](../ores/coal.html) · [Iron](../ores/iron.html) · [Diamond](../ores/diamond.html)
+**Titanium is the one that wants more than that.** It is as rare as diamond and it is the
+only ore in the game that will not budge for anything below an **iron** pickaxe, which is
+why the trip down is worth making with one in your hand rather than the stone one you
+mined iron with.
+
+[Coal](../ores/coal.html) · [Iron](../ores/iron.html) · [Diamond](../ores/diamond.html) ·
+[Titanium](../ores/titanium.html)
 
 ## Light, and why torches still matter
 

@@ -129,3 +129,8 @@ block 53 shaft_column
 block 54 shaft_truss
 item diamond
 item mine_shaft
+block 55 titanium_ore
+item titanium_ingot
+item pickaxe_titanium
+item axe_titanium
+item shovel_titanium

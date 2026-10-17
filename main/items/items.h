@@ -183,6 +183,16 @@ enum {
     // three high and four braces, and not one cell more.
     ITEM_DIAMOND,
     ITEM_MINE_SHAFT,
+    // TITANIUM (the user): the Deep Mine's other ore, as rare as the gem
+    // and one tier of tool above it, so it is the reward for going down
+    // with an iron pickaxe rather than the reason to go down. An ingot and
+    // the three tools it makes -- no hoe, deliberately: the user named the
+    // axe, the pickaxe and the shovel, and a titanium hoe would be a tier
+    // the farming table has no use for.
+    ITEM_TITANIUM_INGOT,
+    ITEM_PICK_TITANIUM,
+    ITEM_AXE_TITANIUM,
+    ITEM_SHOVEL_TITANIUM,
     ITEM_COUNT
 };
 
@@ -213,7 +223,7 @@ typedef struct {
     sm_str_t    label;       // what the player reads, in their language (i18n.h)
     uint8_t     stack_max;   // 1 for a tool, ITEM_STACK_MAX for most things
     uint8_t     tool;        // tool_t this counts as, TOOL_NONE for anything else
-    uint8_t     tool_level;  // 1 wood, 2 stone, 3 iron
+    uint8_t     tool_level;  // 1 wood, 2 stone, 3 iron, 4 titanium
     uint16_t    durability;  // uses before it breaks; 0 = never wears
     uint16_t    fuel;        // ticks it burns in a furnace; 0 = it does not (game/furnace.h)
     uint32_t    argb;        // the icon, until items have sprites of their own

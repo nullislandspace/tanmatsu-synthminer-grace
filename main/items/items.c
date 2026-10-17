@@ -68,6 +68,23 @@ static item_def_t const ITEMS[ITEM_COUNT - BLK_COUNT] = {
     [ITEM_DIAMOND - BLK_COUNT]    = {"diamond", SM_STR_ITEM_DIAMOND, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF5A8E9Cu},
     [ITEM_MINE_SHAFT - BLK_COUNT] = {"mine_shaft", SM_STR_ITEM_MINE_SHAFT, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF8E8278u},
 
+    // TITANIUM, tier 4. The ingot is what the furnace makes of the ore and
+    // the shaft is what the ore is worth, so it stacks like a metal rather
+    // than like a gem.
+    //
+    // 400 uses against iron's 250 -- the same 1.6x the tiers have always
+    // been worth (60 / 130 / 250), so a better tool is a tool you stop
+    // re-making rather than a tool that changes how the world feels to
+    // dig. Its tier is what mines titanium ore at all; its speed is
+    // item_break_ticks' 2 x level, so 8x a fist where iron is 6x.
+    [ITEM_TITANIUM_INGOT - BLK_COUNT]  = {"titanium_ingot", SM_STR_ITEM_TITANIUM_INGOT, ITEM_STACK_MAX, TOOL_NONE, 0, 0,
+                                          0, 0xFFB4BCC8u},
+    [ITEM_PICK_TITANIUM - BLK_COUNT]   = {"pickaxe_titanium", SM_STR_ITEM_PICKAXE_TITANIUM, 1, TOOL_PICK, 4, 400, 0,
+                                          0xFFC2CAD6u},
+    [ITEM_AXE_TITANIUM - BLK_COUNT]    = {"axe_titanium", SM_STR_ITEM_AXE_TITANIUM, 1, TOOL_AXE, 4, 400, 0, 0xFFC2CAD6u},
+    [ITEM_SHOVEL_TITANIUM - BLK_COUNT] = {"shovel_titanium", SM_STR_ITEM_SHOVEL_TITANIUM, 1, TOOL_SHOVEL, 4, 400, 0,
+                                          0xFFC2CAD6u},
+
     // Compost, and the worms that come out of the same box.
     [ITEM_COMPOST - BLK_COUNT] = {"compost", SM_STR_ITEM_COMPOST, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFF54402Cu},
     [ITEM_WORM - BLK_COUNT]    = {"worm", SM_STR_ITEM_WORM, ITEM_STACK_MAX, TOOL_NONE, 0, 0, 0, 0xFFC08078u},
@@ -262,9 +279,7 @@ static uint32_t const BLOCK_ARGB[BLK_COUNT] = {
     // recipe is made of.
     [BLK_LAVA] = 0xFFD85A22u,          [BLK_DIAMOND_ORE] = 0xFF5A8E9Cu,
     [BLK_SHAFT_COLUMN] = 0xFF8E8278u,  [BLK_SHAFT_TRUSS] = 0xFF7E7268u,
-    // THE DEEP MINE. Lava's colour is the one that has to read as danger
-    // at icon size, and the two frame blocks are the iron grey the
-    // recipe is made of.
+    [BLK_TITANIUM_ORE] = 0xFF8E96A8u,
 };
 
 // What each block is CALLED on screen, beside the colour above. A
@@ -332,6 +347,7 @@ static sm_str_t const BLOCK_LABEL[BLK_COUNT] = {
     [BLK_DIAMOND_ORE] = SM_STR_ITEM_DIAMOND_ORE,
     [BLK_SHAFT_COLUMN] = SM_STR_ITEM_SHAFT_COLUMN,
     [BLK_SHAFT_TRUSS] = SM_STR_ITEM_SHAFT_TRUSS,
+    [BLK_TITANIUM_ORE] = SM_STR_ITEM_TITANIUM_ORE,
     // Air and the barrier are never in anybody's hands and have none.
 };
 

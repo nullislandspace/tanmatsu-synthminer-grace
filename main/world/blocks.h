@@ -169,7 +169,8 @@ typedef enum {
 // signs and rails when they arrive, and the torch today.
 #define BF2_ITEM_ICON  (1u << 5)
 
-// Tool classes. `tool_level` is 0 hand, 1 wood, 2 stone, 3 iron.
+// Tool classes. `tool_level` is 0 hand, 1 wood, 2 stone, 3 iron,
+// 4 titanium.
 typedef enum {
     TOOL_NONE = 0,
     TOOL_PICK,
@@ -390,7 +391,12 @@ enum {
     // is looking at -- the same argument as farmland's two ids (D-106).
     BLK_SHAFT_COLUMN    = 53,
     BLK_SHAFT_TRUSS     = 54,
-    // New blocks here: BLK_SOMETHING = 55, and a line in tools/ids.txt.
+    // TITANIUM, the Deep Mine's second gem-grade ore. As rare as diamond
+    // down there, and the only ore in the game that wants an IRON
+    // pickaxe -- which puts it behind the shaft twice over: you need the
+    // shaft to find it and an iron tool to move it.
+    BLK_TITANIUM_ORE    = 55,
+    // New blocks here: BLK_SOMETHING = 56, and a line in tools/ids.txt.
     BLK_COUNT
 };
 

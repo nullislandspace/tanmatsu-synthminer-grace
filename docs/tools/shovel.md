@@ -3,11 +3,11 @@ title: Shovel
 summary: The cheapest tool, and the one that makes landscaping bearable.
 ---
 
-| | Wooden | Stone | Iron |
-|---|---|---|---|
-| **Recipe** | **1 plank** + 2 sticks | 1 cobblestone + 2 sticks | 1 iron ingot + 2 sticks |
-| **Uses** | 60 | 130 | 250 |
-| **Speed** | 2× | 4× | 6× |
+| | Wooden | Stone | Iron | [Titanium](../ores/titanium.html) |
+|---|---|---|---|---|
+| **Recipe** | **1 plank** + 2 sticks | 1 cobblestone + 2 sticks | 1 iron ingot + 2 sticks | 1 titanium ingot + 2 sticks |
+| **Uses** | 60 | 130 | 250 | **400** |
+| **Speed** | 2× | 4× | 6× | **8×** |
 
 Made at a [crafting table](../devices/crafting-table.html). It is the cheapest tool
 in the game — one block of material — because a shovel is three quarters handle.
@@ -16,12 +16,12 @@ in the game — one block of material — because a shovel is three quarters han
 
 Soft ground. Nothing requires a shovel; all of these drop for bare hands too.
 
-| Block | Hand | Wooden | Stone | Iron |
-|---|---|---|---|---|
-| Sand | 0.75 s | 0.4 s | 0.2 s | 0.1 s |
-| Gravel | 0.9 s | 0.45 s | 0.2 s | 0.15 s |
-| Dirt, grass, farmland | 1 s | 0.5 s | **0.25 s** | 0.17 s |
-| Snow | 0.5 s | 0.25 s | 0.13 s | 0.08 s |
+| Block | Hand | Wooden | Stone | Iron | Titanium |
+|---|---|---|---|---|---|
+| Sand | 0.75 s | 0.4 s | 0.2 s | 0.1 s | 0.1 s |
+| Gravel | 0.9 s | 0.45 s | 0.2 s | 0.15 s | 0.1 s |
+| Dirt, grass, farmland | 1 s | 0.5 s | **0.25 s** | 0.17 s | 0.13 s |
+| Snow | 0.5 s | 0.25 s | 0.13 s | 0.08 s | 0.06 s |
 
 ## Why bother
 
@@ -38,4 +38,4 @@ head.</p>
 
 ## As a weapon
 
-1 + its tier, same as a pickaxe: 2, 3, 4. Use the axe.
+1 + its tier, same as a pickaxe: 2, 3, 4, 5. Use the axe.

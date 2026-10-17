@@ -148,6 +148,11 @@ typedef struct {
     float iron, iron_r;
     float coal, coal_r;
     float diamond, diamond_r;
+    // Titanium at diamond's odds, because the user asked for "just as rare
+    // as diamonds". It is a separate salt and a separate pass, so the two
+    // rare veins are rolled independently and only fight over a cell when
+    // both land on the same one.
+    float titanium, titanium_r;
 } dm_biome_def_t;
 
 extern dm_biome_def_t const DM_BIOMES[DM_BIOME_COUNT];

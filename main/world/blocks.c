@@ -574,6 +574,22 @@ block_def_t const BLOCKS[BLK_COUNT] = {
                           .flags      = BF_SOLID | BF_OPAQUE, .sound = SND_STONE,
                           .flags2     = BF2_TOOL_REQUIRED},
 
+    // Titanium, the Deep Mine's other prize. Same hardness as diamond and
+    // the same refusal, one tier higher: it is the only block in the game
+    // that will not budge for anything below an IRON pickaxe, which is the
+    // answer to "how do you keep a rare ore from being mined by accident
+    // with the tool you came with". It drops ITSELF, like iron ore and
+    // unlike diamond, because what it becomes is an ingot in a furnace.
+    [BLK_TITANIUM_ORE] = {.name       = "titanium_ore", .drop_item = BLK_TITANIUM_ORE, .drop_min = 1,
+                          .drop_max   = 1,
+                          .kind       = K_CUBE,
+                          .mat        = M1(VM_TITANIUM_ORE),
+                          .hardness   = 240,
+                          .tool       = TOOL_PICK,
+                          .tool_level = 3,
+                          .flags      = BF_SOLID | BF_OPAQUE, .sound = SND_STONE,
+                          .flags2     = BF2_TOOL_REQUIRED},
+
     // THE SHAFT'S FRAME. Iron, because that is what a shaft costs.
     //
     // Neither half drops anything, and that is not a decision about

@@ -359,6 +359,16 @@ item.shaft_truss = Shaft brace
 item.diamond = Diamond
 item.mine_shaft = Mine shaft
 
+# TITANIUM, the Deep Mine's other ore. "Titanium pickaxe" is the longest
+# label in the game at 16 characters, which is why the tool names are worth
+# watching in `make check`: the crafting book and the HUD slot both have to
+# show one.
+item.titanium_ore = Titanium ore
+item.titanium_ingot = Titanium ingot
+item.pickaxe_titanium = Titanium pickaxe
+item.axe_titanium = Titanium axe
+item.shovel_titanium = Titanium shovel
+
 # Crossing over. The loading line and the line under the crosshair say
 # the same thing at the two ends of one event, and the refusal is the one
 # that has to be spelled out: a shaft that could not open is a change of

@@ -27,6 +27,7 @@
 #define S_DM_IRON    0xE300u
 #define S_DM_COAL    0xE350u
 #define S_DM_DIAMOND 0xE400u
+#define S_DM_TITANIUM 0xE450u
 #define S_DM_PACK    0xE500u
 
 // The four biome fields' scales, in blocks. Measured, not guessed: a
@@ -61,7 +62,10 @@ dm_biome_def_t const DM_BIOMES[DM_BIOME_COUNT] = {
          .coal         = 0.30f,
          .coal_r       = 2.0f,
          .diamond      = 0.05f,
-         .diamond_r    = 1.2f},
+         .diamond_r    = 1.2f,
+         .titanium     = 0.05f,
+         .titanium_r   = 1.2f},
+
 
     // HILLS: the macro roughness the user asked for. The floor's relief is
     // nearly twice the cavern's, so the broad field makes real slopes and
@@ -78,7 +82,10 @@ dm_biome_def_t const DM_BIOMES[DM_BIOME_COUNT] = {
          .coal         = 0.26f,
          .coal_r       = 2.0f,
          .diamond      = 0.04f,
-         .diamond_r    = 1.2f},
+         .diamond_r    = 1.2f,
+         .titanium     = 0.04f,
+         .titanium_r   = 1.2f},
+
 
     // LAVA SEA: low ground with a lake on it. The lava is a LEVEL, so this
     // is not "occasional blobs" -- it is a sea with shores, and the ground
@@ -98,7 +105,10 @@ dm_biome_def_t const DM_BIOMES[DM_BIOME_COUNT] = {
          .coal         = 0.20f,
          .coal_r       = 1.8f,
          .diamond      = 0.08f,
-         .diamond_r    = 1.4f},
+         .diamond_r    = 1.4f,
+         .titanium     = 0.08f,
+         .titanium_r   = 1.4f},
+
 
     // LOW HALL: the claustrophobic one. Its roof base sits barely above its
     // floor base, so the room is a few blocks -- and its relief is BIGGER
@@ -118,7 +128,10 @@ dm_biome_def_t const DM_BIOMES[DM_BIOME_COUNT] = {
          .coal         = 0.34f,
          .coal_r       = 2.0f,
          .diamond      = 0.03f,
-         .diamond_r    = 1.0f},
+         .diamond_r    = 1.0f,
+         .titanium     = 0.03f,
+         .titanium_r   = 1.0f},
+
 };
 
 // --- The fields -------------------------------------------------------
@@ -357,12 +370,22 @@ void deepmine_chunk(chunk_t* c, uint32_t seed) {
                     // the ceiling, which is a wall of the cave.
                     b = BLK_STONE;
                     // Ore, in the same vein shape the overworld uses, with
-                    // this biome's odds and the floor as its ceiling. Diamond
-                    // first, for the same reason iron is before coal in
-                    // fill_column: two ores cannot fight over one cell.
+                    // this biome's odds and the floor as its ceiling. The two
+                    // rare ones first, for the same reason iron is before coal
+                    // in fill_column: two ores cannot fight over one cell, and
+                    // the one that loses should be the one that is worth less.
+                    //
+                    // Diamond before titanium rather than the other way round
+                    // is a hair of an argument, not a rule: the two are rolled
+                    // on different salts at the same odds, so the only cost of
+                    // the order is the cells where both would have landed, and
+                    // those go to the gem.
                     if (y > CH_BEDROCK) {
                         if (worldgen_vein_at(wx, y, wz, seed, S_DM_DIAMOND, fy, bd->diamond, bd->diamond_r)) {
                             b = BLK_DIAMOND_ORE;
+                        } else if (worldgen_vein_at(wx, y, wz, seed, S_DM_TITANIUM, fy, bd->titanium,
+                                                    bd->titanium_r)) {
+                            b = BLK_TITANIUM_ORE;
                         } else if (worldgen_vein_at(wx, y, wz, seed, S_DM_IRON, fy, bd->iron, bd->iron_r)) {
                             b = BLK_IRON_ORE;
                         } else if (worldgen_vein_at(wx, y, wz, seed, S_DM_COAL, fy, bd->coal, bd->coal_r)) {

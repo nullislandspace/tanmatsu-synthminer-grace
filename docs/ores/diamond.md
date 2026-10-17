@@ -40,18 +40,22 @@ zombies; something has to be worth that, and the something is the one thing in t
 that cannot be made, grown, smelted, farmed, fished or obtained from an animal. A diamond
 is a return ticket you paid for with the trip.
 
+**Titanium is the other thing down there**, at the same rarity and one tier of tool above
+it — and unlike diamond, titanium does become something: tools. If you are going down for
+gear rather than for a gem, see [Titanium ore](titanium.html).
+
 <p class="note"><b>Bring a stone pickaxe or better, or do not go.</b> Diamond ore breaks
 by hand and gives you nothing, and at twelve seconds a block you will not even notice you
 are wasting the trip. See <a href="../mechanics/mining.html">Mining speed and tools</a>.</p>
 
 ## How it compares
 
-| | Coal | Iron | **Diamond** |
-|---|---|---|---|
-| Overworld | Common below y 40 | Below y 28 | **Does not exist** |
-| Deep Mine | Common | **2.4% of the rock** | **0.06%** |
-| Tool | Any pickaxe | Stone+ | **Stone+** |
-| Drops | Coal | The ore block, smelt it | **The gem, ready** |
-| Breaks in, iron pick | 1.7 s | 1.8 s | **2.0 s** |
+| | Coal | Iron | **Diamond** | [**Titanium**](titanium.html) |
+|---|---|---|---|---|
+| Overworld | Common below y 40 | Below y 28 | **Does not exist** | **Does not exist** |
+| Deep Mine | Common | **2.4% of the rock** | **0.06%** | **0.05%** |
+| Tool | Any pickaxe | Stone+ | **Stone+** | **Iron+** |
+| Drops | Coal | The ore block, smelt it | **The gem, ready** | The ore block, smelt it |
+| Breaks in, iron pick | 1.7 s | 1.8 s | **2.0 s** | 2.0 s |
 
-[Coal](coal.html) · [Iron](iron.html) · [Overview](index.html)
+[Coal](coal.html) · [Iron](iron.html) · [Titanium](titanium.html) · [Overview](index.html)

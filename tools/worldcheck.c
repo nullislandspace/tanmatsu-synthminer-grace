@@ -5471,7 +5471,7 @@ static void check_deep_mine(void) {
 
     long columns = 0, sealed = 0, wrong = 0, open_band = 0, room_cols = 0, pinched = 0, wet = 0;
     long room_tight = 0, room_low = 0, room_mid = 0, room_hall = 0;
-    long stone = 0, iron = 0, coal = 0, diamond = 0, lava = 0;
+    long stone = 0, iron = 0, coal = 0, diamond = 0, titanium = 0, lava = 0;
     int  min_floor = CH_H, max_floor = 0, min_ceil = CH_H, max_ceil = 0;
     int  min_room = CH_H, max_room = -CH_H, walls = 0, seams = 0, chunks = 0;
     int  distinct_floor = 0, distinct_ceil = 0, floor_seen[CH_H], ceil_seen[CH_H];
@@ -5566,6 +5566,8 @@ static void check_deep_mine(void) {
                                 coal++;
                             } else if (b == BLK_DIAMOND_ORE) {
                                 diamond++;
+                            } else if (b == BLK_TITANIUM_ORE) {
+                                titanium++;
                             } else {
                                 wrong++;
                             }
@@ -5606,7 +5608,7 @@ static void check_deep_mine(void) {
         }
     }
 
-    double const ore_total = (double)(stone + iron + coal + diamond);
+    double const ore_total = (double)(stone + iron + coal + diamond + titanium);
     printf("  %d chunks: floor y %d..%d, roof y %d..%d, room %d..%d cells, %d distinct floors, %d distinct roofs\n",
            chunks, min_floor, max_floor, min_ceil, max_ceil, min_room, max_room, distinct_floor, distinct_ceil);
     printf("  %ld columns: %ld sealed cells of ceiling, %ld open, %ld you can stand in, %ld are solid rock, "
@@ -5615,8 +5617,9 @@ static void check_deep_mine(void) {
     printf("  room: %ld hall(s) of 18 or more (%.1f%%), %ld of 5..17 (%.1f%%), %ld of 1..4 (%.1f%%), %ld solid (%.1f%%)\n",
            room_hall, 100.0 * (double)room_hall / (double)columns, room_mid, 100.0 * (double)room_mid / (double)columns,
            room_low, 100.0 * (double)room_low / (double)columns, room_tight, 100.0 * (double)room_tight / (double)columns);
-    printf("  ore %.1f%% iron / %.1f%% coal / %.2f%% diamond of the rock\n", 100.0 * (double)iron / ore_total,
-           100.0 * (double)coal / ore_total, 100.0 * (double)diamond / ore_total);
+    printf("  ore %.1f%% iron / %.1f%% coal / %.2f%% diamond / %.2f%% titanium of the rock\n",
+           100.0 * (double)iron / ore_total, 100.0 * (double)coal / ore_total, 100.0 * (double)diamond / ore_total,
+           100.0 * (double)titanium / ore_total);
     printf("  biomes:");
     for (int b = 0; b < DM_BIOME_COUNT; b++) {
         printf(" %s %.1f%%", DM_BIOMES[b].name, 100.0 * (double)biome_cols[b] / (double)columns);
@@ -5664,6 +5667,26 @@ static void check_deep_mine(void) {
         CHECK(share < 70.0, "the biome %s is %.1f%% of the sample: the cave is one thing, not four places",
               DM_BIOMES[b].name, share);
     }
+
+    // THE ORE, and the one number the user actually set: titanium is **as
+    // rare as diamond**. Not "rarer", not "a bit commoner" -- the two are
+    // rolled on different salts at the same per-biome odds, so what is
+    // asserted is that they land in the same order of magnitude, which is
+    // the design claim. A factor of two is the slack: the order the veins
+    // are tried in costs the second one the cells where both landed, and a
+    // sample of ~46 thousand rock cells is not tight enough to tell a 5%%
+    // difference from noise.
+    //
+    // Iron being richer than both is Part M's original claim (D-139) and is
+    // checked here because this is the only place that counts the rock.
+    CHECK(titanium > 0, "no titanium in %ld columns: the ore is not being generated", columns);
+    CHECK(titanium * 2 > diamond && diamond * 2 > titanium,
+          "%ld diamond cells and %ld titanium cells: titanium is not as rare as diamond", diamond, titanium);
+    CHECK(iron > diamond * 4 && iron > titanium * 4,
+          "%ld iron against %ld diamond and %ld titanium: the Deep Mine is not richer in iron", iron, diamond,
+          titanium);
+    printf("  titanium is %.2fx diamond, and iron is %.0fx either -- the rarity the user asked for\n",
+           (double)titanium / (double)diamond, (double)iron / (double)diamond);
 
     // LAKES, NOT BLOBS: some ground lies under the level, and not so much of
     // it that the cave is a sea you have to swim.
@@ -8690,7 +8713,7 @@ static void check_bench(void) {
 }
 
 static void check_iron(void) {
-    printf("iron: the one block that refuses the swing\n");
+    printf("iron and titanium: the blocks that refuse the swing\n");
 
     CHECK(block_tool_required(BLK_IRON_ORE), "iron ore does not require a tool");
     CHECK(!block_tool_required(BLK_STONE), "stone requires a tool, and should only be slow without one");
@@ -8701,6 +8724,16 @@ static void check_iron(void) {
     CHECK(item_can_harvest(BLK_COAL_ORE, ITEM_PICK_WOOD), "a wooden pickaxe cannot harvest coal");
     CHECK(item_can_harvest(BLK_STONE, ITEM_PICK_WOOD), "a wooden pickaxe cannot harvest stone");
 
+    // TITANIUM is the same rule one tier up, and the only block in the game
+    // at tool_level 3: the stone pickaxe you need for iron ore is not enough
+    // for this, which is the whole reason the ore is worth carrying an iron
+    // one down for.
+    CHECK(block_tool_required(BLK_TITANIUM_ORE), "titanium ore does not require a tool");
+    CHECK(!item_can_harvest(BLK_TITANIUM_ORE, ITEM_PICK_WOOD), "a wooden pickaxe harvests titanium");
+    CHECK(!item_can_harvest(BLK_TITANIUM_ORE, ITEM_PICK_STONE), "a stone pickaxe harvests titanium");
+    CHECK(item_can_harvest(BLK_TITANIUM_ORE, ITEM_PICK_IRON), "an iron pickaxe cannot harvest titanium");
+    CHECK(item_can_harvest(BLK_TITANIUM_ORE, ITEM_PICK_TITANIUM), "a titanium pickaxe cannot harvest titanium");
+
     // The refusal has to NAME the tool, or it is indistinguishable
     // from a bug -- which is the whole reason Minecraft chose the other
     // rule (blocks.h, BF2_TOOL_REQUIRED).
@@ -8708,6 +8741,9 @@ static void check_iron(void) {
     CHECK(item_tool_for(d->tool, d->tool_level) == ITEM_PICK_STONE, "iron ore cannot say what it wants");
     CHECK(item_tool_for(TOOL_PICK, 3) == ITEM_PICK_IRON, "there is no level-3 pickaxe to name");
     CHECK(item_tool_for(TOOL_NONE, 0) == 0, "a tool class of none named something");
+    d = block_def(BLK_TITANIUM_ORE);
+    CHECK(item_tool_for(d->tool, d->tool_level) == ITEM_PICK_IRON, "titanium ore cannot say what it wants");
+    CHECK(item_tool_for(TOOL_PICK, 4) == ITEM_PICK_TITANIUM, "there is no level-4 pickaxe to name");
 
     // Every block that refuses a swing must be able to say what it
     // wants, or a player is left hitting it with no idea why.
@@ -8723,6 +8759,25 @@ static void check_iron(void) {
     int const by_iron = item_break_ticks(BLK_IRON_ORE, ITEM_PICK_IRON);
     CHECK(by_hand / by_iron == 6, "an iron pickaxe is %dx a fist on iron ore, wanted 6", by_hand / by_iron);
     printf("  iron ore: %d ticks by hand, %d with an iron pickaxe\n", by_hand, by_iron);
+
+    // TIER 4 IS FASTER AND LASTS LONGER, both of them, and by the same
+    // steps the tiers have always used: 2 x level off a fist (8x where iron
+    // is 6x) and 400 uses where iron has 250. A better tool is a tool you
+    // stop re-making, not a different game.
+    int const ti_hand = item_break_ticks(BLK_TITANIUM_ORE, 0);
+    int const ti_iron = item_break_ticks(BLK_TITANIUM_ORE, ITEM_PICK_IRON);
+    int const ti_ti = item_break_ticks(BLK_TITANIUM_ORE, ITEM_PICK_TITANIUM);
+    CHECK(ti_hand / ti_ti == 8, "a titanium pickaxe is %dx a fist on titanium ore, wanted 8", ti_hand / ti_ti);
+    CHECK(ti_ti < ti_iron, "a titanium pickaxe (%d ticks) is not faster than an iron one (%d) on the same ore",
+          ti_ti, ti_iron);
+    CHECK(item_def(ITEM_PICK_TITANIUM).durability > item_def(ITEM_PICK_IRON).durability,
+          "a titanium pickaxe does not outlast an iron one");
+    CHECK(item_def(ITEM_AXE_TITANIUM).durability > item_def(ITEM_AXE_IRON).durability,
+          "a titanium axe does not outlast an iron one");
+    CHECK(item_def(ITEM_SHOVEL_TITANIUM).durability > item_def(ITEM_SHOVEL_IRON).durability,
+          "a titanium shovel does not outlast an iron one");
+    printf("  titanium ore: %d ticks by hand, %d with iron, %d with titanium; the tools last %d uses against %d\n",
+           ti_hand, ti_iron, ti_ti, item_def(ITEM_PICK_TITANIUM).durability, item_def(ITEM_PICK_IRON).durability);
 }
 
 static void check_blockent(void) {

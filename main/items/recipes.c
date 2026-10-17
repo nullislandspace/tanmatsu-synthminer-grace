@@ -96,6 +96,21 @@ static recipe_t const RECIPES[] = {
      .n_in    = 2,
      .in      = {{ITEM_IRON_INGOT, 1}, {ITEM_STICK, 2}}},
 
+    // TITANIUM TOOLS, at exactly iron's prices. The tier is what they cost
+    // in the ground, not on the table: a titanium pickaxe is 3 ingots and
+    // 2 sticks, and those 3 ingots are 3 veins of an ore as rare as
+    // diamond. Reversible like every other metal thing -- the bench gets
+    // the metal back, and never the ore (the user's own rule).
+    {.out     = ITEM_PICK_TITANIUM, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 2,
+     .in      = {{ITEM_TITANIUM_INGOT, 3}, {ITEM_STICK, 2}}},
+    {.out     = ITEM_AXE_TITANIUM, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 2,
+     .in      = {{ITEM_TITANIUM_INGOT, 3}, {ITEM_STICK, 2}}},
+    {.out     = ITEM_SHOVEL_TITANIUM, .out_n = 1, .station = RS_TABLE, .flags = RF_REVERSIBLE,
+     .n_in    = 2,
+     .in      = {{ITEM_TITANIUM_INGOT, 1}, {ITEM_STICK, 2}}},
+
     // The bucket: three ingots, as asked, and Minecraft's cost. It is
     // REVERSIBLE like every other iron thing -- the bench gets the
     // metal back. Only the EMPTY one has a recipe; a full one is an
@@ -172,6 +187,13 @@ static recipe_t const RECIPES[] = {
     {.out     = ITEM_IRON_INGOT, .out_n = 1, .station = RS_FURNACE,
      .n_in    = 1,
      .in      = {{BLK_IRON_ORE, 1}}},
+
+    // Titanium ore to ingot, the same shape: the ore drops itself so it
+    // can be carried to a furnace, and one in gives one out. NOT
+    // reversible, for the reason the iron row gives.
+    {.out     = ITEM_TITANIUM_INGOT, .out_n = 1, .station = RS_FURNACE,
+     .n_in    = 1,
+     .in      = {{BLK_TITANIUM_ORE, 1}}},
 
     // --- The animals' kit (step 10) ----------------------------------
     //
