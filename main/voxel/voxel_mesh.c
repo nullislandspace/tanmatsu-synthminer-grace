@@ -422,6 +422,19 @@ static float fluid_corner(vox_grid_t const* g, int x, int y, int z, int cx, int 
     return n > 0 ? sum / (float)n : cell_water_height(g, x, y, z);
 }
 
+// Does the cell above this one HIDE a water surface? A cube does, and so
+// does another liquid -- the surface of that column is the one at the top
+// of it. A plant does not, and the plant that has to be a plant is RICE:
+// its lower cell is a full cell of water with a plant in it, and when the
+// plant ripens its upper half stands IN the air above that surface, not
+// over it. Counting it as a lid is what left every paddy that had grown
+// tall with a plant-shaped hole in the pond, one block of water short at
+// exactly the height the water is supposed to be at.
+static bool fluid_lidded(vox_grid_t const* g, int x, int y, int z) {
+    block_kind_t const over = block_kind(grid_cell(g, x, y + 1, z));
+    return over != K_AIR && over != K_PLANT;
+}
+
 static void emit_fluid(mesh_t* m, vox_grid_t const* g, int x, int y, int z, uint8_t mat) {
     float const X = (float)(x + g->x0), Y = (float)(y + g->y0), Z = (float)(z + g->z0);
     float const uv[4][2] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
@@ -433,9 +446,9 @@ static void emit_fluid(mesh_t* m, vox_grid_t const* g, int x, int y, int z, uint
     float const h11 = fluid_corner(g, x, y, z, 1, 1);
     float const h01 = fluid_corner(g, x, y, z, 0, 1);
 
-    // THE SURFACE, both ways round. Only where there is air over it --
-    // the same condition the greedy pass uses for a full cell, so a
-    // flow running under an overhang has no top face either.
+    // THE SURFACE, both ways round. Only where nothing over it hides it
+    // (fluid_lidded), so a flow running under an overhang has no top
+    // face either.
     //
     // EACH COPY IS A DIRECTIONAL FACE, one winding, exactly as the
     // greedy pass emits the flat version. The plants next door do the
@@ -447,7 +460,7 @@ static void emit_fluid(mesh_t* m, vox_grid_t const* g, int x, int y, int z, uint
     // instead of on a cross product. Over a pool that is the difference
     // between 12 triangles a cell and 20, and the triangle budget is
     // the thing this renderer runs out of first (F-63).
-    if (block_kind(grid_cell(g, x, y + 1, z)) == K_AIR) {
+    if (!fluid_lidded(g, x, y, z)) {
         int const a = mesh_vert(m, v3(X, Y + h00, Z)), b = mesh_vert(m, v3(X + 1.0f, Y + h10, Z));
         int const c = mesh_vert(m, v3(X + 1.0f, Y + h11, Z + 1.0f)), d = mesh_vert(m, v3(X, Y + h01, Z + 1.0f));
         if (a < 0 || b < 0 || c < 0 || d < 0) return;

@@ -8995,6 +8995,32 @@ and the Deep Mine has no night (D-139), so a bed there would have nothing to do.
   that is a playtesting judgement, not a code one. `main/main.c` is still not in
   `PURE_SRCS`, so the respawn branch is only checkable by dying on the device.
 
+- **F-161** 2026-10-17, fixed: **ripe rice left a plant-shaped hole in the pond.**
+
+  The user's report: *"Rice is planted in water (fully grown, one block is below the
+  water line, one above). That is correct. But visually, when rice grows to two blocks,
+  the water surface is not rendered on that block, making it appear as a hole."*
+
+  **CAUSE: THE SURFACE TEST ASKED THE WRONG QUESTION.** `emit_fluid()` emitted the top
+  quad (and its underside) only `if (block_kind(cell above) == K_AIR)`. A waterlogged
+  cell is a full cell of water with a plant in it (D-115), and rice is planted TWO
+  BLOCKS TALL from the keypress, so the cell above the water is `BLK_RICE_TOP` -- not
+  air, and not something that hides anything. The quad that was supposed to close the
+  pond at exactly the plane the upper half starts on was skipped, and every paddy that
+  had grown up read as a hole with a plant in it. The rule was written for a flow under
+  an overhang and quietly applied to plants as well.
+
+  **THE FIX: ASK WHETHER ANYTHING OVER IT HIDES IT.** `fluid_lidded()`
+  (`main/voxel/voxel_mesh.c`) is a cube or more water -- the surface of a water column
+  is the one at the top of it -- and nothing else. Air and a plant are not lids. The
+  `K_LIQUID` row in `blocks.h` now says the same thing.
+
+  **WHY NO CHECK CAUGHT IT:** the paddy case in `check_crop_mesh` planted the LOWER half
+  only, with air above it, which is a state the game never produces. It now plants
+  `BLK_RICE_TOP` as well and checks both halves (8 + 8 plant triangles) and the water
+  over the cell: **4 water triangles at y 3.000**, where before the test passed with the
+  same 4 and the real plant drew none.
+
 ## Verification
 
 - **Host:** `make check` = `worldcheck` + `scenecheck` + `meshcheck` +

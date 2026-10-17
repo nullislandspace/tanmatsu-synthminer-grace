@@ -587,15 +587,22 @@ static void check_crop_mesh(void) {
     vg_fill(1, 2, 1, 3, 2, 3, BLK_WATER);  // a 3 x 3 pool, one deep
     *vg_cell(2, 2, 2)       = BLK_RICE_CROP;
     data[vg_index(2, 2, 2)] = 3;  // ripe: the stage bits, NOT a fluid level
+    // TWO BLOCKS TALL, which is how rice leaves the planting keypress.
+    // The upper half sits exactly on the plane the pond's surface is on,
+    // and a mesher that reads "not air above" as "covered" puts no water
+    // there -- a plant-shaped hole in every paddy that grew up.
+    *vg_cell(2, 3, 2)       = BLK_RICE_TOP;
+    data[vg_index(2, 3, 2)] = 3;
 
     mesh_t m;
     mesh_init(&m);
     voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
 
-    int   rice = 0, water_over_rice = 0;
+    int   rice = 0, rice_top = 0, water_over_rice = 0;
     float rice_water_y = -1.0f;
     for (int i = 0; i < m.tn; i++) {
         if (m.t[i].mat >= VM_RICE_0 && m.t[i].mat <= VM_RICE_3) rice++;
+        if (m.t[i].mat >= VM_RICE_TOP_0 && m.t[i].mat <= VM_RICE_TOP_3) rice_top++;
         if (m.t[i].mat != VM_WATER) continue;
         // A water triangle with all three corners over the rice cell.
         uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
@@ -608,9 +615,10 @@ static void check_crop_mesh(void) {
         water_over_rice++;
         rice_water_y = m.v[vi[0]].y;
     }
-    printf("voxel: a paddy: %d rice tris, %d water tris over it at y %.3f\n", rice, water_over_rice,
+    printf("voxel: a paddy: %d + %d rice tris, %d water tris over it at y %.3f\n", rice, rice_top, water_over_rice,
            (double)rice_water_y);
     CHECK(rice == 8, "voxel: the rice plant drew %d triangles, expected 8", rice);
+    CHECK(rice_top == 8, "voxel: the upper half of the rice drew %d triangles, expected 8", rice_top);
     CHECK(water_over_rice > 0, "voxel: a rice cell drew no water: the pond has a plant-shaped hole in it");
     // FULL DEPTH, whatever the stage says. The stage bits sit exactly
     // where a fluid level would, so reading one as the other would

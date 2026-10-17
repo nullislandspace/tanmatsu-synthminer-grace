@@ -51,11 +51,13 @@ typedef enum {
     // half. Low enough to walk onto, which is what a bed is for.
     K_BED,
     // A liquid is ONLY ever its surface. It draws no sides and no
-    // bottom, and a top only where there is air above it, and it never
-    // hides the faces of its neighbours -- so a lake is a lid over
-    // terrain you can see into, rather than a solid box with nothing
-    // inside it. The engine has no blending, so this is what
-    // "transparent" has to mean here (D-86). See voxel_mesh.c.
+    // bottom, and a top only where nothing solid covers it -- a cube or
+    // more water above it, but NOT the upper half of a rice plant
+    // standing in it -- and it never hides the faces of its neighbours,
+    // so a lake is a lid over terrain you can see into, rather than a
+    // solid box with nothing inside it. The engine has no blending, so
+    // this is what "transparent" has to mean here (D-86). See
+    // voxel_mesh.c.
     K_LIQUID,
 } block_kind_t;
 
