@@ -18,7 +18,7 @@
         "tanmatsu",
         "konsool"
       ],
-      "revision": 4,
+      "revision": 5,
       "type": "script",
       "interpreter": "at.cavac.graceloader",
       "executable": "app.so",
