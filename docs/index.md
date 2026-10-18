@@ -36,7 +36,7 @@ long a tree takes, why a sheep has stopped giving wool.
 <li><a href="ores/index.html"><b>Ores and stone</b><span>Coal, iron, and how far down you have to go.</span></a></li>
 <li><a href="plants/index.html"><b>Plants and farming</b><span>The hoe, wet soil, five crops, and trees that grow back.</span></a></li>
 <li><a href="animals/index.html"><b>Animals</b><span>Pigs, cows, sheep and dogs: finding, feeding, breeding, shearing.</span></a></li>
-<li><a href="tools/index.html"><b>Tools</b><span>Four kinds, three tiers, and what each one is actually for.</span></a></li>
+<li><a href="tools/index.html"><b>Tools</b><span>Four kinds, four tiers, and what each one is actually for.</span></a></li>
 <li><a href="tools/sword.html"><b>Sword and armour</b><span>The only thing that hurts a creature, and the four pieces that decide how much a hit costs you.</span></a></li>
 <li><a href="devices/index.html"><b>Machines and furniture</b><span>Furnace, chests, composter, the two makers, the kitchen stove, the smithing forge, the bed, the mine shaft.</span></a></li>
 <li><a href="mechanics/hunger.html"><b>Hunger</b><span>Drumsticks, the invisible reserve, and why a good meal lasts longer.</span></a></li>
@@ -77,6 +77,7 @@ what turns the Deep Mine from somewhere you visit carefully into somewhere you s
 | Dimensions in one world | **2** — the overworld and the Deep Mine |
 | Deep Mine lava level | 12, one level for the whole dimension |
 | Mine shaft | **16 iron ingots**, a 3×3 frame, 16 blocks |
+| Smithing forge | **12 diamonds** + 10 planks; an item per press of Start, a day in iron and two in titanium |
 | A day | 20 minutes of playing (24 000 ticks) |
 | Reach | 4.5 blocks |
 | Jump | 1.33 blocks — so you can climb one block, never two |

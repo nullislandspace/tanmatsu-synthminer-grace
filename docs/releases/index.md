@@ -5,6 +5,7 @@ summary: What each release added, newest first.
 
 | Version | Name | Date | |
 |---|---|---|---|
+| **v0.4.0** | **Longer Sword Diplomacy** | 18 October 2026 | [What's in it →](v0.4.0.html) |
 | **v0.3.0** | **The Deep Mine Update** | 13 October 2026 | [What's in it →](v0.3.0.html) |
 | **v0.2.1** | **What Playing It Found** | 1 October 2026 | [What's in it →](v0.2.1.html) |
 | **v0.2.0** | **Fred's Farm Update** | 30 September 2026 | [What's in it →](v0.2.0.html) |
@@ -34,13 +35,15 @@ The name is the useful part. *The Base Game* is the world, the mining and the cr
 *Fred's Farm Update* is everything about keeping yourself alive in it.
 *The Deep Mine Update* is the second dimension, and the first things in the game that fight
 back.
+*Longer Sword Diplomacy* is the gear: a forge, a sword, four pieces of armour, and the ore
+armour is made of.
 
 ## What is coming
 
-**The Deep Mine's numbers are the ones to be tuned.** How much iron, how many packs of mobs,
-how tall the ceilings are, how often diamond appears — all of it was set before the dimension
-was played, and it is all expected to move after some playing.
+**The numbers are the thing to be tuned.** How much iron and how much titanium the cave
+holds, how many packs of mobs, how tall the ceilings are, how hard a zombie hits, what a
+chestplate is worth, how long a job in the forge takes — all of it was written down before
+any of it was played with, and all of it is expected to move after some playing.
 
 Not built yet, in rough order of how likely they are: more kinds of hostile mob, a skeleton
-that shoots, something to do with a diamond, falling sand that flows toward a hole, and red
-flowers you can grow.
+that shoots, falling sand that flows toward a hole, and red flowers you can grow.

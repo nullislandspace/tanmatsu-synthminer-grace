@@ -97,6 +97,7 @@
 - title: Releases
   pages:
     - {url: /releases/index.html, name: Version history}
+    - {url: /releases/v0.4.0.html, name: "v0.4.0 — Longer Sword Diplomacy"}
     - {url: /releases/v0.3.0.html, name: "v0.3.0 — The Deep Mine Update"}
     - {url: /releases/v0.2.1.html, name: "v0.2.1 — What Playing It Found"}
     - {url: /releases/v0.2.0.html, name: "v0.2.0 — Fred's Farm Update"}

@@ -25,6 +25,11 @@ water cell itself**, and the conditions are exact:
 Point at the *water* and press <kbd>E</kbd>. If any of the three is wrong the game
 says the ground is not right rather than taking the seed.
 
+<p class="note"><b>A grown paddy is not full of holes.</b> A rice plant is two blocks
+tall, so the cell above the water is the plant rather than air -- and the water surface
+is drawn there all the same, at the plane the pond closes at. Until v0.4.0 it was not,
+which is why a paddy that had grown up looked like it had a plant-shaped hole in it.</p>
+
 ## Finding a place for it
 
 Two options:
