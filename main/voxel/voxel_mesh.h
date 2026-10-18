@@ -185,6 +185,18 @@ typedef enum {
     // chest half borrows VM_CHEST_*, as BLK_STOVE_CHEST does.
     VM_SMITH_TOP,
     VM_SMITH_FRONT,
+    // WHAT A WORKING MACHINE SHOWS (Part Q). None of these is a face of
+    // a block: the flame and the haze are drawn in the air OVER the
+    // machine, by the same mesher that draws a plant, and the sausage
+    // side is the machine's own side plate in a different colour. All
+    // three read the MACHINE_LIT / MACHINE_DONE bits of the state byte
+    // (blocks.h), which world/blockent.c mirrors from the record.
+    VM_FLAME,
+    VM_HAZE,
+    // The sausage maker's side once its output holds a sausage: the dark
+    // grey plate going dark red, the one thing about that block that can
+    // say "there is a sausage in here".
+    VM_SAUSAGE_SIDE_FULL,
     VM_COUNT
 } vox_mat_t;
 

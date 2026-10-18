@@ -20,13 +20,31 @@
 //  BE_MAX of them across the resident ring is far more containers than
 //  anyone will build within sight of themselves.
 //
-//  THE RACE THAT ISN'T. The worker serialises a chunk's records while
-//  the main task could in principle be stirring a furnace. It cannot:
-//  a chunk is only saved when it is being evicted or when the world is
-//  being saved, and a furnace can only be opened when the player is
-//  standing next to it -- which is to say in a chunk that is resident
-//  and nowhere near eviction. The residency contract already separates
-//  them, so there is no lock here and should not be one.
+//  THE RACE, AND THE ONE RULE THAT KEEPS IT OUT. The worker writes this
+//  pool while it decodes a chunk (blockent_decode_section) and reads it
+//  while it serialises one (blockent_encode_chunk); the main task writes
+//  it when a player puts something into a furnace and, since Part Q,
+//  when blockent_tick() advances one. Four hands, no lock.
+//
+//  What used to keep them apart was an accident: a chunk was only saved
+//  on eviction, and a furnace was only ever stirred by somebody standing
+//  in it. A per-tick pass takes that accident away -- it walks every
+//  record in the world, including the ones in a chunk being written on
+//  core 1 at the same instant.
+//
+//  THE RULE THAT REPLACES IT: a record may only be touched from the main
+//  task when its own chunk is CS_READY. Not CS_LOADING (the worker is
+//  filling it, and its records are being written right now) and not
+//  CS_SAVING (the worker is serialising them right now). That is one
+//  state test per record and it covers both directions.
+//
+//  It is sound rather than merely plausible, and the reason is the order
+//  the decoder writes a record in: blockent_add() stamps x/y/z and
+//  leaves `kind` for last, and read_record() then copies the rest of the
+//  body over a record whose coordinates are already final. So a record
+//  that is VISIBLE to a walk over the pool always has coordinates a
+//  torn read cannot have changed, which is what makes "which chunk is
+//  this in" a safe question to ask mid-decode.
 //
 //  Pure: no engine, no RTOS. The one allocation goes through psram.h,
 //  which is the sanctioned seam. tools/worldcheck.c builds it as-is.
@@ -212,6 +230,37 @@ int blockent_rot_trash(blockent_t* be, uint32_t now);
 
 // Forget every record in a chunk: what EVICTION does, after the save.
 void blockent_drop_chunk(int32_t cx, int32_t cz);
+
+// --- The slow sweep (Part Q) ------------------------------------------
+//
+// THE SAME TWO DOORS CROPS COME IN THROUGH (world/crops.h, step 9), for
+// the machines: a tick pass while the chunk is resident, and one catch-up
+// in a go when it comes back. The arithmetic does not move -- every
+// *_catch_up() already spends a week's absence in one loop and is
+// idempotent, which is the only reason a per-tick pass is safe BESIDE
+// the UI's call rather than instead of it.
+//
+// It also writes what the player SEES. A machine's MACHINE_LIT /
+// MACHINE_DONE bits (blocks.h) and a cheese maker's BARREL_* bits are
+// mirrored into the cell's state byte here, which is the only way the
+// mesher can know that a forge is burning: it reads block bytes on core
+// 1 and has never once seen a record. Until this pass existed the
+// cheese maker only changed colour when somebody opened it, because the
+// UI was the only writer of its state byte.
+//
+// Once a tick, over at most BE_MAX records, most of which are a `kind`
+// test. Free in a world with no machines, in the same way crops_tick()
+// is free in a world with no farms.
+void blockent_tick(uint32_t now);
+
+// The clock blockent_tick() last saw, so a chunk landing on the worker's
+// behalf can be caught up without anything under world/ being handed the
+// world metadata (the same reason crops_now() exists, D-52).
+uint32_t blockent_now(void);
+
+// A chunk has arrived (main task, from apply()): catch up every record
+// standing in it, by however long it was away.
+void blockent_chunk_join(chunk_t* c, uint32_t now);
 
 // How many records are live, and how many are in one chunk. For the
 // checks and the memory report.

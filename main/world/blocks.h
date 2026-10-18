@@ -499,6 +499,27 @@ static inline float block_collide_top(uint8_t id) {
 #define BARREL_MILK   1u
 #define BARREL_CHEESE 2u
 
+// WHAT A MACHINE'S CELL SHOWS ABOUT THE MACHINE STANDING IN IT.
+//
+// Part Q's whole trick, and it is a small one: the mesher runs on core 1
+// from block bytes and cannot see a block entity, but it CAN see this
+// byte -- which is exactly how a cheese maker already shows milk or
+// cheese. So a machine's state is mirrored here by world/blockent.c's
+// slow pass, and the mesher draws from it like it draws from any other
+// block data. No register of running machines, no per-frame quads.
+//
+// Bits 2 and 3, because bits 0..1 are already spoken for by the blocks
+// that own them: a stove and a forge keep their FACING there (below), a
+// cheese maker its BARREL_*. A furnace and a composter use nothing
+// there, and get these two anyway -- one pair of names for every machine
+// rather than a per-block convention.
+//
+// DERIVED, NEVER TRUSTED FROM A SAVE. It is recomputed from the record
+// every time a chunk is looked at, so a bit left stale on the card costs
+// one frame of the wrong picture and nothing else.
+#define MACHINE_LIT  (1u << 2)  // a fire is burning in it RIGHT NOW
+#define MACHINE_DONE (1u << 3)  // a finished product is standing in its output
+
 // WHICH WAY A TWO-CELL BLOCK LIES, in the state byte of BOTH halves:
 // the direction from the first half to the second. Two bits, four
 // answers, and it is how a pair of cells finds itself.

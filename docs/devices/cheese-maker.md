@@ -28,6 +28,9 @@ The barrel is drawn differently depending on what is in it: empty, full of milk,
 holding finished cheese. So you can tell from across the room which ones need emptying,
 without opening any of them.
 
+**The picture updates by itself.** A barrel that turned cheese while you were elsewhere is
+drawn as cheese the moment it is in view, whether or not you ever opened it.
+
 ## What cheese is worth
 
 | | |

@@ -71,8 +71,9 @@ are in memory. This has two consequences you can see:
   cow left in a field is in that field tomorrow.
 - **Time still passes in an unloaded chunk.** A field you left an hour ago has
   grown an hour when you come back; a composter has composted; a furnace has
-  smelted. Nothing is simulated while you are away — the game works out what
-  *would* have happened the moment you look. See
+  smelted. Nothing is *simulated* out there — the game works out what *would*
+  have happened, in one go, the moment the chunk lands. Machines you can see do
+  run, and they show it. See
   [Time, growth and sleeping](../mechanics/time.html).
 
 ## The Far Lands

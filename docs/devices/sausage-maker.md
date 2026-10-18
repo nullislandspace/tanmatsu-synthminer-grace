@@ -64,11 +64,16 @@ Every slot, input and output, has a **"take it out"** row at the top of its list
 that and the contents come back to you. Breaking the machine also drops everything
 inside it.
 
-## It never runs while you are away
+## You can see it working
 
-Like every machine here, the sausage maker works out what should have happened the moment
-you open it — so a machine left loaded is simply done when you come back, and one in a
-chunk you have not visited costs nothing.
+**The dark grey plate on its side turns dark red while a sausage is standing in its
+output.** That is the one thing about this machine you can read from outside, and it says
+"empty me" without opening anything.
+
+Like every machine here, it runs while its chunk is loaded and works out the rest in one go
+when that chunk comes back — so a machine left loaded is simply done when you come back,
+and one in a chunk you have not visited costs nothing. A full output stops it rather than
+letting ingredients sit and rot.
 
 A minute a sausage is a minute of real playing time while you are awake. **A night's sleep
 finishes the whole batch**, because sleeping winds the world's clock forward by up to a

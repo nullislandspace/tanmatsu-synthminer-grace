@@ -183,6 +183,20 @@ void maker_catch_up(blockent_t* be, uint32_t now) {
     maker_def_t const* d = be != NULL ? maker_def(be->kind) : NULL;
     if (d == NULL) return;
 
+    // AN IDLE MACHINE BANKS NOTHING, decided BEFORE the loop -- the
+    // whole of the "the cheese maker starts at 70%" bug. The loop is not
+    // able to answer this on its own: with `elapsed` shorter than one
+    // unit its body never runs, `idle` stays false, and the last line
+    // banks the entire absence into the stamp. A barrel left empty or
+    // left full for a week then starts its next bucket of milk most of
+    // the way through. composter.c has the same rule for the same
+    // reason; the furnace, the stove and the forge never had this hole
+    // because they stamp unconditionally and keep progress in `cook`.
+    if (maker_idle_reason(be) != MAKER_IDLE_NONE) {
+        be->stamp = now;
+        return;
+    }
+
     // Time only runs forward: a stamp from the future must not buy a
     // free sausage (the furnace's rule, and the composter's).
     uint32_t elapsed = now >= be->stamp ? now - be->stamp : 0;
@@ -212,9 +226,9 @@ void maker_catch_up(blockent_t* be, uint32_t now) {
         if (bone && slot_has_room(be, BE_MAKER_EXTRA, d->extra, 1)) slot_add(be, BE_MAKER_EXTRA, d->extra, 1);
     }
 
-    // The remainder is kept, and an idle machine banks nothing -- or a
-    // barrel left empty for a week would turn its next bucket into
-    // cheese on the spot (composter.c says the same thing at length).
+    // The remainder is kept, and a machine that STOPPED mid-way banks
+    // nothing either: the loop breaks with `idle` the moment the recipe
+    // no longer matches or the output has no room.
     be->stamp = idle ? now : now - elapsed;
 }
 

@@ -79,6 +79,7 @@
 #include "world/chunk_worker.h"
 #include "world/chunkmesh.h"
 #include "world/blockupdate.h"
+#include "world/blockent.h"
 #include "world/crops.h"
 #include "world/light.h"
 #include "world/dimension.h"
@@ -2584,6 +2585,15 @@ static void on_update(float dt, void* user) {
             // A slot with nothing growing in it is a flag test, so this
             // is free in a world nobody has farmed.
             crops_tick((uint32_t)s_meta.time_of_day);
+            // AND THE MACHINES, on the same clock and for the same
+            // reason (world/blockent.h). A furnace across the world is
+            // not in the chunk slot this tick sweeps, so it is not
+            // advanced here -- it is advanced in one go when somebody
+            // walks into it or its chunk arrives, exactly as crops are.
+            // What this pass buys is the visible half: the forge that
+            // is burning, the composter that has finished, the cheese
+            // that has turned while nobody was looking.
+            blockent_tick((uint32_t)s_meta.time_of_day);
             // THE ANIMALS, before the player moves: they read where he
             // was last tick, which is what every other creature in
             // every other game does and what keeps the order fixed for

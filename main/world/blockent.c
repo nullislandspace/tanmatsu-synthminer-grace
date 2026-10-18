@@ -13,6 +13,17 @@
 #include "common/tags.h"
 #include "items/items.h"
 
+// Only for the slow sweep at the end of this file: the five catch-up
+// rules, and the one function that finds a two-cell machine's other
+// half. Nothing else here needs them.
+#include "game/composter.h"
+#include "game/forge.h"
+#include "game/furnace.h"
+#include "game/interact.h"
+#include "game/maker.h"
+#include "game/stove.h"
+#include "world/blocks.h"
+
 static blockent_t* s_pool;
 
 // What each kind is called on disk. A STRING, not a number, as the
@@ -98,6 +109,23 @@ void blockent_remove(int32_t x, int32_t y, int32_t z) {
 
 void blockent_touch(blockent_t const* be) {
     if (be == NULL || be->kind == BE_NONE) return;
+    // THE ONE RULE FROM blockent.h, enforced here so there is only one
+    // place to get it right: a record may only be marked dirty while its
+    // chunk is CS_READY.
+    //
+    // Marking a chunk that is being written is not merely pointless, it
+    // is how a change gets thrown away. chunk_worker.c clears CF_EDITED
+    // after a successful save when the chunk's edit_seq is what it was
+    // when the job went out, on the sound reasoning that the bytes it
+    // wrote already contain the change. For a record touched mid-save
+    // that reasoning is false -- the worker serialised the OLD contents
+    // -- and the bit it clears is the only thing that would have written
+    // the new ones. A furnace emptied while its chunk drains, gone.
+    //
+    // CS_SAVING is what chunk_find() happily returns for a chunk on the
+    // worker, so this cannot be left to the callers.
+    chunk_t* c = chunk_find(chunk_of(be->x), chunk_of(be->z));
+    if (c == NULL || c->cstate != CS_READY) return;
     chunk_mark_edited(chunk_of(be->x), chunk_of(be->z));
 }
 
@@ -367,5 +395,227 @@ void blockent_decode_section(uint8_t const* data, size_t len) {
         if (pos + rec > len) return;  // truncated: stop, keep what parsed
         read_record(data + pos, rec);
         pos += rec;
+    }
+}
+
+// =====================================================================
+//  THE SLOW SWEEP (Part Q)
+//
+//  Everything above this line is passive: a machine only ever advances
+//  when somebody opens it, and `now - stamp` does the rest. That is what
+//  makes an unvisited furnace free, and it is also why a furnace across
+//  the world looks dead even when it is burning.
+//
+//  This is the half that makes them ALIVE, and it is deliberately the
+//  same two doors crops.c uses (world/crops.h, step 9): blockent_tick()
+//  once a world tick while the chunk is resident, blockent_chunk_join()
+//  once in a go when a chunk comes back. The arithmetic does not move.
+//  Every *_catch_up() already spends a week's absence in one loop and is
+//  idempotent, which is the only reason a per-tick pass can sit BESIDE
+//  the UI's call instead of replacing it -- open a furnace and both run,
+//  and the second one finds nothing to do.
+//
+//  WHAT IT COSTS. One walk over BE_MAX records per tick, and for all but
+//  the handful that are machines it is a `kind` compare. A world with no
+//  furnaces in it pays nothing, in the same way crops_tick() pays nothing
+//  in a world with no farms. It runs on the main task, like every write
+//  to a resident chunk.
+// =====================================================================
+
+static uint32_t s_now;
+
+uint32_t blockent_now(void) {
+    return s_now;
+}
+
+// WHICH BITS OF THE STATE BYTE this kind is allowed to write, and 0 for
+// "the mesher shows nothing about this machine". See blocks.h: bits 2..3
+// are MACHINE_LIT / MACHINE_DONE, and a cheese maker owns BARREL_* in
+// bits 0..1 instead because it already had them.
+static uint8_t machine_mask(uint8_t kind) {
+    switch (kind) {
+        case BE_FURNACE:
+        case BE_STOVE:
+        case BE_SMITH:   return MACHINE_LIT;
+        case BE_COMPOST:
+        case BE_SAUSAGE: return MACHINE_DONE;
+        case BE_CHEESE:  return BARREL_EMPTY | BARREL_MILK | BARREL_CHEESE;
+        default: return 0u;  // chest, trash
+    }
+}
+
+// ... and WHICH BLOCK that cell is supposed to hold. The state byte
+// belongs to the block, so writing a machine's bits into a cell that is
+// no longer the machine would be a fire burning in a lump of air. It
+// should not happen (breaking the block removes the record) and costs
+// one compare to be certain it did not.
+static uint8_t machine_block(uint8_t kind) {
+    switch (kind) {
+        case BE_FURNACE: return BLK_FURNACE;
+        case BE_STOVE:   return BLK_STOVE;
+        case BE_SMITH:   return BLK_SMITH;
+        case BE_COMPOST: return BLK_COMPOSTER;
+        case BE_SAUSAGE: return BLK_SAUSAGE_MAKER;
+        case BE_CHEESE:  return BLK_CHEESE_MAKER;
+        default: return 0u;
+    }
+}
+
+// WHAT THOSE BITS SHOULD SAY right now.
+//
+// THE FLAME FOLLOWS THE IDLE RULE, NOT `burn_left`, and that is the
+// user's "a machine stops when its output is full" made visible. Every
+// catch-up loop already stops at a full output; what would have been
+// wrong is drawing a fire in a stopped machine, because the fire is what
+// the player reads as "it is working". So: no flame the moment the rule
+// says it is not working -- and the fuel it already swallowed stays
+// swallowed, because a furnace that has lit a lump of coal has burned
+// it whether or not the output has room. Coming back is one keypress.
+static uint8_t machine_bits(uint8_t kind, blockent_t const* be, blockent_t const* chest) {
+    switch (kind) {
+        case BE_FURNACE: return furnace_idle_reason(be) == FURNACE_IDLE_NONE ? MACHINE_LIT : 0u;
+        case BE_STOVE:   return stove_idle_reason(be, chest) == STOVE_IDLE_NONE ? MACHINE_LIT : 0u;
+        // NOT forge_busy(): that answers "is a job committed", which is
+        // true while the forge is starved of coal halfway through a
+        // titanium sword. The flame is the answer to "is it working".
+        case BE_SMITH:   return forge_idle_reason(be, chest) == FORGE_IDLE_NONE ? MACHINE_LIT : 0u;
+        case BE_COMPOST: return be->slot[BE_COMPOST_OUT].count > 0 ? MACHINE_DONE : 0u;
+        case BE_SAUSAGE: return be->slot[BE_MAKER_OUT].count > 0 ? MACHINE_DONE : 0u;
+        case BE_CHEESE:  return (uint8_t)maker_barrel_state(be);
+        default: return 0u;
+    }
+}
+
+// MIRROR THE RECORD INTO THE CELL. The mesher runs on core 1 out of block
+// bytes and has never once seen a record; the state byte is the only
+// channel between them, which is exactly how a cheese maker already shows
+// milk and cheese.
+//
+// Cheap, and it says so: world_set() returns immediately when the block
+// and byte are already what they should be, so a machine that has not
+// changed state does not dirty its chunk, does not bump edit_seq and does
+// not re-mesh. That is the common case -- the flame changes twice a day.
+static void sync_cell(blockent_t const* be, blockent_t const* chest) {
+    uint8_t const mask = machine_mask(be->kind);
+    if (mask == 0u) return;
+
+    int32_t const  x = be->x, y = be->y, z = be->z;
+    if (world_block(x, y, z) != machine_block(be->kind)) return;
+    uint8_t const  want = machine_bits(be->kind, be, chest);
+    uint8_t const  st   = world_state(x, y, z);
+    if ((uint8_t)(st_data(st) & mask) == want) return;
+
+    world_set(x, y, z, world_block(x, y, z),
+              st_with_data(st, (uint8_t)((st_data(st) & (uint8_t)~mask) | want)));
+}
+
+// WHAT THE MACHINE LOOKED LIKE BEFORE IT WAS RUN, so the sweep can tell
+// whether anything actually moved. A tick that changes nothing must not
+// mark the chunk dirty: that would be a save every tick for every furnace
+// in the world, which is how a working game becomes a card writer.
+//
+// Four slots is the widest a machine uses (the makers have two in and two
+// out); a chest is not a machine and never gets here.
+typedef struct {
+    uint16_t   burn_left, cook;
+    uint32_t   job;
+    uint8_t    n;
+    inv_slot_t slot[4];
+} be_watch_t;
+
+static void watch_read(be_watch_t* w, blockent_t const* be) {
+    int n = slots_used(be->kind);
+    if (n > 4) n = 4;
+    w->n         = (uint8_t)n;
+    w->burn_left = be->burn_left;
+    w->cook      = be->cook;
+    w->job       = be->job;
+    for (int i = 0; i < n; i++) w->slot[i] = be->slot[i];
+}
+
+static bool watch_moved(blockent_t const* be, be_watch_t const* w) {
+    if (be->burn_left != w->burn_left || be->cook != w->cook || be->job != w->job) return true;
+    for (int i = 0; i < w->n; i++) {
+        if (be->slot[i].item != w->slot[i].item) return true;
+        if (be->slot[i].count != w->slot[i].count) return true;
+        if (be->slot[i].wear != w->slot[i].wear) return true;
+    }
+    return false;
+}
+
+// ONE RECORD, ONE TICK. `be` points into the pool, which is why nothing
+// here may call anything that could move the pool: no add, no remove, no
+// decode. The catch-up rules only ever write in place.
+static void run_record(blockent_t* be, uint32_t now) {
+    // THE RULE, before anything else: not while the worker is filling
+    // this chunk's records, not while it is writing them. See blockent.h.
+    chunk_t* c = chunk_find(chunk_of(be->x), chunk_of(be->z));
+    if (c == NULL || c->cstate != CS_READY) return;
+
+    // The stove and the forge eat out of the chest beside them, and both
+    // idle rules ask for it. A chest in the next chunk over that is not
+    // resident reads as STOVE_IDLE_NO_CHEST, which is the honest answer
+    // and the same one the UI gets.
+    blockent_t* chest = NULL;
+    if (be->kind == BE_STOVE || be->kind == BE_SMITH) {
+        int32_t ox, oy, oz;
+        if (interact_pair_other(be->x, be->y, be->z, &ox, &oy, &oz)) {
+            chest = blockent_at(ox, oy, oz);
+        }
+    }
+
+    be_watch_t was;
+    watch_read(&was, be);
+
+    switch (be->kind) {
+        case BE_FURNACE: furnace_catch_up(be, now); break;
+        case BE_COMPOST: composter_catch_up(be, now); break;
+        case BE_CHEESE:
+        case BE_SAUSAGE: maker_catch_up(be, now); break;
+        case BE_STOVE:   stove_catch_up(be, chest, now); break;
+        case BE_SMITH:   forge_catch_up(be, now); break;
+        default: return;  // chest and trash are not machines
+    }
+
+    sync_cell(be, chest);
+
+    if (!watch_moved(be, &was)) return;
+    blockent_touch(be);
+
+    // A stove that cooked out of its chest changed a record the sweep is
+    // not standing in, and the two halves can straddle a chunk border
+    // (D-110). Mark that chunk too, or the ingredients vanish.
+    if (be->kind == BE_STOVE && chest != NULL &&
+        be->slot[BE_STOVE_OUT].count != was.slot[BE_STOVE_OUT].count) {
+        blockent_touch(chest);
+    }
+}
+
+void blockent_tick(uint32_t now) {
+    s_now = now;
+    if (s_pool == NULL) return;
+    for (int i = 0; i < BE_MAX; i++) {
+        blockent_t* be = &s_pool[i];
+        if (be->kind == BE_NONE) continue;
+        run_record(be, now);
+    }
+}
+
+// A CHUNK HAS ARRIVED. Every record standing in it is caught up by
+// however long it was away -- the same one-loop catch-up the UI has
+// always done, applied without anybody walking there.
+//
+// It reuses the ordinary path rather than adding a second one, and can:
+// chunk_worker.c sets CS_READY before it calls the joins, so run_record's
+// own state test passes. That is also what keeps the two from disagreeing
+// about the rule.
+void blockent_chunk_join(chunk_t* c, uint32_t now) {
+    if (s_pool == NULL || c == NULL) return;
+    if (s_now == 0u) s_now = now;
+    for (int i = 0; i < BE_MAX; i++) {
+        blockent_t* be = &s_pool[i];
+        if (be->kind == BE_NONE) continue;
+        if (chunk_of(be->x) != c->cx || chunk_of(be->z) != c->cz) continue;
+        run_record(be, now);
     }
 }

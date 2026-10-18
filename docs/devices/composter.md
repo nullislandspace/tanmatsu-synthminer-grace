@@ -64,11 +64,17 @@ This is the connection worth noticing: **the farm feeds the fishing.** The leave
 clear become the worms that catch the salmon that goes in the sashimi. Nothing else in
 the game links the two.
 
-## It never runs while you are away
+## You can see it working
 
-Like every machine here, the composter does not tick. It works out what should have
-happened when you open it — so a box left for a week is simply full, and a box in a chunk
-you have not visited costs nothing.
+**A composter with finished compost standing in its output shows a wisp of haze above
+it.** That is the whole signal, and it says "empty me" from across the yard. An empty box
+shows nothing.
+
+Like every machine here, it runs while its chunk is loaded and works out the rest in one
+go when that chunk comes back — so a box left for a week is simply full, and a box in a
+chunk you have not visited costs nothing.
+
+**A full output stops it.** It does not keep eating scraps it has nowhere to put.
 
 An in-game day is 20 minutes of playing, **or one night's sleep**. Sleeping is by far the
 fastest way to run a composter: fill it, go to bed, and it is done in the morning.

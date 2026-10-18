@@ -1863,6 +1863,122 @@ def sm_sausage_top():
     return sm_rgb(lum, (146, 148, 154))
 
 
+# --- What a working machine shows (Part Q, D-164) ----------------------
+
+def sm_sausage_side_full():
+    """The sausage maker's side plate once its output is holding a
+    sausage: the same iron box in dark red instead of dark grey.
+
+    THE SAME GENERATOR AND THE SAME `lum`, on purpose. These two are one
+    machine in two states, so everything about the picture -- the mouth,
+    the lip, the crank housing -- has to land on the same texels, and the
+    only thing that may differ is the colour the player is reading."""
+    gen = sm_gen(74)
+    lum = np.zeros((B, B), np.int32) + gen.integers(-10, 11, (B, B))
+    lum[0:2, :] += 22                      # a bright top edge
+    lum[4:7, 2:14] -= 46                   # the mouth
+    lum[7:8, 2:14] += 20                   # its lip
+    for y in range(9, 14):                 # the crank housing
+        lum[y, 10:14] -= 16
+    lum[11, 11:15] += 40
+    return sm_rgb(lum, (146, 52, 46))
+
+
+# THE FLAME IS A BILLBOARD, not a face of a block: the mesher stands two
+# crossed quads in the air over a furnace, stove or smithing forge and
+# maps this once across them (main/voxel/voxel_mesh.c). So it has to be a
+# flame that reads from any side, hottest where it leaves the machine --
+# the BOTTOM of the texture -- and cooling to red as it rises.
+#
+# THE SILHOUETTE IS FIXED AND ONLY ITS COLOUR CHANGES. That is the torch's
+# lesson, learned the hard way: varying the height gave "the animation
+# looks like the fire is moving up and down the stick" (the user,
+# 2026-09-28). Fire on a machine stays where it is; what changes is how
+# hot it looks.
+FLAME_FRAMES = 4
+FLAME_STOPS = (
+    # top (coolest) -> bottom (hottest), one palette per frame, and all
+    # four stay inside yellow-orange-red for the same reason the torch's
+    # do: a fire that dims to near-embers reads as a fire going out.
+    ((198, 64, 22), (244, 132, 44), (255, 206, 104), (255, 248, 214)),
+    ((186, 56, 18), (236, 118, 38), (255, 192, 84), (255, 240, 190)),
+    ((208, 72, 24), (250, 146, 50), (255, 216, 118), (255, 250, 222)),
+    ((192, 60, 20), (240, 126, 40), (255, 200, 92), (255, 244, 200)),
+)
+
+
+def sm_flame(frame):
+    shape = sm_gen(94)         # the silhouette: the same in every frame
+    fire = sm_gen(95 + frame)  # the grain: this is the flicker
+
+    # A tongue, widest where it leaves the machine and breaking up at the
+    # top. Rows run top to bottom, so t is 0 at the top of the flame.
+    solid = np.zeros((B, B), bool)
+    for y in range(B):
+        t = y / (B - 1.0)
+        half = 1 + int(round(6.0 * t))
+        x0, x1 = max(0, B // 2 - half), min(B, B // 2 + half)
+        solid[y, x0:x1] = True
+    for _ in range(10):  # the top breaks into tongues rather than ending
+        y = int(shape.integers(0, 5))
+        x = int(shape.integers(B // 2 - 4, B // 2 + 5))
+        solid[y, x] = False
+
+    stops = FLAME_STOPS[frame % FLAME_FRAMES]
+    xs = np.linspace(0.0, 1.0, B)  # 0 at the top row, 1 at the bottom
+    ramp = np.zeros((B, 3))
+    for c in range(3):
+        ramp[:, c] = np.interp(xs, [0.0, 0.40, 0.74, 1.0], [s[c] for s in stops])
+    grain = fire.integers(-14, 15, (B, B)).astype(float)
+    rgb = np.clip(ramp[:, None, :] + grain[:, :, None], 0, 255).astype(np.uint8)
+    return sm_alpha(rgb, ~solid)
+
+
+HAZE_FRAMES = 4
+
+
+def sm_haze(frame):
+    """Compost stink: wisps standing in the air over a composter that has
+    finished its batch.
+
+    MOSTLY HOLES. The engine draws alpha < 128 as a hole and the material
+    is additionally blended (chunk_render.c), so what survives is a thin
+    green-grey wisp you see THROUGH. A filled rectangle here would be a
+    decal nailed to the air, which is the thing the user's "haze, like
+    stink or flies rising from it" is not.
+
+    Unlike the flame, the wisps DO move between frames -- stink drifts,
+    and the four frames cycle, so it rises and comes back rather than
+    sliding off."""
+    gen = sm_gen(96 + frame)
+    rgb = np.zeros((B, B, 3), np.int32)
+    holes = np.ones((B, B), bool)
+    base = np.array((152, 170, 128), np.int32)
+    # DENSEST AT THE BOTTOM. The bottom row of this texture is the bottom
+    # edge of the billboard, which is the top face of the composter, so a
+    # wisp that starts out thin there and thickens as it rises is stink
+    # running backwards. `random() ** 2` is the bias: it lands low.
+    for _ in range(10):
+        cx = int(gen.integers(1, B - 1))
+        cy = B - 1 - int(round((B - 1) * float(gen.random()) ** 2))
+        r = int(gen.integers(1, 4))
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                if dx * dx + dy * dy > r * r:
+                    continue
+                y, x = cy + dy, cx + dx
+                if not (0 <= y < B and 0 <= x < B):
+                    continue
+                rgb[y, x] = base + int(gen.integers(-28, 29))
+                holes[y, x] = False
+    for _ in range(5):  # the flies: a few dark specks, not a swarm
+        x = int(gen.integers(0, B))
+        y = B - 1 - int(round((B - 1) * float(gen.random()) ** 2))
+        rgb[y, x] = (86, 92, 74)
+        holes[y, x] = False
+    return sm_alpha(rgb.astype(np.uint8), holes)
+
+
 # --- What the animals are worth, in a slot ------------------------------
 
 def _meat(img, rgb, fat):
@@ -3005,6 +3121,18 @@ TEXTURES = {
     "sapling_birch_1.png": lambda s=1: sm_sapling(s, (206, 202, 188), (110, 152, 62)),
     "sapling_birch_2.png": lambda s=2: sm_sapling(s, (206, 202, 188), (102, 144, 52)),
     "sapling_birch_3.png": lambda s=3: sm_sapling(s, (206, 202, 188), (92, 134, 48)),
+    # WHAT A WORKING MACHINE SHOWS (Part Q). Frame 0 of each flipbook is a
+    # material and the other three are asked for by name, exactly like the
+    # torch's.
+    "flame_0.png": lambda: sm_flame(0),
+    "flame_1.png": lambda: sm_flame(1),
+    "flame_2.png": lambda: sm_flame(2),
+    "flame_3.png": lambda: sm_flame(3),
+    "haze_0.png": lambda: sm_haze(0),
+    "haze_1.png": lambda: sm_haze(1),
+    "haze_2.png": lambda: sm_haze(2),
+    "haze_3.png": lambda: sm_haze(3),
+    "sausage_side_full.png": sm_sausage_side_full,
 }
 
 

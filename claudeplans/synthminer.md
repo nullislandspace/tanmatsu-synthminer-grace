@@ -43,7 +43,7 @@ or crafting. Survival is the full version: health, hunger and tool durability.
 ## About this document
 
 This file is committed with the work. It contains the design (Parts L, W, K, N,
-P, T, H, G, X, F, C, A, M, S), the step-by-step plan with a status table (Part D),
+P, T, H, G, X, F, C, A, M, S, Q), the step-by-step plan with a status table (Part D),
 and the findings and decisions logs (Part E).
 
 Numbering starts at **F-01 / D-01** — this is a different repository from the
@@ -2756,12 +2756,12 @@ are and how soon they notice -- rather than the sword, which is the whole point 
 | Blocks | 2 (`BLK_SMITH`, `BLK_SMITH_CHEST`): `BLK_COUNT` 56 -> 58, appended, never renumbered (D-74) |
 | Items | 10: 2 swords and 4 armour pieces in 2 tiers. `ITEM_COUNT` 118 -> 128 |
 | Materials | 2 new `VM_` (the forge's top and front, in blue diamond). The chest half reuses `VM_CHEST_*`, exactly as `BLK_STOVE_CHEST` does |
-| Textures | 12 new PNGs: 10 item icons and the 2 block faces. `TEX_BY_NAME` is derived from the item table, so it moves by itself: **86 allowed, 6 to spare**, and the cache assert sits at **181 of 192** (95 materials + 86). `worldcheck` is what notices when the slack runs out (F-120) |
+| Textures | 12 new PNGs: 10 item icons and the 2 block faces. `TEX_BY_NAME` is derived from the item table, so it moves by itself. Part Q has since moved the ceiling again -- the budget is now **98 materials + 86 wanted against 94 allowed**, and the cache assert **201 of 208** (`texcache.h`). `worldcheck` is what notices when the slack runs out (F-120) |
 | Strings | **57 new**, not 11, because the machine has to talk: 11 labels (10 items and the station, whose two blocks share one label the way the stove's do), 33 forge rows and messages, 11 equip messages, the `Confirm` keybind row, and the line that says a tool will not hurt a creature. The file is **460 x 32**, English-only for these 57, which puts every other language at 82 fallbacks (25 of them Part M's) |
 | Recipes | 1 at `RS_TABLE` (the station itself), 10 at a new `RS_SMITH` |
 | Item table | **3** new columns, appended last: `attack`, `guard` (a percentage, D-159) and `wear_slot` -- the last so a piece names the place on the body it belongs to instead of having it inferred from where its id happens to sit |
 | Mobs | 2 numbers retuned in `main/game/mob.c` (zombie 3 -> 10, skeleton 2 -> 8, D-159), and the guard applied where a blow is dealt |
-| Flame | **not built** (F-163). `voxel_fx_flame()` exists and `torch_flame.png` is already generated and installed, but `main/voxel/voxel_fx.c` is not in `APP_SOURCES` and `chunk_render.c` has no sight of block-entity state, so a flame that knows a job is running needs plumbing this round did not buy. `smith_top.png` was drawn with a dark mouth for one to come out of |
+| Flame | **not built by Part S** (F-163); built later, by Part Q (step 73, F-166, D-166). It is a material (`VM_FLAME`) drawn by the mesher out of the state byte, not a quad drawn per frame and not `torch_flame.png`. `smith_top.png`'s dark mouth is the mouth it comes out of |
 | Forge state | a job that is idle / running / **waiting for fuel**, the committed ingots in the forge's own slot (`BE_SMITH_FUEL` / `BE_SMITH_OUT` / `BE_SMITH_METAL`), and progress wide enough for 48000 ticks. `cook` is left alone -- the forge never writes it -- and the job is a new `uint32_t` on `blockent_t` saved as a `TAG_I32` named `job`, because `cook`'s `i16` tag stops at 32767 (D-160) |
 | Input | 1 new action `SM_CONFIRM` at the end of `sm_action_t` -- the 25th -- plus a keybind row (Enter) and a saved binding. `SE_BINDINGS_MAX` 24 -> 32, because the engine's default of 16 was passed long ago and the next action would have had nowhere to go |
 | UI | 1 new screen modelled on `main/ui/stove_ui.c`, and the player figure in the Tab screen. The selector is greyed out while a job runs and answers `SFX_DENY` (D-160) |
@@ -2800,9 +2800,10 @@ Not in the brief, so the build had to decide them. Each one is in the code and i
 - **The forge may stand in the Deep Mine.** Nothing forbids it, and the clock runs downstairs
   (D-139) while the bed does not (D-145) -- so a forge down there works, and a titanium job down
   there takes two days you have to spend upstairs.
-- **A dark forge has to read as "out of fuel" in words, not flames.** No flame is drawn anywhere in
-  Part S (see the cost above), so the forge says it in the HUD instead: `forge.waiting` on a job
-  that is starving, and Start refusing a forge with nothing to burn (D-163).
+- **A dark forge has to read as "out of fuel" in words, not flames.** Part S drew no flame anywhere
+  (see the cost above), so the forge said it in the HUD instead: `forge.waiting` on a job that is
+  starving, and Start refusing a forge with nothing to burn (D-163). Part Q has since drawn the flame
+  (step 73), and it kept both lines -- the HUD is what says *which* kind of dark a dark forge is.
 
 ### Still open
 
@@ -2824,11 +2825,10 @@ Playtest questions, not implementation questions. None of them blocks anything a
   answer is a sleeve -- and whether that is worth a mesh (D-161).
 - **Whether a mob can disarm you**, or whether a piece only ever leaves the player's own hand.
   Today it is only ever the player's own hand, and a broken piece simply vanishes with a message.
-- **What the flame is, and what "finished" looks like.** The suggestion is the user's (D-159) and
-  Part Q (D-164) now owns it: the machine advances while its chunk is resident, and the flame is
-  drawn from `burn_left` for whatever is resident -- which is the version that reads from across the
-  loaded area without the register Part S was weighing. What a machine that is *done* looks like is
-  Fire or no fire is the whole signal (D-165).
+- **What the flame is, and what "finished" looks like.** Closed by Part Q: the flame is a mesher
+  material driven by the state byte, drawn for whatever is resident, with no register of running
+  machines (F-166, D-166). Fire or no fire is the whole signal (D-165), and a full output puts the
+  fire out (D-166).
 - **Whether lava is still the right number** now that a zombie takes 10 a swing and lava still takes
   2 every half second (D-156). Recorded as a gap, deliberately not retuned here.
 
@@ -2837,7 +2837,7 @@ Playtest questions, not implementation questions. None of them blocks anything a
 ## Part Q: active blocks -- a machine runs while its chunk is loaded, and it shows it
 
 Added 2026-10-18 by the user (D-164, D-165), out of the flame Part S had to defer (D-159, F-163).
-**Not built.** Steps 72 / 73.
+**Built 2026-10-18 and host-checked; device test pending.** Steps 72 / 73 (F-166, D-166).
 
 > *"Furnace, stoves, composters and other 'active' blocks (blocks that currently running a process)
 > should be treated as such while a chunk is loaded (and do time based processing when unloaded then
@@ -2935,30 +2935,43 @@ nothing growing in it.
 
 ### What the player sees
 
-**FIRE, for the three machines that have fire.** The furnace, the kitchen stove and the smithing
-forge, drawn while `burn_left > 0`. The shape is the showreel's `voxel_fx_flame()`: two crossed
-emissive quads on `torch_flame.png`, already generated, already installed on the card, already loaded
-by nothing. `burn_max` finally says how big the flame is.
+**THE STATE BYTE IS THE ONLY CHANNEL, AND IT DECIDES THE WHOLE DESIGN.** The mesher runs on core 1 out
+of block bytes and has never once seen a block entity; it cannot know that a forge is burning. What it
+CAN see is the cell's state byte -- which is exactly how a cheese maker has always shown milk and
+cheese. So the slow pass mirrors every machine into its own cell (`MACHINE_LIT` / `MACHINE_DONE`,
+`world/blocks.h`) and the mesher draws from there the way it draws from any other block data. No
+register of running machines, no per-frame quads, no second pass over the scene: the question Part S
+left open is answered by making a running machine a fact about a **block**.
 
-**WHERE IT IS DRAWN MATTERS, AND IT IS NOT `voxel_fx.c`.** That file is still not in `APP_SOURCES`
-(step 3.5 deferred the whole of it) and its break/chip/item functions would arrive as dead code
-beside the engine's own chip drawing (F-116). The flame belongs in `main/world/chunk_render.c`, which
-is already in the app, already called once a frame, already owns the texture table, and already
-animates one thing per frame by swapping a material -- the torch's flipbook (F-155). Two things it
-must get right that `voxel_fx.c` never had to:
+**FIRE, for the three machines that have fire.** The furnace, the kitchen stove and the smithing forge
+draw two crossed billboards in the air cell above them -- `emit_billboard()` in `main/voxel/voxel_mesh.c`,
+which is the plant's shape with a height the caller chooses: half a block tall, inset from the walls so
+it reads as standing *in* the machine rather than as a sheet nailed across its top. `VM_FLAME` is
+`SE_TRI_EMISSIVE`, which is the difference between a fire in a Deep Mine that has no light in it and a
+grey box with an orange smudge on it. It animates as the torches do (F-155): four frames at 9 fps, one
+pointer swap a frame, synchronised across every furnace in the world -- *"We don't need a per block
+clock."*
 
-- **Coordinates are relative.** Everything the scene is given is relative to an integer origin
-  (`chunk_render_origin()`, main.c's draw pass), which is why Fred goes through
-  `chunk_render_rel()`. The flame quads are built in that space, not in world space.
-- **It is per-block state, so it cannot be a material.** The torch animates for free because every
-  torch shares one material and every torch is lit; a forge that is *running* is a fact about one
-  cell, and the mesher runs on core 1 from block bytes alone -- it cannot see a block entity. That is
-  why this is a quad drawn per frame and not a `VM_SMITH_LIT`, and it is the answer to the question
-  Part S left open.
+**NOT `torch_flame.png`, and not `voxel_fx.c`.** The showreel's flame texture is a 64 x 8 horizontal
+ramp built for `voxel_fx_flame()`'s own quad, not a square picture to stand in a cell, and
+`voxel_fx.c` is still not in `APP_SOURCES` (step 3.5). `flame_0..3.png` are new 16 x 16 RGBA frames
+drawn for this shape. What the flipbook trick was borrowed from is the torch, not the showreel.
 
-**Cost, measured against the caps that exist:** 4 textured triangles per burning machine per frame
-(two quads), against `SE_SCENE_TEXTURED_TRI_CAP` 4096, with the world itself peaking at 1114 in the
-last device run. A dozen machines in view is 48 triangles. Nothing here is close.
+**ONLY WHERE THE CELL ABOVE IT IS AIR.** A furnace with a block over it shows nothing rather than a
+fire locked inside a wall -- and that same test keeps the geometry inside the box of the section that
+owns it, because the cell above the top row is the grid's border.
+
+**THE FLAME FOLLOWS THE IDLE RULE, NOT `burn_left`.** A fire is drawn when the machine's own
+`*_idle_reason()` says it is working, and goes out the moment it does not -- including a forge that is
+starved of coal halfway through a titanium sword, which is why the flame reads `forge_idle_reason()`
+and never `forge_busy()`: the second answers "is a job committed", and a committed job that cannot burn
+is not a fire. What the fuel already swallowed stays swallowed; a furnace that has lit a lump of coal
+has burned it whether or not the output has room (D-166).
+
+**Cost, measured against the caps that exist:** 8 textured triangles per burning machine (two crossed
+quads, both windings -- `meshcheck` counts them), against `SE_SCENE_TEXTURED_TRI_CAP` 4096, with the
+world itself peaking at 1114 in the last device run. A dozen machines in view is 96 triangles. Nothing
+here is close.
 
 **FIRE ALONE IS THE SIGNAL, AND THAT IS THE USER'S CALL.** What this part first argued -- that a
 furnace which finished its last ingot and ran out of coal is dark and therefore indistinguishable
@@ -2970,34 +2983,61 @@ bad dark (out of fuel, output full) is answered by opening it, which is one inte
 and not the walk-around-everything the brief is trying to avoid. So the flame is the whole draw: no
 output cube, no second quad over the front face, no HUD line.
 
-**THE MACHINES WITH NO FIRE** -- the composter, the cheese maker, the sausage maker -- have nothing to
-draw that reads as "working" without inventing a second visual language. Left open below rather than
-invented here.
+**THE MACHINES WITH NO FIRE ANSWER IN THEIR OWN COLOUR, NOT IN A SECOND LANGUAGE.** No wisp of
+invention was needed for them, only what each block already has:
+
+- **Composter:** the same crossed billboards, `VM_HAZE`, blended rather than emissive because it is a
+  wisp you see *through*, 0.7 blocks tall at 2 fps rather than 0.5 at 9 -- a fire flickers, a stink
+  drifts -- drawn while its output holds compost.
+- **Sausage maker:** its dark grey side plate goes dark red (`VM_SAUSAGE_SIDE_FULL`) while its output
+  holds a sausage. It is a material swap on a face the greedy pass is already drawing, so it costs zero
+  extra triangles, and it is the only part of that block that can say *there is a sausage in here*.
+- **Cheese maker:** already drawn from `BARREL_EMPTY` / `BARREL_MILK` / `BARREL_CHEESE`. The bug was
+  never the picture -- `sync_barrel()` in `main/ui/maker_ui.c` was the only writer of those bits, so
+  the barrel only changed colour when somebody opened it. The slow pass owns them now, and a barrel
+  that turned cheese while nobody was looking is drawn as cheese.
 
 ### What it costs
 
 | | |
 |---|---|
-| Modules | no new ones. `blockent_tick()` / `blockent_chunk_join()` / `blockent_now()` in `world/blockent.{c,h}`, one new accessor to walk the pool by kind, the flame in `world/chunk_render.c`, one call each in `main/main.c` and `world/chunk_worker.c` |
-| Tick budget | 192 pool iterations a tick, most of them a `kind != BE_NONE` test. Free in a world with no machines, in the same way `crops_tick()` is free in a world with no farms |
-| Draw | 4 textured tris per burning machine, distance-culled to what is resident |
+| Modules | no new ones. `blockent_tick()` / `blockent_chunk_join()` / `blockent_now()` and the sweep behind them at the end of `world/blockent.c` -- it walks the pool it already owns, so no new accessor -- plus one call each in `main/main.c` and `world/chunk_worker.c`, and `emit_billboard()` in `main/voxel/voxel_mesh.c` |
+| State byte | 2 new bits, `MACHINE_LIT` / `MACHINE_DONE` (`world/blocks.h`), bits 2..3 because a stove and a forge already own the facing in 0..1. Derived, never trusted from a save |
+| Tick budget | 192 pool iterations a tick, most of them a `kind != BE_NONE` test, plus one `chunk_find()` and one `world_set()` per machine -- and `world_set()` returns immediately when the byte is already right, which is the common case: a flame changes twice a day |
+| Draw | 8 textured tris per burning machine (two crossed quads, both windings), 8 more for a full composter, **0** for a full sausage maker -- that one is a material swap on a face already drawn. Distance-culled to what is resident, because it is section geometry like everything else |
+| Materials | 3 new `VM_` (`VM_FLAME`, `VM_HAZE`, `VM_SAUSAGE_SIDE_FULL`): `VM_COUNT` 95 -> 98 |
+| Textures | 9 new PNGs: `flame_0..3.png`, `haze_0..3.png`, `sausage_side_full.png`. `TEX_BY_NAME` 16 -> 24 for the two new flipbooks, `TEXCACHE_MAX` 192 -> 208, and the compile-time assert now counts the frames as well as the materials and icons: **201 of 208**, with `worldcheck` reporting 98 + 86 against 94 allowed (F-120) |
 | Save | unchanged in format; changed in *when* a record is marked dirty, and the rule for that is above |
-| Determinism | the pool order is fixed, so the pass is reproducible; it belongs in the sim loop before `player_tick()`, like `crops_tick()` and `mob_tick()`, so a replay replays |
-| Docs | the machines' pages gain "you can see it working", and `docs/mechanics/time.md` gains the tier |
+| Determinism | the pool order is fixed, so the pass is reproducible; it sits in the sim loop beside `crops_tick()` and before `mob_tick()` and `player_tick()`, so a replay replays |
+| Bugs it fixed | the two the user reported: a machine starting 70% into its first unit, and a cheese barrel only changing colour when opened. Both are in `tools/worldcheck.c` now, and the first one is in the *old* test's blind spot -- it left the box idle for 40 units, which is plenty for the loop to run (F-166) |
+| Docs | `docs/mechanics/time.md` gains "You can see it working" and a corrected "nothing is simulated" section; the furnace, stove, forge, composter, sausage maker and cheese maker pages each gained what they show from outside |
 
-### Open
+### Closed by the build
 
-- **What the fireless machines show.** Composter, cheese maker, sausage maker.
-- **Whether a machine should keep burning when its output is full.** Today a furnace stops and its
-  fuel stays lit (`furnace.h`: it "never burns fuel it has no use for"); with a flame on the block,
-  "lit but nothing happening" becomes visible, and whether that reads as a bug to a player is a
-  playtest question.
-- **Whether the flame is worth a register of every running machine.** Drawn only for machines whose
-  chunk is resident, it is already visible from anywhere in the loaded area; a register is what it
-  would need to be visible from further away, and Part S rejected that for torches (F-155).
-- **Whether the pass should be per-record or per-chunk-slot.** Crops sweep one chunk slot a tick
-  because there are thousands of plants; there are at most 192 records, so walking the pool every
-  tick is cheaper than finding them by chunk. Recorded as the choice, not as a law.
+All four questions this part left open, closed with a decision rather than a maybe (D-166).
+
+- **What the fireless machines show.** Haze over a full composter, a dark red side plate on a full
+  sausage maker, and the cheese maker's barrel bits -- which already existed and only needed a writer
+  that was not the UI.
+- **Whether a machine keeps burning when its output is full.** No. It stops, its flame goes out, and it
+  burns no more coal; the fuel it already swallowed is not given back. `furnace.h`'s "never burns fuel
+  it has no use for" is now visible rather than merely true.
+- **Whether the flame needs a register of running machines.** No, and none was built. It is section
+  geometry, so it is visible exactly where the world is visible, and the mesher needs nothing beyond
+  the state byte.
+- **Per-record or per-chunk-slot.** Per record: at most 192 of them, walked in a fixed order, against
+  crops' thousands. The chunk-slot sweep would need a per-chunk list to be cheaper and would be a
+  second mechanism for no gain.
+
+### Still open
+
+- **Whether a crossed pair of quads reads as a fire at this screen size**, and whether 16 x 16 frames
+  at half a block tall are legible from six blocks away. A device question, and the main thing the
+  pending device test is for.
+- **Whether the flame's speed is right.** 9 fps for a fire, 2 fps for a stink, 4 frames each --
+  provisional numbers in the same way every other number in this document is.
+- **Whether haze is wanted at all**, or whether a full composter is obvious enough from its contents.
+  Cheapest thing here to delete.
 
 ---
 ## Part D: step-by-step plan with status tracking
@@ -3142,8 +3182,8 @@ invented here.
 | 69 | **The smithing forge**: two blocks and a chest, `RS_SMITH`, the selector, the fuel slot, and a job that makes exactly one item and stops | done, **device test pending** | Part S, built 2026-10-18 (F-163, D-158, D-159, D-160, D-163). `main/game/forge.{c,h}` and `main/ui/smith_ui.{c,h}`; `BLK_SMITH` 56 and `BLK_SMITH_CHEST` 57 reuse the stove's pair rules (`interact_pair_other()`, renamed from `interact_stove_other`). 12 diamonds + 10 planks at the crafting table. Iron `DAY_TICKS` (20 playing minutes), titanium 2 x `DAY_TICKS`, and it is the **metal** that sets the clock, not the piece. Fuel is the furnace's own model with one item lit at a time: **15 coal** an iron job, **30** a titanium one. The progress is a new `uint32_t job` on `blockent_t` saved as `TAG_I32` -- `cook` (u16, `i16` on disk) cannot hold 48000 ticks, and `check_forge()` walks a job past the old 32767 ceiling and resumes it to a finished chestplate. Start commits the ingots into `BE_SMITH_METAL`, locks the selector, allows one job at a time, and **refuses a forge with nothing to burn** (D-163); a job starved mid-way keeps its progress and waits. Exactly one item per Start, clamped however long the player is away. Breaking either half gives the committed ingots back and nothing else. No flames drawn -- `forge.waiting` in the HUD is the answer instead. |
 | 70 | **Swords and armour**, armour on Fred, `SM_CONFIRM`, and four equipment slots on the save | done, **device test pending** | Part S, built 2026-10-18 (F-163, D-158, D-159, D-161, D-162). 10 items and **3** new columns appended to `item_def_t` (`attack`, `guard`, `wear_slot`), `SM_CONFIRM` as the 25th action (`SE_BINDINGS_MAX` 24 -> 32), and an additive `equip` compound in `level.smw` keyed `0..3` (D-30: an old save has none and reads as wearing nothing). Armour is a **percentage** off the blow -- 9 / 16 / 12 / 8 iron and exactly double in titanium, so 45% and 90% -- and the mobs moved to **zombie 10 / skeleton 8**. Measured through the check: 10 lands for 6 through iron and 1 through titanium, 8 for 4 and 1, never 0. A blow taken costs 1 use off every worn piece; a sword costs 1 per blow that lands (D-162). Fred wears four shells over his existing head/body/leg meshes under one `FM_ARMOUR` whose `argb` is set per submit -- an iron helmet on a titanium chestplate -- plus a second stroke driver for the swing, and `SFX_SWING` / `SFX_CLANG` tell a miss from a hit. **Deviation from D-161:** the Tab-screen figure is a 2D figure, not these meshes. |
 | 71 | **The axe stops being a weapon**: only a weapon damages a creature, and the documentation that calls an axe one gets rewritten | done, **device test pending** | Part S, built 2026-10-18 (F-163, D-158). `mob_damage_of()` is now `item_def(item).attack` and the sword is the only item in the game with a nonzero one, so the predicate covers animals as well as hostiles -- the user's sentence says "monsters or animals", and `mob_def_t::hostile` is not the line. A tool swing is a *miss* rather than a no-op: `mob_hit()` refuses `damage < 1`, so it sounds like a miss, wears nothing and costs no hunger. Rewritten: `docs/tools/{axe,pickaxe,shovel,hoe,index}.md`, `docs/animals/{index,cow,pig}.md`, `docs/ores/titanium.md`; new: `docs/tools/{sword,armour}.md` and `docs/devices/smithing-forge.md`. Consequence to watch on a device: pork, beef and mutton now sit behind the sword, and the first cave trips have no weapon in the game at all. |
-| 72 | **Active blocks**: a machine advances while its chunk is resident, and in one go when it comes back | todo | Part Q, designed 2026-10-18 (D-164). `blockent_tick(now)` beside `crops_tick()` in main.c's sim loop, `blockent_chunk_join(now)` beside `crops_chunk_join()` in `chunk_worker.c`'s `apply()`, and `blockent_now()` to hand that join the clock -- the two doors crops already come in through (step 9, D-112), not a new mechanism. The catch-up bodies do not move: `furnace_catch_up()` already spends a week's absence in 0.01 ms (F-77) and every one of them is idempotent, which is the only reason a per-tick pass is safe beside the UI's call rather than instead of it. Two rules come with it. **Skip a record whose chunk is not `CS_READY`**, because `do_save()` -> `world_chunk_save()` -> `region_write_chunk()` -> `blockent_encode_chunk()` serialises a `CS_SAVING` chunk on core 1 while the main task would be advancing records in it -- which is also the sentence in `world/blockent.h` that argues it needs no lock and no longer holds. **Mark a chunk dirty only when a slot, `burn_left`, `cook` or `job` actually moved**, so a world full of idle machines saves nothing, in the same way `crops_tick()` does not mark a chunk with nothing growing in it. |
-| 73 | **The flame**: a running machine is visible without opening it | todo | Part Q, designed 2026-10-18 (D-164), the draw Part S deferred (D-159, F-163). Two crossed emissive quads on `torch_flame.png` -- already generated, already installed on the card, loaded by nothing -- drawn in `main/world/chunk_render.c`, **not** `voxel_fx.c`, which is still not in `APP_SOURCES` (step 3.5) and whose break/chip/item functions would arrive as dead code beside the engine's own (F-116). Two things that file never had to get right: the scene is submitted **relative to an integer origin**, so the quads are built in that space like everything else (`chunk_render_rel()`), and it is **not a material** -- a running machine is a fact about one cell, and the mesher runs on core 1 from block bytes alone and cannot see a block entity, which is why there is no `VM_SMITH_LIT`. It sits beside the torch flipbook that already animates one thing a frame (F-155), and `burn_max`, commented "for the flame" since it was added and never once read, finally says how big it is. Cost: 4 textured tris a burning machine against `SE_SCENE_TEXTURED_TRI_CAP` 4096, last device run peaking 1114. Fire or no fire is the whole signal (D-165): a dark machine means nothing is running in it, which the user calls clear. What the fireless machines show stays open in Part Q. |
+| 72 | **Active blocks**: a machine advances while its chunk is resident, and in one go when it comes back | done, **device test pending** | Part Q, built 2026-10-18 (F-166, D-164, D-165, D-166). `blockent_tick(now)` beside `crops_tick()` in main.c's sim loop, `blockent_chunk_join(now)` beside `crops_chunk_join()` in `chunk_worker.c`'s `apply()`, and `blockent_now()` to hand that join the clock -- the two doors crops already come in through (step 9, D-112), not a new mechanism. The catch-up bodies did not move. Both rules came with it, and both are enforced in ONE place rather than in each caller: `run_record()` refuses a record whose chunk is not `CS_READY`, and `blockent_touch()` refuses to mark one either. The second is the sharper half -- `chunk_worker.c` clears `CF_EDITED` after a save whose `edit_seq` matched, on the sound reasoning that the bytes it wrote already carry the change, and for a record touched mid-save that reasoning is false: the worker serialised the old contents and the bit it clears is the only thing that would have written the new ones. A furnace emptied while its chunk drains would simply be gone. A chunk is marked dirty only when a slot, `burn_left`, `cook` or `job` actually moved (a snapshot of four slots and three numbers taken before each record runs), and a stove that cooked out of its chest marks the chest's chunk too, because the two halves can straddle a border (D-110). Two reported bugs fixed on the way: an idle machine banked an absence shorter than one unit, which is the user's "the cheese maker starts at 70%", and the UI was the only writer of the cheese maker's state byte. |
+| 73 | **The flame**: a running machine is visible without opening it | done, **device test pending** | Part Q, built 2026-10-18 (F-166, D-165, D-166), the draw Part S deferred (D-159, F-163). **Drawn in `main/voxel/voxel_mesh.c`, not `chunk_render.c`, and it IS a material** -- three deviations from the step as written, all forced by one fact: the mesher reads block bytes on core 1 and cannot see a record, so `blockent.c` mirrors each machine into its cell's state byte (`MACHINE_LIT` / `MACHINE_DONE`, bits 2..3) and the mesher draws from there, which is the channel a cheese maker has always used. `emit_billboard()` puts two crossed quads in the air cell above the machine, only when that cell really is air, 0.5 blocks tall for a flame and 0.7 for a wisp of haze. `torch_flame.png` is NOT reused: it is a 64 x 8 horizontal ramp built for the showreel's own quad, so `flame_0..3.png` and `haze_0..3.png` are new 16 x 16 RGBA frames, flipbooked at 9 fps and 2 fps exactly as the torches are (F-155). `VM_FLAME` is emissive, which is the difference between a fire in a Deep Mine that has no light in it and a grey box with an orange smudge; `VM_HAZE` is blended, because it is a wisp you see through. Cost: **8** textured tris a burning machine, not the 4 the step said -- two crossed quads, both windings. Fire follows `*_idle_reason()` rather than `burn_left`, so a full output or a starved forge is dark (D-166). A full composter hazes, and a full sausage maker turns its side plate dark red for zero extra triangles. |
 
 ---
 
@@ -10144,7 +10184,8 @@ invented here.
   in them). This makes it much easier for a player to see if a process is done/needs attention that to
   interact with every such block."*
 
-  Recorded as Part Q, steps 72 / 73. **Not built.**
+  Recorded as Part Q, steps 72 / 73, and built the same day (F-166). What it guessed wrong about is
+  corrected by D-165 and D-166 rather than by this entry.
 
   **THE USER'S FOLLOW-UP IS THE RIGHT INSTINCT, AND THE ANSWER IS THAT PLANTS ALREADY DO THIS.**
   *"I mean, it also works for plants, doesn't it?"* -- yes, and crops are the model rather than a
@@ -10200,8 +10241,117 @@ invented here.
 
   **What this does NOT say**: what the fireless machines (composter, cheese maker, sausage maker)
   show, whether a machine should keep burning when its output is full, or whether a crossed pair of
-  quads reads as a fire at this screen size -- that last one is a device question. Steps 72 / 73 are
-  still `todo`.
+  quads reads as a fire at this screen size. The first two were answered the same day, by the user's
+  own follow-up (D-166); the third is still open and is what the pending device test is for. Steps
+  72 / 73 are built (F-166).
+
+
+- **F-166** 2026-10-18, measured and built: **Part Q on the machine -- the state byte is the only
+  channel to the mesher, and the pool now has four hands on it.**
+
+  **THE MESHER HAS NEVER ONCE SEEN A BLOCK ENTITY, AND NOTHING CHANGES THAT.** It runs on core 1 out
+  of block bytes. Every design for "show me which machines are working" that routes through a record
+  -- a register of running machines, a per-frame quad pass in `chunk_render.c` that asks the pool --
+  is a new mechanism crossing the same boundary the mesher has never crossed. The one channel that
+  already exists is the cell's state byte, and the cheese maker has used it since step 11 to show milk
+  and cheese. So `MACHINE_LIT` / `MACHINE_DONE` (`world/blocks.h`, bits 2..3) are written by
+  `blockent.c`'s slow pass and read by the mesher, and the flame is an ordinary material. **Bits 2..3
+  because 0..1 are already spoken for**: a stove and a forge keep their facing there, a cheese maker
+  its `BARREL_*`, and a gate its axis.
+
+  **THE STATE BYTE IS `st_data`, NOT THE BYTE.** Bit 0 is `ST_PLACED` and bits 1..7 are the data
+  (`st_data()` / `st_with_data()`, `world/chunk.h`). Three host tests were written and failed before
+  that was read properly: `world_state(...) & MACHINE_LIT` is testing bit 2 of a byte whose data has
+  been shifted, and it happens to be nonzero often enough to look plausible. Any check of this channel
+  goes through `st_data()`.
+
+  **THE RACE IS REAL, AND THE INTERESTING HALF OF IT IS THE SAVE, NOT THE TICK.** Four hands now write
+  this pool: the worker decoding a chunk, the worker encoding one, the UI on a keypress, and
+  `blockent_tick()` on the main task. The `CS_READY` rule D-165 describes is necessary and was not
+  enough on its own, because `blockent_touch()` is where a change becomes a write and
+  `chunk_worker.c` clears `CF_EDITED` after a save whose `edit_seq` is what it was when the job went
+  out -- true reasoning, since the bytes it wrote normally already carry the change. For a record
+  touched mid-save it is exactly backwards: the worker serialised the OLD contents, and the bit being
+  cleared is the only thing that would have written the new ones. A furnace emptied while its chunk
+  drains would vanish without a word. So the rule is enforced in `blockent_touch()` as well as in the
+  sweep, in one place, because `chunk_find()` happily returns a `CS_SAVING` chunk.
+
+  **AND IT IS SOUND, NOT MERELY PLAUSIBLE.** `blockent_add()` stamps x/y/z and leaves `kind` for last,
+  and the decoder copies a record's body over one whose coordinates are already final. So a record
+  that is visible to a walk over the pool has coordinates a torn read cannot have changed, which is
+  what makes "which chunk is this in" a safe question to ask mid-decode. Recorded in `blockent.h`
+  because it is the reason no lock is needed, and it is not obvious.
+
+  **THE PROGRESS BUG LIVED IN THE IDLE RULE'S POSITION, AND THE OLD TEST COULD NOT SEE IT.** Every
+  catch-up loop ends `be->stamp = idle ? now : now - elapsed;`, and `idle` was only ever set INSIDE the
+  loop. A gap shorter than one unit never enters the loop, so `idle` stays false and the whole absence
+  is banked: a machine fed after it starts part-way through its next unit. The user's "sometimes the
+  cheese maker starts at 70% or higher" is exactly this. The existing host test left the box idle for
+  40 units, which is plenty for the loop to run, and passed. The new test uses 70% of a unit and says
+  what it used to say -- 20% in, not 90%. The furnace, the stove and the forge never had the hole:
+  they stamp unconditionally and keep progress in `cook`. The composter and the two makers did, and
+  both now ask their idle rule BEFORE the loop.
+
+  **THE CHEESE MAKER'S COLOUR WAS NEVER BROKEN, ITS WRITER WAS.** `sync_barrel()` in
+  `main/ui/maker_ui.c` was the only writer of `BARREL_*`, so the barrel was correct and only correct
+  after somebody opened it. One line of the user's report -- "there is a bug though, that only happens
+  when interacting with the cheese maker at the moment" -- is the whole diagnosis. The slow pass owns
+  those bits now and the UI's writer is redundant rather than wrong.
+
+  **`forge_busy()` IS NOT THE FLAME.** It answers "is a job committed", which is true while a forge is
+  starved of coal halfway through a titanium sword. `forge_idle_reason()` answers "is it working",
+  which is what a fire means. Easy to get wrong and worth a comment in the code.
+
+  **`torch_flame.png` WAS NEVER GOING TO BE THE FLAME.** It is 64 x 8 -- a horizontal ramp built for
+  the showreel's own quad -- not a square picture to stand in a cell. `flame_0..3.png` and
+  `haze_0..3.png` are new 16 x 16 RGBA frames. The thing borrowed from the torch is the flipbook, not
+  the art.
+
+  **THE TEXTURE BUDGET MOVED TWICE, AND THE ASSERT NOW COUNTS WHAT IT ALWAYS SHOULD HAVE.** Three
+  materials (`VM_COUNT` 95 -> 98), two new flipbooks (`TEX_BY_NAME` 16 -> 24), `TEXCACHE_MAX`
+  192 -> 208, and a second `_Static_assert` that counts the frames after each flipbook's frame 0 --
+  F-120's exact shape, a number somebody counted once. `worldcheck` reports 98 + 86 wanted against 94
+  allowed, and the compile-time assert sits at 201 of 208.
+
+  **Unverified here:** whether two crossed quads at half a block tall read as a fire at this screen
+  size, whether 9 fps is a flicker or a strobe, whether haze is wanted at all, and whether a player
+  who sees a dark furnace understands "nothing is running in this one" without a second look. All
+  device questions; a green check says only that the geometry is there and the arithmetic is not.
+
+- **D-166** 2026-10-18, **the user**: **a machine stops when its output is full, and the machines
+  without fire say what they hold in their own colour.**
+
+  *"A furnace (or any other machine) stops when it's output is full. For fire driven machines, that
+  also means the fire goes out and it stops consuming coal. Composter: when output is not empty, show
+  a haze (like stink or flies rising from it) above the device. Cheese maker: The contents turn
+  yellow-ish when the machine is done (there is a bug though, that only happens when interacting with
+  the cheese maker at the moment). Sausage maker: The dark grey part on the side of the sausage maker
+  should turn dark red of the output is not empty."* -- plus the report that a machine can start its
+  first unit at 70% rather than 0%.
+
+  **THE FLAME FOLLOWS THE IDLE RULE, NOT `burn_left`.** Every catch-up loop already stopped at a full
+  output; what would have been wrong is drawing a fire in a machine that has stopped, because the fire
+  is what the player reads as "it is working". So a full output puts the flame out, and the fuel it
+  already swallowed stays swallowed -- a furnace that has lit a lump of coal has burned it whether or
+  not the output has room, and giving it back would be a furnace that pays for stopping. Coming back is
+  one keypress. This is D-165's "fire alone is the signal" made consistent: the flame is drawn exactly
+  when the machine's own rule says it is working, for all three machines that have fire, and
+  `furnace.h`'s "never burns fuel it has no use for" becomes visible instead of merely true.
+
+  **THE FIRELESS MACHINES DO NOT GET A SECOND VISUAL LANGUAGE.** A haze over a full composter, a side
+  plate that goes dark red on a full sausage maker, and the cheese maker's existing `BARREL_*` draw.
+  Two of those cost 8 triangles and one costs none, because the sausage maker is already a cube the
+  greedy pass is drawing and only its material changes. None of them is a decal, a HUD line or a
+  register.
+
+  **WHAT A FULL OUTPUT LOOKS LIKE IS NOW THE ANSWER TO "NEEDS ATTENTION".** A dark fire machine and a
+  hazed composter both mean *come and empty me*, which is the walk-around-the-farm the brief asked for
+  and no more. Which dark a dark machine is stays inside it, on purpose (D-165).
+
+  **What this does NOT say**: whether the crossed quads read as fire at this size, what any of it costs
+  in frames on the badge, whether haze is worth keeping, or whether 9 fps and 2 fps are the right two
+  numbers. All provisional, all device questions. Steps 72 / 73 are built and host-checked; the device
+  test is what is left.
 
 ## Verification
 

@@ -6,6 +6,7 @@
 
 #include "common/trace.h"
 #include "world/blockupdate.h"
+#include "world/blockent.h"
 #include "game/mob.h"
 #include "world/crops.h"
 #include "world/light.h"
@@ -424,6 +425,17 @@ static void apply(result_t* r) {
                 // in one go to where they would be now as if the chunk
                 // was never unloaded").
                 crops_chunk_join(c, crops_now());
+                // AND THE MACHINES standing in it, by however long they
+                // were away. Same door, same reason: a furnace in a
+                // chunk that was off loading for an hour has an hour of
+                // smelting to hand over, and it does it in one loop
+                // because every *_catch_up() is already built that way.
+                //
+                // Safe to do here because c->cstate was set to CS_READY
+                // a few lines up -- which is the one rule blockent.h
+                // needs, and this is the only place it could look
+                // different.
+                blockent_chunk_join(c, blockent_now());
                 // AND THE HERD, if this is the first time anybody has
                 // been here. On the main task, like every other write
                 // to a resident chunk -- and once, because CF_FRESH is

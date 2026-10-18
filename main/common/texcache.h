@@ -15,8 +15,8 @@
 
 // HOW MANY TEXTURES MAY BE LOADED AT ONCE, and it has to cover every
 // block material (VM_COUNT, voxel_mesh.h) plus the ones asked for by
-// name afterwards: water_blend.png, the three torch frames, and one
-// item_*.png per item that is not a cube.
+// name afterwards: water_blend.png, the flipbook frames (torch, flame,
+// haze), and one item_*.png per item that is not a cube.
 //
 // It was 48 and step 9 took the material count to 64, which is the bug
 // the user found: the loop in chunk_render_init filled the cache and
@@ -38,11 +38,14 @@
 //     it is nearly full, so a badge that is one item away from the wall
 //     says so in the log before it falls over it.
 //
-// 192 entries is about 7.7 KiB of table (a name and a pointer each) and
+// 208 entries is about 8.3 KiB of table (a name and a pointer each) and
 // the textures themselves are the same bytes wherever the limit sits.
-// It leaves room for the stove, the fish and the mobs of steps 11 to
-// 13 -- and if it does not, the assert fails the build.
-#define TEXCACHE_MAX 192
+// It went from 192 to 208 for Part Q's machine visuals: three more
+// materials and two more flipbooks. The assert in chunk_render.c counts
+// the materials, the item icons AND the frames, so this number only has
+// to be a ceiling -- it is never the thing that decides whether the
+// picture is right.
+#define TEXCACHE_MAX 208
 
 // Where the texture files are. Call before the first texcache_get().
 void texcache_init(char const* asset_dir);

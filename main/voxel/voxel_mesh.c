@@ -541,6 +541,41 @@ static void emit_plant(mesh_t* m, int x, int y, int z, uint8_t mat) {
     }
 }
 
+// A FLAT PICTURE STANDING IN THE AIR OF ONE CELL: two crossed quads, both
+// windings, from the floor of the cell up to `rise`, inset from the walls
+// by `inset`. It is the plant's shape with a height the caller chooses --
+// a flame is half a block tall and a wisp of haze a little more, and
+// neither of them is a cube.
+//
+// Crossed rather than one quad, for the same reason a plant is: a single
+// plane disappears when you look along it, and a flame you can walk
+// around has to be there from the side you walk to.
+static void emit_billboard(mesh_t* m, int x, int y, int z, float rise, float inset, uint8_t mat) {
+    mesh_set_dir(m, MESH_DIR_NONE);  // not a greedy face; cull it the general way
+    float const  X = (float)x + inset, Y = (float)y + 1.0f, Z = (float)z + inset;
+    float const  W = 1.0f - 2.0f * inset;
+    float const  uv[4][2]   = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+    vec3_t const ends[2][2] = {{{X, 0, Z}, {X + W, 0, Z + W}}, {{X + W, 0, Z}, {X, 0, Z + W}}};
+    for (int k = 0; k < 2; k++) {
+        for (int side = 0; side < 2; side++) {
+            vec3_t const p = ends[k][side], q = ends[k][1 - side];
+            int const    a = mesh_vert(m, v3(p.x, Y + rise, p.z)), b = mesh_vert(m, v3(q.x, Y + rise, q.z));
+            int const    c = mesh_vert(m, v3(q.x, Y, q.z)), d = mesh_vert(m, v3(p.x, Y, p.z));
+            if (a < 0 || b < 0 || c < 0 || d < 0) return;
+            mesh_quad(m, a, b, c, d, mat, uv);
+        }
+    }
+}
+
+// HOW HIGH AND HOW WIDE those pictures are. A flame half a block out of a
+// furnace mouth is what a fire coming out of the top looks like; haze a
+// little taller, because a wisp may be taller than the thing it rises
+// from. Both inset so they read as standing IN the machine rather than as
+// a sheet across its top.
+#define MACHINE_FLAME_RISE  0.5f
+#define MACHINE_HAZE_RISE   0.7f
+#define MACHINE_BILLBOARD_INSET 0.2f
+
 void voxel_build_cube(mesh_t* m, float half) {
     int v[8];
     for (int i = 0; i < 8; i++)
@@ -658,8 +693,19 @@ void voxel_mesh_build(mesh_t* m, vox_grid_t const* g, vox_mesh_mode_t mode) {
                     if ((kb == K_CUBE || kb == K_SEE) && (edge || face_shows(b, nb, mode))) {
                         // A skirt takes the block's top material: it only
                         // closes a seam, so it should match the ground.
-                        v = (uint16_t)(((unsigned)LIGHT(x + nx, y + ny, z + nz) << 8) |
-                                       (unsigned)(mode_mat(b, edge ? VF_TOP : face, mode) + 1));
+                        int mat = mode_mat(b, edge ? VF_TOP : face, mode);
+                        // THE SAUSAGE MAKER'S SIDE, once a sausage is
+                        // standing in its output: the dark grey plate goes
+                        // dark red. It is the only part of that block that
+                        // can say "there is a sausage in here", and it is
+                        // a material rather than a decal because the block
+                        // is already a cube the greedy pass is drawing.
+                        // A skirt keeps the ground's material (above).
+                        if (b == BLK_SAUSAGE_MAKER && face == VF_SIDE && !edge &&
+                            (grid_data(g, x, y, z) & MACHINE_DONE) != 0u) {
+                            mat = VM_SAUSAGE_SIDE_FULL;
+                        }
+                        v = (uint16_t)(((unsigned)LIGHT(x + nx, y + ny, z + nz) << 8) | (unsigned)(mat + 1));
                     } else if (kb == K_LIQUID && ny > 0 && block_kind(nb) == K_AIR && !SHAPED(x, y, z)) {
                         // THE SURFACE, and the only face a liquid has: no
                         // sides, no bottom, and a top only where there is
@@ -804,6 +850,34 @@ void voxel_mesh_build(mesh_t* m, vox_grid_t const* g, vox_mesh_mode_t mode) {
                         }
                     }
                     emit_box(m, v3(cx - r, base, cz - r), v3(cx + r, base + 0.625f, cz + r), VM_TORCH);
+                }
+                // WHAT A WORKING MACHINE SHOWS (Part Q, D-164). The record
+                // of a furnace -- what is in it, how far it has got, whether
+                // its coal is burning -- lives in the chunk's entity list,
+                // which the mesher has never once seen. What it CAN see is
+                // the state byte, which world/blockent.c mirrors that record
+                // into: the same channel a cheese maker has always used to
+                // show milk or cheese. So the mesher draws from it the way it
+                // draws from any other block data, with no register of which
+                // machines are running.
+                //
+                // In the AIR CELL ABOVE the machine, because that is where
+                // flames coming out of the top of one belong -- and only when
+                // that cell really is air, so a furnace with a block over it
+                // shows nothing instead of a fire locked inside a wall. That
+                // test also keeps the geometry inside the box this section
+                // owns: the cell above the top row is the grid's border.
+                if (g->data != NULL && block_kind(CELL(x, y + 1, z)) == K_AIR) {
+                    uint8_t const dat = g->data[CIDX(x, y, z)];
+                    if ((b == BLK_FURNACE || b == BLK_STOVE || b == BLK_SMITH) && (dat & MACHINE_LIT) != 0u) {
+                        // Emissive material (chunk_render.c): a fire in a
+                        // mine that has no light in it stays a fire.
+                        mesh_set_light(m, LIGHT(x, y + 1, z));
+                        emit_billboard(m, X, Y, Z, MACHINE_FLAME_RISE, MACHINE_BILLBOARD_INSET, VM_FLAME);
+                    } else if (b == BLK_COMPOSTER && (dat & MACHINE_DONE) != 0u) {
+                        mesh_set_light(m, LIGHT(x, y + 1, z));
+                        emit_billboard(m, X, Y, Z, MACHINE_HAZE_RISE, MACHINE_BILLBOARD_INSET, VM_HAZE);
+                    }
                 }
             }
         }

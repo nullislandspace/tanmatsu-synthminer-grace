@@ -56,6 +56,15 @@ Then it cooks, one dish a minute, for as long as there is fuel and there are ing
 **Ingredients are taken when a dish finishes, not when it starts** — so a stove you
 interrupt has not eaten anything.
 
+## You can see it working
+
+**A stove that is cooking shows a flame out of its top**, and a stove that is not shows
+none: finished, out of fuel, missing an ingredient, or its output is full. A full output
+stops it and puts the fire out, so it never burns coal on a dish it cannot deliver.
+
+It cooks while its chunk is loaded and catches up in one go when that chunk comes back, so
+a batch loaded before bed is done in the morning even if you slept in the next chunk over.
+
 ## When it will not start
 
 It tells you which of these it is, which saves a lot of guessing:

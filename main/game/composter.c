@@ -44,6 +44,25 @@ static void add_to(blockent_t* be, int slot, uint16_t item, int n) {
 void composter_catch_up(blockent_t* be, uint32_t now) {
     if (be == NULL || be->kind != BE_COMPOST) return;
 
+    // AN IDLE BOX BANKS NOTHING, and it is decided BEFORE the loop.
+    //
+    // The loop below is what used to answer this, and it cannot: when
+    // `elapsed` is smaller than one unit the loop body never runs, the
+    // `idle` flag stays false, and the last line of this function banks
+    // the whole absence into the stamp. A composter left empty (or with
+    // its output full) for two days and then fed starts the day at
+    // wherever its last visit left the clock -- the user's "sometimes
+    // the cheese maker starts at 70% or higher", which is the same bug
+    // in the other machine.
+    //
+    // Asking the idle rule up front is both the fix and the cheaper
+    // answer: a box that is not working has nothing to spend, so it
+    // re-stamps and leaves.
+    if (composter_idle_reason(be) != COMPOST_IDLE_NONE) {
+        be->stamp = now;
+        return;
+    }
+
     // Time only runs forward -- the same rule as the furnace, and for
     // the same reason: a stamp from the future must not buy free compost.
     uint32_t elapsed = now >= be->stamp ? now - be->stamp : 0;
@@ -79,9 +98,10 @@ void composter_catch_up(blockent_t* be, uint32_t now) {
     // is no second number to keep true (which is where the furnace needs
     // its `cook` field).
     //
-    // A BOX WITH NOTHING IN IT BANKS NOTHING. Otherwise a composter left
-    // empty for a week would turn its first scrap into compost the
-    // instant it went in, which is not a machine, it is a lottery.
+    // A BOX THAT STOPPED MID-WAY BANKS NOTHING EITHER: the loop breaks
+    // with `idle` the moment the output has no room or the input runs
+    // out, and the stamp goes to `now`. Same rule as the one above, one
+    // tick later.
     be->stamp = idle ? now : now - elapsed;
 }
 

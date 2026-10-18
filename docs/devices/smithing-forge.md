@@ -81,6 +81,11 @@ chest.
 
 ## While it is working
 
+**Flames come out of the top while it is forging**, and they go out the moment it stops —
+finished, out of fuel, short of metal, or its output is full. So a forge across the yard
+tells you whether it is busy without being opened, and a forge that is *waiting for fuel*
+mid-job is dark: the job is kept, the fire is not.
+
 **The item is locked.** The selector cannot be changed mid-job — it names the metal that
 was already spent, and letting it change would mint ingots out of nothing. Pick the next
 thing after the current one finishes.

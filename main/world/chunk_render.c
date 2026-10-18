@@ -128,6 +128,12 @@ static struct {
     [VM_SAPLING_BIRCH_1] = {"sapling_birch_1.png", 0xFF6E983Eu},
     [VM_SAPLING_BIRCH_2] = {"sapling_birch_2.png", 0xFF669034u},
     [VM_SAPLING_BIRCH_3] = {"sapling_birch_3.png", 0xFF5C8630u},
+    // Part Q: what a working machine shows. The flame and the haze are
+    // billboards in the air over the machine (voxel_mesh.c); the sausage
+    // side is the machine's own side plate, in dark red instead of grey.
+    [VM_FLAME]             = {"flame_0.png", 0xFFE89040u},
+    [VM_HAZE]              = {"haze_0.png", 0xFF8A9A78u},
+    [VM_SAUSAGE_SIDE_FULL] = {"sausage_side_full.png", 0xFF8E3A34u},
 };
 
 // THE CACHE HAS TO HOLD EVERY MATERIAL, WITH ROOM AFTER IT. This is a
@@ -233,6 +239,29 @@ sm_view_t sm_view_preset(int level) {
 #define TORCH_FPS    6.0f
 static se_texture_t const* s_torch[TORCH_FRAMES];
 
+// THE SAME FLIPBOOK TRICK, for a machine's fire and a composter's stink
+// (Part Q). One material each, so animating every furnace in the world is
+// one pointer swap and no per-block state -- and, as with the torches, the
+// frames are synchronised, which is fine: "We don't need a per block
+// clock."
+//
+// Different speeds, because they are different things. A fire flickers; a
+// wisp of stink drifts.
+#define MACHINE_FRAMES 4
+#define FLAME_FPS      9.0f
+#define HAZE_FPS       2.0f
+static se_texture_t const* s_flame[MACHINE_FRAMES];
+static se_texture_t const* s_haze[MACHINE_FRAMES];
+
+// THE FLIPBOOK FRAMES COUNT AGAINST THE CACHE TOO. They are asked for by
+// name AFTER the material loop, which is the exact shape of F-120 -- a
+// number somebody had counted once, and four crops quietly drawing as
+// coloured quads. VM_COUNT + TEX_BY_NAME covers the materials and the
+// item icons; this covers the frames, so a fifth torch frame or a fifth
+// flame frame fails the build instead of the picture.
+_Static_assert(VM_COUNT + TEX_BY_NAME + (TORCH_FRAMES - 1) + 2 * (MACHINE_FRAMES - 1) <= TEXCACHE_MAX,
+               "texcache is too small for the materials, the item icons and the flipbook frames");
+
 // REAL WATER TRANSPARENCY, off by default and switchable in game (M),
 // so the two can be compared in the same view rather than across two
 // builds.
@@ -259,6 +288,28 @@ bool chunk_render_init(void) {
     s_torch[1] = texcache_get("torch_1.png");
     s_torch[2] = texcache_get("torch_2.png");
     s_torch[3] = texcache_get("torch_3.png");
+    // Frame 0 of each is a material and is already in the cache; the rest
+    // are asked for by name, which is what TEXCACHE_MAX has to leave room
+    // for (texcache.h).
+    s_flame[0] = s_tex_mats[VM_FLAME].tex;
+    s_haze[0]  = s_tex_mats[VM_HAZE].tex;
+    static char const* const flame_files[MACHINE_FRAMES] = {"flame_0.png", "flame_1.png", "flame_2.png",
+                                                             "flame_3.png"};
+    static char const* const haze_files[MACHINE_FRAMES]  = {"haze_0.png", "haze_1.png", "haze_2.png",
+                                                             "haze_3.png"};
+    for (int f = 1; f < MACHINE_FRAMES; f++) {
+        s_flame[f] = texcache_get(flame_files[f]);
+        s_haze[f]  = texcache_get(haze_files[f]);
+    }
+    // A FIRE IS ITS OWN LIGHT. Emissive means the texel keeps its colour
+    // whatever the cell's light says, which is the difference between a
+    // furnace that reads as working and a grey box with an orange smudge
+    // in a Deep Mine that has no light in it at all.
+    //
+    // Haze is the opposite: blended, so it is a wisp you see THROUGH,
+    // rather than a green decal nailed to the air above a composter.
+    s_tex_mats[VM_FLAME].flags = SE_TRI_EMISSIVE;
+    s_tex_mats[VM_HAZE].flags  = SE_TRI_BLEND;
     s_view  = sm_view_preset(1);
     s_ready = true;
     return true;
@@ -502,6 +553,11 @@ void chunk_render_animate(double t) {
     // blanking every torch in the world (texcache returns NULL and says
     // so once).
     if (s_torch[f] != NULL) s_tex_mats[VM_TORCH].tex = s_torch[f];
+
+    int const mf = (int)(t * (double)FLAME_FPS) & (MACHINE_FRAMES - 1);
+    int const mh = (int)(t * (double)HAZE_FPS) & (MACHINE_FRAMES - 1);
+    if (s_flame[mf] != NULL) s_tex_mats[VM_FLAME].tex = s_flame[mf];
+    if (s_haze[mh] != NULL) s_tex_mats[VM_HAZE].tex = s_haze[mh];
 }
 
 void chunk_render_submit(double eye_wx, double eye_wz) {

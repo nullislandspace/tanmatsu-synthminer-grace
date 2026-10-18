@@ -3910,9 +3910,11 @@ static void check_texture_budget(void) {
         if (block_has_item_icon((uint8_t)id)) block_icons++;
     }
 
-    // The ones that belong to nothing: water_blend.png, three torch
-    // frames, the flame, and Fred's face.
-    int const loose = 6;
+    // The ones that belong to nothing: water_blend.png, the flame, Fred's
+    // face, and the frames of the three flipbooks -- torch, machine flame,
+    // compost haze. Frame 0 of each is a material and is already in
+    // VM_COUNT, so only the three after it count.
+    int const loose = 3 + 3 * 3;
 
     int const want = icons + block_icons + loose;
     printf("  %d materials + %d by name (%d item icons, %d block icons, %d loose) = %d\n", VM_COUNT, want, icons,
@@ -7853,6 +7855,246 @@ static void check_forge(void) {
 }
 
 // =====================================================================
+//  MACHINES THAT ARE ALIVE (Part Q, steps 72 and 73)
+// ---------------------------------------------------------------------
+//  Three things in one place: the two bugs the user reported, and the
+//  channel the fix uses to make any of it visible.
+//
+//  1. A machine must not start part-way through its first unit.
+//  2. A full output stops the machine, and buys it nothing.
+//  3. What the player SEES is the state byte, because the mesher reads
+//     block bytes and has never seen a record (F-166).
+// =====================================================================
+static void check_machines_alive(void) {
+    printf("machines alive: the short absence, a full output, and what the cell shows\n");
+    chunk_store_clear();
+    blockupdate_clear();
+    blockent_clear();
+    CHECK(flat_world(20) != NULL, "the machine world would not become resident");
+    chunk_t* const c = chunk_find(0, 0);
+    CHECK(c != NULL, "chunk 0,0 is not resident");
+
+    // --- THE SHORT ABSENCE -------------------------------------------
+    //
+    // The idle rule used to live INSIDE the catch-up loop, and a gap
+    // shorter than one unit never gets into the loop: `idle` stays
+    // false and the whole gap is banked into the stamp. Feed it after
+    // that and the next unit starts part-way through -- the user's
+    // "sometimes the cheese maker starts at 70% or higher".
+    //
+    // The old test for this left the box idle for 40 units, which is
+    // plenty for the loop to run and is exactly why it passed. Seventy
+    // per cent of a unit is the case that used to slip: honest
+    // arithmetic says the next unit is 20% in, the old code said 90%.
+    {
+        blockent_t* m = blockent_add(2, 20, 2, BE_CHEESE);
+        CHECK(m != NULL, "the pool would not give a cheese maker a record");
+        uint32_t const base = MAKER_DAY * 30;
+        m->stamp = base;
+        maker_catch_up(m, base + MAKER_DAY * 7 / 10);  // empty, less than a unit
+        m->slot[BE_MAKER_IN_A] = (inv_slot_t){ITEM_BUCKET_MILK, 1, 0};
+        maker_catch_up(m, base + MAKER_DAY * 9 / 10);
+        CHECK(m->slot[BE_MAKER_OUT].count == 0, "an empty barrel made cheese out of the absence");
+        int const pct = maker_progress_pct(m, base + MAKER_DAY * 9 / 10);
+        CHECK(pct < 30, "a barrel idle for less than a unit started %d%% into the next one", pct);
+        printf("  a short idle absence starts the next unit at %d%%, not at 90%%\n", pct);
+    }
+    {
+        blockent_t* cp = blockent_add(4, 20, 4, BE_COMPOST);
+        CHECK(cp != NULL, "the pool would not give a composter a record");
+        uint32_t const base = COMPOST_TICKS * 30;
+        cp->stamp = base;
+        composter_catch_up(cp, base + COMPOST_TICKS * 7 / 10);
+        cp->slot[BE_COMPOST_INPUT] = (inv_slot_t){BLK_LEAVES, 8, 0};
+        composter_catch_up(cp, base + COMPOST_TICKS * 9 / 10);
+        CHECK(cp->slot[BE_COMPOST_OUT].count == 0, "an empty box made compost out of the absence");
+        int const pct = composter_progress_pct(cp, base + COMPOST_TICKS * 9 / 10);
+        CHECK(pct < 30, "a box idle for less than a unit started %d%% into the next one", pct);
+    }
+
+    // --- A FULL OUTPUT STOPS IT, AND BUYS IT NOTHING -----------------
+    // The user's rule: a machine stops when its output is full. Every
+    // catch-up loop already stopped; what was missing was that a stop
+    // must not bank the time it spent stopped.
+    {
+        blockent_t* cp = blockent_at(4, 20, 4);
+        CHECK(cp != NULL, "the composter left the pool");
+        cp->slot[BE_COMPOST_OUT] = (inv_slot_t){ITEM_COMPOST, ITEM_STACK_MAX, 0};
+        uint32_t const base = COMPOST_TICKS * 100;
+        cp->stamp = base;
+        composter_catch_up(cp, base + COMPOST_TICKS * 7 / 10);
+        CHECK(composter_idle_reason(cp) == COMPOST_IDLE_FULL, "a full box does not say it is full");
+        CHECK(cp->slot[BE_COMPOST_INPUT].count == 8, "a box with nowhere to put anything ate its scraps anyway");
+        cp->slot[BE_COMPOST_OUT].count = 0;  // the player empties it
+        composter_catch_up(cp, base + COMPOST_TICKS * 9 / 10);
+        int const pct = composter_progress_pct(cp, base + COMPOST_TICKS * 9 / 10);
+        CHECK(pct < 30, "a box full for less than a unit started %d%% into the next one", pct);
+        printf("  a full output stops the box and keeps its %d scraps\n", cp->slot[BE_COMPOST_INPUT].count);
+    }
+
+    // --- WHAT THE CELL SHOWS ------------------------------------------
+    // The mesher runs on core 1 out of block bytes. It cannot see a
+    // record, so the sweep mirrors the machine into the state byte and
+    // the mesher draws from there -- which is how a cheese maker has
+    // always shown milk and cheese.
+    //
+    // A clean pool first: the records above are standing in cells with
+    // no block in them, and mirroring those would be mirroring nothing.
+    blockent_clear();
+    uint32_t const clock = 1000u;
+
+    set_block(6, 20, 6, BLK_FURNACE, ST_PLACED);
+    blockent_t* f = blockent_add(6, 20, 6, BE_FURNACE);
+    CHECK(f != NULL, "the pool would not give a furnace a record");
+    f->stamp = clock;
+    c->flags &= (uint8_t)~CF_EDITED;
+    blockent_tick(clock);
+    CHECK((st_data(world_state(6, 20, 6)) & MACHINE_LIT) == 0, "an empty furnace shows a fire");
+    CHECK((c->flags & CF_EDITED) == 0, "a tick that changed nothing dirtied the chunk");
+
+    f = blockent_at(6, 20, 6);
+    f->slot[BE_FURNACE_INPUT] = (inv_slot_t){BLK_SAND, 1, 0};
+    f->slot[BE_FURNACE_FUEL]  = (inv_slot_t){ITEM_COAL, 1, 0};
+    blockent_tick(clock + 1);
+    CHECK((st_data(world_state(6, 20, 6)) & MACHINE_LIT) != 0, "a furnace with sand and coal in it shows no fire");
+    CHECK((world_state(6, 20, 6) & ST_PLACED) != 0, "mirroring the machine cleared ST_PLACED");
+    CHECK((c->flags & CF_EDITED) != 0, "a state change did not mark the chunk dirty");
+    c->flags &= (uint8_t)~CF_EDITED;
+    blockent_tick(clock + 2);
+    // A WORKING MACHINE DOES DIRTY ITS CHUNK, and it should: its
+    // progress has to reach the card or a furnace forgets the item it is
+    // half through. What must not happen is a tick that changed NOTHING
+    // dirtying anything, which is checked below on an idle box.
+    CHECK((c->flags & CF_EDITED) != 0, "a working furnace stopped marking its chunk dirty");
+
+    // AN IDLE MACHINE COSTS NOTHING, not even a dirty chunk. In its own
+    // chunk, so the furnace above cannot be blamed for what this one
+    // does or does not write.
+    {
+        set_block(18, 20, 18, BLK_COMPOSTER, ST_PLACED);
+        blockent_t* idle = blockent_add(18, 20, 18, BE_COMPOST);
+        CHECK(idle != NULL, "the pool would not give an idle composter a record");
+        chunk_t* const far = chunk_find(1, 1);
+        CHECK(far != NULL, "chunk 1,1 is not resident");
+        far->flags &= (uint8_t)~CF_EDITED;
+        for (int i = 0; i < 200; i++) blockent_tick(clock + 100u + (uint32_t)i);
+        CHECK((far->flags & CF_EDITED) == 0, "an idle box dirtied its chunk over 200 ticks");
+        printf("  200 ticks of an idle box wrote nothing to its chunk\n");
+    }
+
+    // A full output puts the fire out -- and the fuel it had already
+    // swallowed stays swallowed, because a furnace that lit a lump of
+    // coal has burned it whether or not there is room for the result.
+    f = blockent_at(6, 20, 6);
+    uint16_t const burn = f->burn_left;
+    CHECK(burn > 0, "a working furnace has no fire in it");
+    f->slot[BE_FURNACE_OUTPUT] = (inv_slot_t){BLK_GLASS, ITEM_STACK_MAX, 0};
+    blockent_tick(clock + 3);
+    CHECK((st_data(world_state(6, 20, 6)) & MACHINE_LIT) == 0, "a furnace with a full output still shows a fire");
+    CHECK(f->burn_left == burn, "a stopped furnace burned the coal it was holding (%u -> %u)",
+          (unsigned)burn, (unsigned)f->burn_left);
+    printf("  a full output puts the fire out and keeps its %u ticks of fuel\n", (unsigned)f->burn_left);
+
+    // THE COMPOSTER: haze over it when there is something finished in
+    // the output, and nothing when the output is empty.
+    set_block(8, 20, 8, BLK_COMPOSTER, ST_PLACED);
+    blockent_t* cp = blockent_add(8, 20, 8, BE_COMPOST);
+    CHECK(cp != NULL, "the pool would not give a second composter a record");
+    cp->stamp = clock;
+    blockent_tick(clock + 4);
+    CHECK((st_data(world_state(8, 20, 8)) & MACHINE_DONE) == 0, "an empty composter shows a finished product");
+    cp = blockent_at(8, 20, 8);
+    cp->slot[BE_COMPOST_OUT] = (inv_slot_t){ITEM_COMPOST, 3, 0};
+    blockent_tick(clock + 5);
+    CHECK((st_data(world_state(8, 20, 8)) & MACHINE_DONE) != 0, "a composter with compost in it shows nothing");
+
+    // THE CHEESE MAKER: the tick pass owns BARREL_*, which used to be
+    // the UI's alone -- which is why the colour only changed when the
+    // player opened it.
+    set_block(10, 20, 10, BLK_CHEESE_MAKER, ST_PLACED);
+    blockent_t* cm = blockent_add(10, 20, 10, BE_CHEESE);
+    CHECK(cm != NULL, "the pool would not give a cheese maker a record for the cell");
+    cm->stamp = clock;
+    cm->slot[BE_MAKER_IN_A] = (inv_slot_t){ITEM_BUCKET_MILK, 1, 0};
+    blockent_tick(clock + 6);
+    CHECK(st_data(world_state(10, 20, 10)) == BARREL_MILK, "a barrel of milk does not show milk until it is opened");
+    cm = blockent_at(10, 20, 10);
+    cm->slot[BE_MAKER_IN_A].count = 0;
+    cm->slot[BE_MAKER_OUT] = (inv_slot_t){ITEM_CHEESE, 1, 0};
+    blockent_tick(clock + 7);
+    CHECK(st_data(world_state(10, 20, 10)) == BARREL_CHEESE, "a barrel of cheese does not show cheese");
+
+    // THE SAUSAGE MAKER: the side that is normally dark grey goes dark
+    // red when there is a sausage standing in the output.
+    set_block(12, 20, 12, BLK_SAUSAGE_MAKER, ST_PLACED);
+    blockent_t* sm = blockent_add(12, 20, 12, BE_SAUSAGE);
+    CHECK(sm != NULL, "the pool would not give a sausage maker a record");
+    sm->stamp = clock;
+    blockent_tick(clock + 8);
+    CHECK((st_data(world_state(12, 20, 12)) & MACHINE_DONE) == 0, "an empty sausage maker shows a filled side");
+    sm = blockent_at(12, 20, 12);
+    sm->slot[BE_MAKER_OUT] = (inv_slot_t){ITEM_SAUSAGE, 1, 0};
+    blockent_tick(clock + 9);
+    CHECK((st_data(world_state(12, 20, 12)) & MACHINE_DONE) != 0, "a sausage maker with a sausage in it shows nothing");
+
+    // A CHEST SHOWS NOTHING. It is not a machine, and a bit left for it
+    // would be a bit the mesher has no picture for.
+    set_block(14, 20, 14, BLK_CHEST, ST_PLACED);
+    blockent_t* ch = blockent_add(14, 20, 14, BE_CHEST);
+    CHECK(ch != NULL, "the pool would not give a chest a record");
+    ch->slot[0] = (inv_slot_t){ITEM_COAL, 5, 0};
+    blockent_tick(clock + 10);
+    CHECK(world_state(14, 20, 14) == ST_PLACED, "a chest was given machine bits");
+
+    // --- A CHUNK BEING WRITTEN IS NOT TICKED --------------------------
+    // The one rule blockent.h sets, checked where it would cost data:
+    // chunk_worker.c clears CF_EDITED after a save whose edit_seq still
+    // matches, so a record touched mid-save would have its change thrown
+    // away by the very save that missed it.
+    c->flags &= (uint8_t)~CF_EDITED;
+    c->cstate = CS_SAVING;
+    f = blockent_at(6, 20, 6);
+    f->slot[BE_FURNACE_INPUT] = (inv_slot_t){BLK_SAND, 4, 0};  // the ticks above ate its first one
+    uint16_t const before = f->burn_left;
+    blockent_tick(clock + 100000);
+    CHECK(f->burn_left == before, "a furnace was ticked while its chunk was being written");
+    blockent_touch(f);
+    CHECK((c->flags & CF_EDITED) == 0, "marking a chunk that is being written said it was dirty");
+    c->cstate = CS_READY;
+    // Empty the output the check above filled, so this one is asking
+    // about a machine that CAN run rather than one that must not.
+    f->slot[BE_FURNACE_OUTPUT].count = 0;
+    blockent_tick(clock + 100001);
+    CHECK(f->burn_left != before, "a resident furnace does not run");
+    blockent_touch(f);
+    CHECK((c->flags & CF_EDITED) != 0, "blockent_touch stopped marking a resident chunk");
+
+    // --- A CHUNK THAT COMES BACK IS CAUGHT UP IN ONE GO ---------------
+    // The other door: a machine in a chunk that was away for a week is
+    // right when the chunk arrives, with nobody walking there.
+    {
+        set_block(13, 20, 13, BLK_FURNACE, ST_PLACED);
+        blockent_t* mf = blockent_add(13, 20, 13, BE_FURNACE);
+        CHECK(mf != NULL, "the pool would not give a third furnace a record");
+        mf->stamp = clock;
+        // Ten sand and four cooks' worth of time: it is still working
+        // when the chunk lands, which is the point of the check.
+        mf->slot[BE_FURNACE_INPUT] = (inv_slot_t){BLK_SAND, 10, 0};
+        mf->slot[BE_FURNACE_FUEL]  = (inv_slot_t){ITEM_COAL, 1, 0};
+        blockent_chunk_join(chunk_find(0, 0), clock + FURNACE_COOK_TICKS * 4);
+        mf = blockent_at(13, 20, 13);
+        CHECK(mf->slot[BE_FURNACE_OUTPUT].count >= 1, "a chunk that came back did not catch its furnace up");
+        CHECK((st_data(world_state(13, 20, 13)) & MACHINE_LIT) != 0, "a caught-up furnace shows no fire");
+        printf("  a furnace in a chunk away for %d ticks made %d glass on arrival\n",
+               FURNACE_COOK_TICKS * 4, mf->slot[BE_FURNACE_OUTPUT].count);
+    }
+
+    item_entity_reset();
+    blockent_clear();
+    chunk_store_clear();
+}
+
+// =====================================================================
 //  HUNGER, SATURATION AND THE FALL (step 11)
 // ---------------------------------------------------------------------
 //  The hunger loop is the one system in this game that plays out over
@@ -11752,6 +11994,7 @@ int main(void) {
     check_saplings();
     check_stove();
     check_forge();
+    check_machines_alive();
     check_hunger();
     check_fall();
     check_replay();

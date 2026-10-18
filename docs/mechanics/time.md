@@ -51,14 +51,15 @@ composters, fill the cheese barrels, put fuel and ingredients in the stove and t
 maker, sow the fields — and go to bed. It is all done in the morning, and it cost you
 nothing but the walk to the bed.</p>
 
-## Nothing is simulated while you are away
+## Machines run while you are near, and catch up when you are not
 
 This is the other thing worth knowing, and it works entirely in your favour.
 
-**No machine is ever running.** Each one remembers the moment it was last looked at, and
-works out what should have happened when you open it, when it is drawn, or when the game
-saves. A composter in a chunk you have not visited for a week costs the game exactly
-nothing — and is full when you get there.
+**No machine ever waits for you to watch it.** Each one remembers the moment it was last
+looked at and works out what should have happened — a little every moment while its chunk
+is loaded, and the whole gap in one go the moment that chunk comes back. A composter in a
+chunk you have not visited for a week costs the game exactly nothing — and is full when
+you get there.
 
 The same is true of **crops**. A field you left an hour ago has had the hour. A chunk
 arriving back in memory is advanced by however long it was gone, in one go, the moment it
@@ -69,6 +70,26 @@ Which means:
 - you can build as many machines as you like — fifty composters cost no more than one;
 - **nothing is lost by walking away**, ever;
 - there is no reason to stand and watch anything.
+
+## You can see it working
+
+| Machine | What it shows from outside |
+|---|---|
+| **Furnace, kitchen stove, smithing forge** | A flame out of the top, for exactly as long as it is working |
+| **Composter** | A wisp of haze above it while its output holds finished compost |
+| **Sausage maker** | Its dark grey side plate turns dark red while its output holds a sausage |
+| **Cheese maker** | The barrel is drawn empty, full of milk, or holding finished cheese |
+
+The flame is the whole signal: **no flame means nothing is running in that machine right
+now** — it finished, it is out of fuel, or its output is full. Which kind of *nothing* it
+is takes one look inside, which is one keypress on one block rather than a walk around
+everything you own.
+
+**A machine whose output is full stops.** Its fire goes out and it stops burning coal
+instead of quietly working away; empty it and it starts again.
+
+All of this is only drawn for machines in the loaded area, which is the part of the world
+you can see anyway.
 
 ## Crops ripen in steps, together
 

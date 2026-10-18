@@ -42,11 +42,18 @@ burn coal. If you have no coal, smelt a log into one — a log burned gives 300 
 log <em>smelted</em> gives you a coal worth 1600. Burn your worst wood to convert your
 best wood into coal.</p>
 
-## It never runs while you are away
+## You can see it working
 
-The furnace does not tick. It remembers when you last looked at it and works out what
-should have happened when you open it, so a furnace left full of ore and coal is simply
-*done* when you come back. Nothing is lost by walking off.
+**A furnace that is burning shows a flame out of its top**, for as long as it is actually
+smelting — no flame means nothing is running in it right now: it is finished, out of fuel,
+or its output is full. Which one, is one look inside.
+
+**A full output stops it**, flame and all: it will not burn coal it has no use for. Take
+the finished item out and it picks up where it left off.
+
+It runs while its chunk is loaded and catches up in one go when it comes back, so a
+furnace left full of ore and coal is simply *done* when you walk up to it. Nothing is lost
+by walking off.
 
 It does not bank time it could not use, though: a furnace with fuel and nothing to smelt
 does not save the fuel up. Put the ore in first.

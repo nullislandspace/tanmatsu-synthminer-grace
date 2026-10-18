@@ -235,13 +235,18 @@ enum {
 // of its own (item_<name>.png, game/hud.c), so adding one moves this
 // number by itself.
 //
-// The 16 covers what is asked for by name and belongs to no item: the
-// water blend, three torch frames, the flame, Fred's face -- and the
-// handful of BLOCKS drawn as things rather than cubes (BF2_ITEM_ICON:
-// the torch, the fence, the gate), which cannot be counted at compile
-// time. tools/worldcheck.c counts the real ones and fails if they ever
-// outgrow this slack, so the estimate cannot rot either.
-#define TEX_BY_NAME ((int)(ITEM_COUNT - BLK_COUNT) + 16)
+// The 24 covers what is asked for by name and belongs to no item: the
+// water blend, the flipbook frames (torch, machine flame, compost haze),
+// the flame, Fred's face -- and the handful of BLOCKS drawn as things
+// rather than cubes (BF2_ITEM_ICON: the torch, the fence, the gate),
+// which cannot be counted at compile time. tools/worldcheck.c counts the
+// real ones and fails if they ever outgrow this slack, so the estimate
+// cannot rot either.
+//
+// It went from 16 to 24 for Part Q's two extra flipbooks. Frame 0 of each
+// is a MATERIAL and costs nothing here; only the frames after it are
+// asked for by name.
+#define TEX_BY_NAME ((int)(ITEM_COUNT - BLK_COUNT) + 24)
 
 typedef struct {
     char const* name;        // stable id, as blocks have one

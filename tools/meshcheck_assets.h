@@ -628,6 +628,114 @@ static void check_crop_mesh(void) {
     mesh_free(&m);
 }
 
+// WHAT A WORKING MACHINE SHOWS (Part Q, D-164). The record of a furnace is
+// invisible to the mesher; the state byte is the only channel, and this is
+// the test that the mesher actually reads it: a flame over a machine that
+// is burning, none over one that is not, none over one with a block over
+// it, and a sausage maker whose side plate changes colour.
+static void check_machine_visuals(void) {
+    // sizeof(s_vg), not VG*VG*VG: the data plane is indexed with the
+    // BORDERED layout (vg_index), so it has to be as big as the grid.
+    static uint8_t data[sizeof(s_vg)];
+    vox_grid_t const g = {.cells = s_vg, .data = data, .w = VG, .h = VG, .d = VG, .step = 1};
+
+    struct {
+        char const* what;
+        uint8_t     block;
+        uint8_t     bits;
+        int         want;  // triangles expected in the air above it
+    } const cases[] = {
+        {"a burning furnace", BLK_FURNACE, MACHINE_LIT, 8},
+        {"a furnace that stopped", BLK_FURNACE, 0u, 0},
+        {"a burning stove", BLK_STOVE, MACHINE_LIT, 8},
+        {"a burning smithing forge", BLK_SMITH, MACHINE_LIT, 8},
+        {"a full composter", BLK_COMPOSTER, MACHINE_DONE, 8},
+        {"an empty composter", BLK_COMPOSTER, 0u, 0},
+    };
+
+    printf("voxel: machines\n");
+    for (unsigned c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
+        vg_clear();
+        memset(data, 0, sizeof(data));
+        *vg_cell(2, 2, 2)       = cases[c].block;
+        data[vg_index(2, 2, 2)] = cases[c].bits;
+
+        mesh_t m;
+        mesh_init(&m);
+        voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+
+        int   billboards = 0;
+        float lo = 1e9f, hi = -1e9f;
+        for (int i = 0; i < m.tn; i++) {
+            if (m.t[i].mat != VM_FLAME && m.t[i].mat != VM_HAZE) continue;
+            billboards++;
+            uint16_t const vi[3] = {m.t[i].a, m.t[i].b, m.t[i].c};
+            for (int k = 0; k < 3; k++) {
+                if (m.v[vi[k]].y < lo) lo = m.v[vi[k]].y;
+                if (m.v[vi[k]].y > hi) hi = m.v[vi[k]].y;
+            }
+        }
+        if (billboards > 0) {
+            printf("  %-26s %d billboard triangle(s), y %.2f..%.2f\n", cases[c].what, billboards, (double)lo,
+                   (double)hi);
+        } else {
+            printf("  %-26s %d billboard triangle(s)\n", cases[c].what, billboards);
+        }
+        CHECK(billboards == cases[c].want, "voxel: %s drew %d billboard triangles, expected %d", cases[c].what,
+              billboards, cases[c].want);
+        if (cases[c].want > 0) {
+            // Standing ON the machine's top face and rising from there,
+            // not sunk into the block and not floating above it.
+            CHECK(fabsf(lo - 3.0f) < 1e-4f, "voxel: %s starts at y %.3f, expected the machine's top face at 3",
+                  cases[c].what, (double)lo);
+            CHECK(hi > 3.0f && hi <= 4.0f, "voxel: %s reaches y %.3f: outside the cell above the machine",
+                  cases[c].what, (double)hi);
+        }
+        mesh_free(&m);
+    }
+
+    // A FLAME INSIDE A WALL is a fire you cannot see and a quad you can
+    // walk through, so the cell above has to be air.
+    vg_clear();
+    memset(data, 0, sizeof(data));
+    *vg_cell(2, 2, 2)       = BLK_FURNACE;
+    data[vg_index(2, 2, 2)] = MACHINE_LIT;
+    *vg_cell(2, 3, 2)       = BLK_STONE;
+    mesh_t m;
+    mesh_init(&m);
+    voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+    int covered = 0;
+    for (int i = 0; i < m.tn; i++) covered += m.t[i].mat == VM_FLAME;
+    printf("  %-26s %d billboard triangle(s)\n", "a furnace under a block", covered);
+    CHECK(covered == 0, "voxel: a furnace with a block over it drew %d flame triangles", covered);
+    mesh_free(&m);
+
+    // THE SAUSAGE MAKER'S SIDE PLATE, grey empty and dark red full. It is
+    // the machine's own face, not a decal: the block is a cube the greedy
+    // pass is drawing anyway.
+    int grey = 0, red = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        uint8_t const bits = pass ? MACHINE_DONE : 0u;
+        vg_clear();
+        memset(data, 0, sizeof(data));
+        *vg_cell(2, 2, 2)       = BLK_SAUSAGE_MAKER;
+        data[vg_index(2, 2, 2)] = bits;
+        mesh_init(&m);
+        voxel_mesh_build(&m, &g, VOX_MESH_FANCY);
+        int side = 0;
+        for (int i = 0; i < m.tn; i++) {
+            if (m.t[i].mat == VM_SAUSAGE_SIDE) grey++;
+            if (m.t[i].mat == VM_SAUSAGE_SIDE_FULL) red++;
+            side += m.t[i].mat == VM_SAUSAGE_SIDE || m.t[i].mat == VM_SAUSAGE_SIDE_FULL;
+        }
+        printf("  %-26s %d side triangle(s)\n", pass ? "with a sausage in it" : "empty", side);
+        CHECK(side == 8, "voxel: a sausage maker drew %d side triangles, expected 8 (four faces)", side);
+        mesh_free(&m);
+    }
+    printf("  sausage side: %d empty triangle(s), %d full triangle(s)\n", grey, red);
+    CHECK(grey == 8 && red == 8, "voxel: the sausage side did not change colour: %d grey, %d red", grey, red);
+}
+
 // Vertical sections (D-34). A chunk is no longer meshed as one tall
 // box: it is cut into CH_SECT-high slices, each meshed on its own with
 // the slices above and below supplying its border, and each carrying a
@@ -864,6 +972,7 @@ static void check_assets(void) {
     check_face_dirs();
     check_plant_dirs();
     check_crop_mesh();
+    check_machine_visuals();
     check_fence_mesh();
     check_sectioned_mesher();
 }
