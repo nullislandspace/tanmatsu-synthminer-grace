@@ -19,6 +19,7 @@ Exit codes: 0 fine, 1 nothing answered / could not switch.
 
 import argparse
 import os
+import re
 import sys
 import time
 
@@ -51,9 +52,11 @@ def cmd_ping(args):
 
 def cmd_mode(args):
     """Probe BadgeLink, and ask for it on the console if it is not there."""
-    conn = args.badgelink_conn or (
-        f"--tcp {args.badgelink}" if ":" in args.badgelink else f"--port {args.badgelink}"
-    )
+    if args.badgelink_conn or not args.badgelink:
+        conn = args.badgelink_conn or ""
+    else:
+        conn = (f"--tcp {args.badgelink}" if re.fullmatch(r"[^/]+:\d+", args.badgelink)
+                else f"--port {args.badgelink}")
     if ensure_badgelink_mode(args.port, conn, DEVNULL):
         print("mode: BadgeLink is up")
         return 0
