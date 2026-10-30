@@ -10353,6 +10353,81 @@ All four questions this part left open, closed with a decision rather than a may
   numbers. All provisional, all device questions. Steps 72 / 73 are built and host-checked; the device
   test is what is left.
 
+- **F-167** 2026-10-30, out of **the user**: *"I updated graceloader a bit (some bugfixes), now i
+  can't livestream"*, with `H264_ENC.HW.SET: esp_h264_enc_hw_new_param(383): No memory for reference
+  frame`. **The loader did not take the memory. The app did, and the encoder is what runs out.**
+
+  **THE ONE ALLOCATION THAT FAILS.** `esp_h264_enc_hw_param.c:382` takes the encoder's reference frame
+  through `esp_h264_aligned_malloc(16, 1, max_refame_buffer_size(mb_width), ..., ESP_H264_MEM_INTERNAL)`
+  with **no second attempt**: 3 macroblock lines x 16 x (16 luma + 8 chroma) per macroblock column, plus
+  the alignment slack -- **57 607 bytes, contiguous, internal SRAM** at 800x480. The 562 KiB `db` buffer
+  on the next line is `malloc_prefer(INTERNAL, SPIRAM)` and has always landed in PSRAM, so it is not the
+  failure. The number that decides the outcome is the **largest free internal block**, not the free total.
+
+  **THE LOADER DIFF IS NOT IT.** `26f57e6..4d370ff` is badge-bsp 1.5.0 -> 1.6.3 (VCOM get/set, one NVS
+  read of `lcd_vcom`, a 0.70 volume scaling factor), a vendored `esp_hal_lcd` whose only functional change
+  is a bounded DCS-read timeout so a missing panel cannot hang boot, and `storage_shim.c`, which no-ops
+  `bsp_storage_initialize()` because graceloader owns the card's LDO. **Not one heap allocation in any of
+  it**, checked by diffing the two component zips and `mipi_dsi_abstraction` 1.0.0 against 1.2.0. The
+  symbol table grew 4530 -> 4548 entries, which is rodata. `CONFIG_PM_ENABLE` went y -> n, which frees
+  rather than takes. One real behaviour change is that 1.2.0 calls `esp_lcd_dpi_panel_enable_dma2d()`
+  before the panel reset instead of after; noted, not measured.
+
+  **WHAT DOES CONSUME THE INTERNAL HEAP.** F-37 measured 462 KiB of 622 KiB used, **160 KiB free, largest
+  block 62 KiB** -- one day before F-67 moved a **188 KiB** quarter-resolution depth plane into internal
+  SRAM (CMakeLists `SE_SCENE_DEPTH16_INTERNAL=1`) and pushed the flat list it displaced out to PSRAM. On
+  top of that the radix-sort key arrays are 2 x 6144 x 4 B = **48 KiB**, and the texture cache has grown
+  from the 18 textures / 9 KiB F-38 measured to **191 textures / about 106 KiB**, all asking for internal
+  first (`TEXCACHE_FLAGS`). The encoder's 57.6 KiB has been living on what is left over since then; the
+  loader update only nudged it off the edge.
+
+  **THE FIRST FIX MOVED THE TEXTURES, AND THE BADGE REFUSED IT.** A new engine call
+  `se_texture_move(tex, want_internal)` with `texcache_texels_to_psram()` / `texcache_texels_to_internal()`
+  handed the cache's 106 KiB back before `se_stream_start()` and took it back after. It did exactly what it
+  said: the log read `133 075 B free, 38 912 B largest block`. The textures were moved and 191 runs of 512
+  bytes still would not coalesce into one 57.6 KiB block. Fragmentation, not total, is the wall. That
+  attempt is gone; none of it is in the build.
+
+  **THE FIX IS ORDER, NOT BORROWING.** New engine call
+  `se_stream_reserve_permanent_memory()` (engine 2.7) builds the encoder once, at boot, and holds it.
+  `main/main.c` calls it immediately before `texcache_init()`, which is the last moment the internal heap is
+  still in large pieces. Nothing is handed back to anything else: the encoder takes its 57.6 KiB first, and
+  the texture loader then finds less internal room and takes the PSRAM fallback it already had
+  (`se_texture_load`). F-38/F-40 measured that fallback as free -- 36.0 ms of textured fill internal against
+  35.7 and 37.0 in PSRAM, inside the run-to-run spread -- so the trade costs nothing that has been measured.
+  `fps` / `gop` / bitrate are applied to the live handle at start, so an encoder built at 30 fps streams at
+  whatever the game asks for.
+
+  **THE NAME SAYS WHOSE MEMORY IT IS.** Out of the review: an app that never asks for this must not end up
+  holding 57.6 KiB it never wanted. So the call is a reservation, not a step of starting a stream, and it is
+  the only thing that sets `s_enc_kept`. `se_stream_start()` builds the encoder on demand when nothing was
+  reserved, and `se_stream_stop()` then closes AND deletes it -- buffers handed back, exactly the old
+  behaviour. Only a reserved encoder survives a stop, where `enc_close()` frees the interrupt and the DMA
+  link and no buffer at all. SynthMiner reserves on purpose: the stream is switched on and off from the
+  menu, and an encoder deleted at stop would have to ask for that block again in a heap that can no longer
+  give it.
+
+  **THE ORDERING ALSO KEEPS THE 576 KiB OUT.** The de-blocking buffer PREFERS internal SRAM and falls back
+  to PSRAM. Building the encoder while the game's own internal allocations are up -- with no single block
+  that large left -- is what keeps it where it has always been.
+
+  **IT SAYS WHAT IT NEEDED AND WHAT IT GOT.** `prepare_encoder()` logs `internal heap N B free, M B in one
+  piece; the reference frame wants 57 607 B contiguous` before the ask and the same pair after it, so the
+  delta says where the buffers landed. F-106 was this same failure debugged by guessing twice; the component
+  itself only ever says "No memory for reference frame".
+
+  **THE INTERNAL-ONLY RULE IS THE COMPONENT'S, NOT THE SILICON'S.** `ref` and `db` hang off the same DMA2D
+  descriptor chain (`esp_h264_enc_hw_cfg_dma_db_ref`) and `H264_DMA_END_ADDR` is `(~0)`
+  (`hw/hal/esp32p4/h264_dma_hal.h:22`), so PSRAM is addressable -- the component README says as much, with
+  the caveat that PSRAM buffers must come from the unencrypted region when PSRAM encryption is on. Changing
+  `ref` to `esp_h264_malloc_prefer(INTERNAL, SPIRAM)` would free the 57.6 KiB outright. One line, but in the
+  vendored component inside graceloader: it costs a loader rebuild and puts the encoder's reference-plane
+  traffic on QSPI PSRAM while it encodes. Not done; the app-side ordering needs no reflash.
+
+  **What this does NOT say**: whether the boot-time reservation lands on the badge -- the two log lines
+  measure it and neither has been read yet. What it costs is 57.6 KiB of internal SRAM held for the whole
+  run, alongside F-67's 188 KiB depth plane and the 48 KiB of sort-key arrays.
+
 ## Verification
 
 - **Host:** `make check` = `worldcheck` + `scenecheck` + `meshcheck` +

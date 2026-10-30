@@ -971,6 +971,20 @@ static void on_init(void* user) {
     }
 
     // Textures, then the material tables that map blocks onto them.
+    // THE H.264 ENCODER GOES FIRST, BEFORE THE TEXTURES TAKE THE INTERNAL
+    // HEAP. Its reference frame is the only allocation here that internal
+    // SRAM alone can satisfy -- 57 607 contiguous bytes, no PSRAM fallback --
+    // and the texture cache is the thing that would otherwise be in the way:
+    // 191 textures, about 106 KiB, every one of them asking for internal
+    // first. Built now the block lands; the textures then take the PSRAM
+    // fallback the loader already offers them, which F-38/F-40 measured as
+    // free. Costs 57.6 KiB of internal SRAM for the rest of the run (F-167,
+    // se_stream.h).
+    // HELD ON PURPOSE. The stream is switched on and off from the menu, and
+    // an encoder deleted at stop would have to ask for that block again in a
+    // heap that can no longer give it.
+    if (se_stream_reserve_permanent_memory() != ESP_OK)
+        ESP_LOGW(TAG, "no H.264 encoder: livestream will be unavailable this run");
     static char tex_dir[160];
     snprintf(tex_dir, sizeof(tex_dir), "%s/textures", graceloader_get_install_basepath());
     texcache_init(tex_dir);
